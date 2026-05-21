@@ -1,0 +1,29 @@
+version: "3.8"
+
+services:
+  db:
+    image: apache/age:PG16_latest
+    container_name: activable-postgres
+    environment:
+      POSTGRES_USER: ${ACTIVABLE_DB_USER:-activable}
+      POSTGRES_PASSWORD: ${ACTIVABLE_DB_PASSWORD:-activable_dev}
+      POSTGRES_DB: activable
+    ports:
+      - "5433:5432"
+    volumes:
+      - activable-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U activable"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - activable
+
+networks:
+  activable:
+    driver: bridge
+
+volumes:
+  activable-db-data:
+    driver: local

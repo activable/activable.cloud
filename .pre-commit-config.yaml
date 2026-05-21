@@ -1,0 +1,33 @@
+repos:
+  - repo: https://github.com/rust-lang/rust-clippy
+    rev: v1.75.0
+    hooks:
+      - id: clippy
+        args: [--all-targets, --, --deny, warnings]
+        stages: [commit]
+
+  - repo: https://github.com/pre-commit/mirrors-gofmt
+    rev: v1.23.0
+    hooks:
+      - id: gofmt
+
+  - repo: https://github.com/golangci/golangci-lint
+    rev: v1.55.2
+    hooks:
+      - id: golangci-lint
+        args: [run, ./go/...]
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      - id: check-merge-conflict
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+
+  - repo: local
+    hooks:
+      - id: dco
+        name: DCO sign-off check
+        entry: bash scripts/check-dco.sh
+        language: script
+        stages: [commit-msg]
