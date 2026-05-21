@@ -1,4 +1,4 @@
-.PHONY: setup lint test test-integration bindgen build ingest verify test-ffi-stability size-check clean
+.PHONY: setup lint test test-integration bindgen build ingest verify test-ffi-stability size-check spike-bench clean
 
 # Platform detection for Rust dylib
 UNAME_S := $(shell uname -s)
@@ -34,7 +34,7 @@ test:
 	go test -race -v ./go/...
 
 test-integration:
-	@echo "Integration tests (stub — populated Phase 6)"
+	@echo "Integration tests (stub — not yet implemented)"
 
 bindgen:
 	@echo "Regenerating UniFFI bindings..."
@@ -57,7 +57,7 @@ build:
 	@echo "Build complete (CGO enabled; requires libactivable_ffi.dylib at runtime)"
 
 ingest:
-	@echo "Error: ingest not yet implemented (Phase 4)"
+	@echo "Error: ingest not yet implemented"
 	@exit 1
 
 verify:
@@ -76,6 +76,37 @@ test-ffi-stability:
 size-check:
 	@echo "Checking binary size..."
 	@bash scripts/size-check.sh go/bin/activable
+
+spike-bench:
+	@echo "Starting Postgres+AGE (idempotent)..."
+	docker-compose -f infra/compose/docker-compose.yml up -d db
+	@echo "Waiting for Postgres healthcheck..."
+	@for i in 1 2 3 4 5; do \
+		if docker-compose -f infra/compose/docker-compose.yml ps db | grep -q healthy; then \
+			echo "Postgres ready"; \
+			break; \
+		fi; \
+		echo "Waiting... ($$i/5)"; \
+		sleep 3; \
+	done
+	@echo "Running graph backend spike: generate + load + benchmark + verdict"
+	cargo run --release --manifest-path spike/graph-backend/Cargo.toml -- \
+		bench-all \
+		--output /tmp/spike-graphs \
+		--db-host localhost \
+		--db-port 5433 \
+		--db-user activable \
+		--db-password activable_dev \
+		--seed 42
+	@exit_code=$$?; \
+	if [ $$exit_code -eq 0 ]; then \
+		echo "✓ Verdict: GO — PG+AGE approved"; \
+	elif [ $$exit_code -eq 1 ]; then \
+		echo "✗ Verdict: NO-GO — Escalate for user decision"; \
+	elif [ $$exit_code -eq 2 ]; then \
+		echo "⚠  Verdict: BORDERLINE — User arbitrates"; \
+	fi; \
+	exit $$exit_code
 
 clean:
 	cargo clean

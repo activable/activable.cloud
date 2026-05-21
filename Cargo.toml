@@ -6,6 +6,9 @@ members = [
     "crates/activable-iam-eval",
     "crates/activable-ffi",
 ]
+exclude = [
+    "spike/graph-backend",
+]
 
 [workspace.package]
 version = "0.1.0"

@@ -96,6 +96,7 @@ external/
 
 # Rust build artifacts
 /target/
+**/target/
 **/*.rs.bk
 
 # Go build artifacts

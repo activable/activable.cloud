@@ -2,7 +2,7 @@ version: "3.8"
 
 services:
   db:
-    image: apache/age:PG16_latest
+    image: apache/age:release_PG16_1.6.0
     container_name: activable-postgres
     environment:
       POSTGRES_USER: ${ACTIVABLE_DB_USER:-activable}
