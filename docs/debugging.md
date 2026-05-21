@@ -105,7 +105,7 @@ namespace activable {
     Arn parse_arn(string input);
 };
 
-// ✅ Good UDL (expose simple types only in Phase 1)
+// ✅ Good UDL (expose simple types only; complex types deferred)
 namespace activable {
     string version();
 };
@@ -195,7 +195,7 @@ See [profiling.md](./profiling.md) for cross-FFI flame graphs and pprof analysis
 Before adding a new Rust function to the FFI:
 
 - [ ] Function is `pub` and marked with `#[uniffi::export]`
-- [ ] Function parameters use simple types (string, u64, etc.) — avoid complex structs in Phase 1
+- [ ] Function parameters use simple types (string, u64, etc.) — avoid complex structs (deferred)
 - [ ] UDL declaration matches the Rust signature
 - [ ] Run `make bindgen` and verify `.go` compiles
 - [ ] Run `cargo test && go test -race ./...`
@@ -221,7 +221,7 @@ log.Info().Str("module", "ingest").Msg("starting ingest")
 
 ### OpenTelemetry
 
-Phase 4 adds OTel integration. For now, use `println!` or `log` in Rust and `zerolog` in Go.
+OTel integration is not yet implemented. For now, use `println!` or `log` in Rust and `zerolog` in Go.
 
 ---
 

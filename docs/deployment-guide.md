@@ -4,9 +4,9 @@ This document covers building, cross-compiling, and deploying Activable binaries
 
 ## Binary Size Budget
 
-**Target**: ≤ 50 MB stripped binary (red-team-v2 I3)
+**Target**: ≤ 50 MB stripped binary
 
-Current baseline (Phase 1, with UniFFI + Cobra + OTel deps):
+Current baseline (initial build, with UniFFI + Cobra + OTel deps):
 - **Linux/x86_64**: ~25 MB stripped
 - **macOS/arm64**: ~22 MB stripped
 
@@ -153,13 +153,13 @@ export ACTIVABLE_DB_USER=activable
 export ACTIVABLE_DB_PASSWORD=activable_dev
 export ACTIVABLE_DB_NAME=activable
 
-# Phase 4+ will read these in ingestor initialization
+# Ingestor initialization reads these when implemented
 ```
 
 ### OpenTelemetry Endpoint
 
 ```bash
-# Send traces to local OTEL collector (Phase 4+)
+# Send traces to local OTEL collector
 export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
 
 # Or disable telemetry (no-op exporter)

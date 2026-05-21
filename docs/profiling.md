@@ -1,6 +1,6 @@
 # Profiling Guide
 
-**Stub** — populated in Phase 6 (red-team-v2 I2).
+**Stub** — not yet implemented.
 
 This document will cover:
 - Cross-FFI flame graphs (Rust + Go combined)
@@ -8,7 +8,7 @@ This document will cover:
 - perf tracing of Postgres+AGE queries
 - Identifying bottlenecks in the ingestion pipeline
 
-Profiling walkthrough will be added after Phase 5 ingestion is implemented, when there is meaningful performance-critical code to measure.
+Profiling walkthrough will be added after ingestion is implemented, when there is meaningful performance-critical code to measure.
 
 ---
 

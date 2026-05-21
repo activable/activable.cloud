@@ -42,7 +42,7 @@ cargo build --workspace --release
 # Go CLI (with CGO disabled for simplicity)
 make build
 
-# Generates bindings (placeholder in Phase 1)
+# Generates UniFFI bindings
 make bindgen
 ```
 

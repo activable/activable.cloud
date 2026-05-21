@@ -11,7 +11,7 @@ High-level design of Activable's polyglot architecture: Rust core, Go CLI/ingest
 │ cmd/activable        ← CLI entry point (Cobra)              │
 │ internal/ingest/     ← AWS ingestion framework              │
 │ internal/telemetry/  ← OpenTelemetry setup                  │
-│ internal/api/        ← REST API (Slice F)                   │
+│ internal/api/        ← REST API (API layer)                 │
 └────────────────┬────────────────────────────────────────────┘
                  │ UniFFI bindings (type-safe, in-process)
                  ↓
@@ -20,7 +20,7 @@ High-level design of Activable's polyglot architecture: Rust core, Go CLI/ingest
 ├─────────────────────────────────────────────────────────────┤
 │ activable-schema/   ← Nodes, edges, ARN canonicalizer      │
 │ activable-graph/    ← Postgres + Apache AGE driver         │
-│ activable-iam-eval/ ← Parliament port (Slice B stub)       │
+│ activable-iam-eval/ ← Parliament port (IAM eval stub)      │
 │ activable-ffi/      ← UniFFI surface                        │
 └────────────────┬────────────────────────────────────────────┘
                  │ SQL (Cypher via AGE)
@@ -58,14 +58,85 @@ High-level design of Activable's polyglot architecture: Rust core, Go CLI/ingest
                  └──────────────────┘
 ```
 
-### Distributed (Future — Slice D+)
+### Distributed (Future)
 
 - **CLI runner**: One-shot ingestion, runs locally or in container
 - **Postgres+AGE cluster**: Replicates across AZs (managed RDS or self-hosted)
 - **API server**: Stateless; scales horizontally; queries graph
 - **Telemetry**: Centralized OTel collector
 
-## Graph Schema (Phase 3)
+## Graph Backend Decision: PG + Apache AGE (verdict 2026-05-21)
+
+**Verdict: GO** — Postgres 16 + Apache AGE 1.6.0 passes all gate thresholds on a synthetic 100k-node AWS IAM graph with thousands-× margins. **No Vela-Kuzu fallback needed.**
+
+| Gate | Threshold | Measured (100k, p95) | Margin |
+|---|---|---|---|
+| 6-hop variable-length traversal (single-thread) | < 2,000,000 µs | **442 µs** | 4,524× |
+| 6-hop variable-length traversal (concurrent, 4×25) | < 2,500,000 µs | **697 µs** | 3,587× |
+| Shortest-path (single-thread) | < 3,000,000 µs | **367 µs** | 8,174× |
+
+Full methodology, query mix, hardware fingerprint, and reproduction commands: [`spike/graph-backend/results.md`](../spike/graph-backend/results.md).
+
+### Why the margins are this large (and what they don't promise)
+
+The whole reason this spike existed is the documented AGE perf cliff on variable-length paths ([apache/age#195](https://github.com/apache/age/issues/195)). Our synthetic graph didn't trigger it. Reasons:
+
+1. **AWS IAM topology is DAG-like with shallow fanout.** Principal→Role→Policy→Resource chains have bounded depth and concentrate fanout at top-level roles. The VLE cliff manifests on graphs with dense cross-connects forcing exponential path enumeration; we don't have that shape.
+2. **`LIMIT 50` terminates traversal early.** Our query mix returns the first 50 matching paths, which short-circuits depth-first enumeration on the IAM-shaped graph.
+3. **Warm-cache measurement.** We measure after 10 warmup runs per query. Cold-cache p95 will be higher; production cache hit rates depend on workload.
+
+**Future action:** Revalidate on real AWS Organizations data once `activable-ingest` produces a non-synthetic graph. Treat the 3,500–8,000× margin as "comfortable pass on this synthetic workload," not as production headroom.
+
+### Surprising observation — short queries are slower than long traversals
+
+| Query (100k graph, single-thread p95) | Latency |
+|---|---|
+| 1-hop with `RETURN t LIMIT 100` (full property blobs) | **532 ms** |
+| 3-hop with property materialization | **94 ms** |
+| 6-hop var-len returning `length(path)` | **0.4 ms** |
+| Shortest-path returning `length(path)` | **0.4 ms** |
+
+Cause: `LOAD 'age'; SET search_path` runs per pool checkout (~120 ms amortized) + agtype property blob deserialization dominates when queries return full nodes. Traversal queries returning structural results (path lengths, node refs) avoid the materialization cost.
+
+**Production rules (carry into the API layer):**
+
+- Reuse pool connections without `DISCARD ALL` so AGE session setup amortizes.
+- Avoid full-property-blob returns on hot paths — return IDs or structural data and hydrate lazily.
+- 3-hop queries are the worst case in our mix at 94 ms p95; design API pagination to absorb this.
+
+### Bulk-load pattern (locked for production schema)
+
+The Cypher `UNWIND $batch AS row MATCH ... CREATE` approach is **unusable at 100k+ scale** — AGE's Cypher planner does not use Postgres expression indexes for MATCH lookups, making each batch O(n_vertices). The benchmark switched to:
+
+- SQL-level INSERT into AGE's underlying edge tables (`cloud."HasPermission"`, `cloud."CanAssume"`) via `ag_catalog._graphid(<label_oid>, <id_sequence>)`.
+- Expression indexes on `agtype_access_operator(properties, '"id"'::agtype)` for vertex-ID lookup by JOIN.
+- Vertex inserts still use Cypher `UNWIND` (acceptable because each row is independent; no MATCH lookup needed).
+
+Implementation: [`spike/graph-backend/src/load_pg_age.rs`](../spike/graph-backend/src/load_pg_age.rs). Code review: [`plans/reports/code-review-260521-load-pg-age-sql-fastpath.md`](../plans/reports/code-review-260521-load-pg-age-sql-fastpath.md) — **APPROVED_WITH_CAVEATS**, 0 P0 (security/correctness), 8 P1 (production-readiness).
+
+#### Carry-over for production loader
+
+| # | Item | Owner |
+|---|---|---|
+| 1 | Wrap loading loop in explicit `BEGIN`/`COMMIT`. Define failure mode: atomic vs. resumable. | production loader impl |
+| 2 | Pre-flight validate edge endpoints; current INSERT silently inserts zero rows on missing endpoints. | production loader impl |
+| 3 | Make `BATCH_SIZE` (currently `500`) configurable via `--batch-size` CLI flag. | production loader impl |
+| 4 | Integrate `deadpool-postgres` connection pool for the loader (currently single `tokio_postgres::Client`). | production loader impl |
+| 5 | Document `nextval()` sequence-ID gaps under concurrent load as expected behavior. | Docs |
+| 6 | Add inline comment for `'"{}"'::agtype` literal syntax at `load_pg_age.rs:393`. | production loader impl |
+| 7 | Parameterize Cypher UNWIND batches (~50 KB per 500-row batch) if statement-size becomes a hotspot. | Defer until benchmarked at production scale |
+| 8 | Add `ON CONFLICT` or pre-flight deduplication if crash-resumability is required. | production loader impl |
+
+### What this benchmark did NOT cover (revisit later)
+
+- **Cold-cache latency.** All measurements are warm-cache.
+- **Real AWS data shape.** Synthetic generator approximates fanout/cross-account distributions; real Organizations data may differ.
+- **Storage growth.** Did not measure disk footprint at 1M+ edges; production schema work should profile.
+- **Write throughput under sustained ingestion load.** The benchmark measured a one-shot bulk load, not steady-state writes.
+- **Schema migrations on a live graph.** The benchmark used `drop_graph() + create_graph()`; production schema work needs online migration patterns.
+- **Multi-tenancy isolation.** The benchmark used a single `cloud` named graph; multi-tenancy will need per-customer graphs or schemas.
+
+## Graph Schema (Production)
 
 ### Nodes (12 types)
 
@@ -77,7 +148,7 @@ High-level design of Activable's polyglot architecture: Rust core, Go CLI/ingest
 | ServicePrincipal | id, name, trust_policy | Cross-account trusted principal |
 | FederatedProvider | id, name, saml_metadata | SAML/OIDC provider |
 | AccessKey | id (public part), secret_hash, status | Long-term credentials |
-| (7 more TBD Phase 3) | ... | ... |
+| (7 more TBD) | ... | ... |
 
 ### Edges (17 types)
 
@@ -90,16 +161,16 @@ High-level design of Activable's polyglot architecture: Rust core, Go CLI/ingest
 | SignedBy | AccessKey → Principal | Belongs to principal |
 | (12 more TBD) | ... | ... |
 
-See Phase 3 plan for full schema definition.
+See production schema plan for full schema definition.
 
 ## FFI Boundary (UniFFI)
 
 ### Exported from Rust
 
-Currently (Phase 1):
+Currently exported:
 - `version() → String` — returns schema version
 
-Will expand (Phases 2–6) to:
+Will expand to:
 - Graph mutations: `create_node()`, `add_edge()`, `query_path()`
 - IAM evaluation: `evaluate_policy()`, `check_permission()`
 - Concurrency primitives: async Rust functions exposed safely to Go
@@ -111,10 +182,10 @@ Will expand (Phases 2–6) to:
 | `String` | `string` |
 | `u64` | `uint64` |
 | `Vec<T>` | `[]T` |
-| `struct Arn` | Not exposed in Phase 1 (complex types deferred) |
+| `struct Arn` | Not yet exposed (complex types deferred) |
 | `async fn` | `func()` (blocking in Go, async in Rust) |
 
-## Data Flow — Ingestion (Phase 5)
+## Data Flow — Ingestion
 
 ```
 ┌──────────────────┐
@@ -150,16 +221,16 @@ Will expand (Phases 2–6) to:
 - **Panic safety**: FFI boundary catches and propagates panics to Go
 
 ### Go Side
-- **Goroutines**: 100+ concurrent ingestion workers (Phase 4)
+- **Goroutines**: 100+ concurrent ingestion workers
 - **Context timeout**: Cancellation propagated through FFI to Rust
 - **Race detection**: CI runs `go test -race` on all Go tests
 
 ### FFI Stress Test
-- Phase 1: `make test-ffi-stability` with 100+ concurrent goroutines
+- `make test-ffi-stability` with 100+ concurrent goroutines
 - Ensures safe concurrent calls across language boundary
 - Catches segfaults, deadlocks, double-frees
 
-## Telemetry (Phase 4)
+## Telemetry
 
 OpenTelemetry instrumentation:
 
@@ -169,7 +240,7 @@ Go CLI/Ingestor
   │    ├─→ Trace: fetch_iam_users (child span)
   │    ├─→ Trace: fetch_s3_buckets (child span)
   │    └─→ Call Rust FFI with trace context
-  │         └─→ Rust records spans (Phase 6)
+  │         └─→ Rust records spans (future)
   │
   └─→ Metrics: ingestion_duration_ms, items_processed, errors
       └─→ Export to OTLP collector (gRPC)
@@ -185,14 +256,14 @@ Go CLI/Ingestor
 - CLI ingests test account
 - Graph validated against expected primitives
 
-### Production (Slice F+)
+### Production
 - Managed Postgres (AWS RDS with read replicas)
 - API server (Go stateless pods, HPA)
 - Observability: datadog/honeycomb for traces + metrics
 
 ## Security Boundary
 
-### Ingestion IAM Role (Phase 5)
+### Ingestion IAM Role
 ```json
 {
   "Statement": [
@@ -213,7 +284,7 @@ Go CLI/Ingestor
 
 Least-privilege: read-only, no secrets, no console access.
 
-### Graph Access Control (Slice F+)
+### Graph Access Control
 - Multi-tenancy: separate graphs per customer (Postgres schemas or separate instances)
 - RBAC on API: authenticated with JWT; scopes limit graph operations
 - Audit logging: OTel traces with user identity
@@ -224,8 +295,8 @@ Least-privilege: read-only, no secrets, no console access.
 |---------|-----------|----------|
 | Postgres down | Go ingestor fails; returns error | Retry with exponential backoff |
 | Rust panic | FFI boundary catches; returns Go error | Log, alert; continue to next resource |
-| AWS API timeout | Boto3/SDK timeout | Per-service retry budget (Phase 5) |
-| Graph corruption | Checksum mismatch in Phase 6 test | Rollback and re-ingest from snapshot |
+| AWS API timeout | Boto3/SDK timeout | Per-service retry budget |
+| Graph corruption | Checksum mismatch in integrity test | Rollback and re-ingest from snapshot |
 
 ---
 
