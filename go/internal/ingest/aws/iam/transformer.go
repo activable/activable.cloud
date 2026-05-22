@@ -98,7 +98,7 @@ func PolicyStatementToResourceSpec(policyArn string, sid string, actions []strin
 	// Create a canonical ID for this permission node
 	// Hash: policyArn + SID
 	hash := md5.New()
-	io.WriteString(hash, fmt.Sprintf("%s:%s", policyArn, sid))
+	_, _ = io.WriteString(hash, fmt.Sprintf("%s:%s", policyArn, sid))
 	permissionID := fmt.Sprintf("permission:%s:%x", policyArn, hash.Sum(nil))
 
 	spec := ingest.ResourceSpec{
@@ -172,7 +172,7 @@ func InlinePolicyEdgeSpec(principalARN string, policyName string, sids []string)
 	for _, sid := range sids {
 		// Create a permission ID for this inline policy statement
 		hash := md5.New()
-		io.WriteString(hash, fmt.Sprintf("%s:%s:%s", principalARN, policyName, sid))
+		_, _ = io.WriteString(hash, fmt.Sprintf("%s:%s:%s", principalARN, policyName, sid))
 		permissionID := fmt.Sprintf("permission:%s:%s:%x", principalARN, policyName, hash.Sum(nil))
 
 		edge := ingest.EdgeSpec{

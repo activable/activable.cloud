@@ -13,7 +13,7 @@ fn test_url_parts() -> Option<(String, u16, String, String, String)> {
     let (host_port, dbname) = rest.split_once('/')?;
     let (host, port_str) = host_port
         .split_once(':')
-        .or_else(|| Some((host_port, "5432")))?;
+        .unwrap_or((host_port, "5432"));
     let port: u16 = port_str.parse().ok()?;
 
     Some((
@@ -131,16 +131,17 @@ async fn test_idempotency_double_ingest() {
         }
     };
 
-    if let Err(_) = setup_conn
+    if setup_conn
         .batch_execute("LOAD 'age'; SET search_path = ag_catalog, \"$user\", public;")
         .await
+        .is_err()
     {
         println!("Skipping: failed to load age");
         return;
     }
 
     let create_graph = format!("SELECT * FROM ag_catalog.create_graph('{}')", graph_name);
-    if let Err(_) = setup_conn.query(&create_graph, &[]).await {
+    if setup_conn.query(&create_graph, &[]).await.is_err() {
         println!("Skipping: failed to create graph");
         return;
     }

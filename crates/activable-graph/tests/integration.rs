@@ -28,11 +28,8 @@ fn test_graph_pool_api_exists() {
     // Unit test: verify GraphPool API exists (no DB connection needed)
     // Real integration tests are in tests/integration/rust/*.rs
 
-    // Just document the expected API surface
-    let api_doc = "GraphPool provides:
-        - from_url(connection_string) -> Result<Self, Error>
-        - build(host, port, user, password, database, pool_size) -> Self
-        - get() -> Connection for query execution";
-
-    assert!(!api_doc.is_empty(), "GraphPool API documented");
+    // Verify GraphPool::build exists (compile-time check)
+    type BuildFn = fn(&str, u16, &str, &str, &str, usize)
+        -> Result<std::sync::Arc<deadpool_postgres::Pool>, activable_graph::error::GraphError>;
+    let _: BuildFn = activable_graph::pool::GraphPool::build;
 }

@@ -63,7 +63,7 @@ func (s *Server) graphqlHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
-	defer r.Body.Close()
+	defer func() { _ = r.Body.Close() }()
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		s.logger.Error("failed to parse GraphQL request", "error", err)
@@ -77,7 +77,9 @@ func (s *Server) graphqlHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(result)
+	if err := json.NewEncoder(w).Encode(result); err != nil {
+		s.logger.Error("failed to encode GraphQL response", "error", err)
+	}
 }
 
 // schemaSource is the GraphQL SDL loaded once for query validation.
@@ -254,7 +256,7 @@ func resolveValue(value *ast.Value, variables map[string]any) any {
 		return nil
 	case ast.IntValue:
 		var n int
-		fmt.Sscanf(value.Raw, "%d", &n)
+		_, _ = fmt.Sscanf(value.Raw, "%d", &n)
 		return n
 	case ast.StringValue, ast.BlockValue, ast.EnumValue:
 		return value.Raw
@@ -321,13 +323,13 @@ func (s *Server) healthzHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.logger.Error("health check failed", "error", err)
 		w.WriteHeader(http.StatusServiceUnavailable)
-		fmt.Fprintf(w, "Unhealthy: %v", err)
+		_, _ = fmt.Fprintf(w, "Unhealthy: %v", err)
 		return
 	}
 
 	w.Header().Set("Content-Type", "text/plain")
 	w.WriteHeader(http.StatusOK)
-	fmt.Fprintf(w, "Healthy: %s", status)
+	_, _ = fmt.Fprintf(w, "Healthy: %s", status)
 }
 
 // rateLimiter returns middleware that rate-limits requests per IP address.

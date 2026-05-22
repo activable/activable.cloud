@@ -12,7 +12,7 @@ fn test_url_parts() -> Option<(String, u16, String, String, String)> {
     let (host_port, dbname) = rest.split_once('/')?;
     let (host, port_str) = host_port
         .split_once(':')
-        .or_else(|| Some((host_port, "5432")))?;
+        .unwrap_or((host_port, "5432"));
     let port: u16 = port_str.parse().ok()?;
     Some((
         host.to_string(),
@@ -29,9 +29,10 @@ async fn setup_test_graph(pool: &deadpool_postgres::Pool, graph_name: &str) -> b
         Err(_) => return false,
     };
 
-    if let Err(_) = conn
+    if conn
         .batch_execute("LOAD 'age'; SET search_path = ag_catalog, \"$user\", public;")
         .await
+        .is_err()
     {
         return false;
     }
@@ -47,7 +48,7 @@ async fn setup_test_graph(pool: &deadpool_postgres::Pool, graph_name: &str) -> b
         .await;
 
     let create_graph = format!("SELECT * FROM ag_catalog.create_graph('{}')", graph_name);
-    if let Err(_) = conn.query(&create_graph, &[]).await {
+    if conn.query(&create_graph, &[]).await.is_err() {
         return false;
     }
 
