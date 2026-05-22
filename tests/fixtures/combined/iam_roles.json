@@ -1,0 +1,112 @@
+[
+  {
+    "id": "arn:aws:iam::123456789012:role/admin",
+    "name": "admin",
+    "principal_type": "Role",
+    "account_id": "123456789012",
+    "attributes": {
+      "create_date": "2024-01-01T00:00:00Z",
+      "path": "/",
+      "assume_role_policy": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Principal": {
+              "AWS": "arn:aws:iam::123456789012:root"
+            },
+            "Action": "sts:AssumeRole"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "arn:aws:iam::123456789012:role/developer",
+    "name": "developer",
+    "principal_type": "Role",
+    "account_id": "123456789012",
+    "attributes": {
+      "create_date": "2024-01-02T00:00:00Z",
+      "path": "/",
+      "assume_role_policy": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Principal": {
+              "AWS": "arn:aws:iam::123456789012:root"
+            },
+            "Action": "sts:AssumeRole"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "arn:aws:iam::123456789012:role/lambda-execution",
+    "name": "lambda-execution",
+    "principal_type": "Role",
+    "account_id": "123456789012",
+    "attributes": {
+      "create_date": "2024-01-03T00:00:00Z",
+      "path": "/",
+      "assume_role_policy": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Principal": {
+              "Service": "lambda.amazonaws.com"
+            },
+            "Action": "sts:AssumeRole"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "arn:aws:iam::123456789012:role/ec2-instance",
+    "name": "ec2-instance",
+    "principal_type": "Role",
+    "account_id": "123456789012",
+    "attributes": {
+      "create_date": "2024-01-04T00:00:00Z",
+      "path": "/",
+      "assume_role_policy": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Principal": {
+              "Service": "ec2.amazonaws.com"
+            },
+            "Action": "sts:AssumeRole"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "arn:aws:iam::123456789012:role/service",
+    "name": "service",
+    "principal_type": "Role",
+    "account_id": "123456789012",
+    "attributes": {
+      "create_date": "2024-01-05T00:00:00Z",
+      "path": "/",
+      "assume_role_policy": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Principal": {
+              "AWS": "arn:aws:iam::123456789012:root"
+            },
+            "Action": "sts:AssumeRole"
+          }
+        ]
+      }
+    }
+  }
+]

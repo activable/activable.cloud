@@ -34,7 +34,29 @@ test:
 	go test -race -v ./go/...
 
 test-integration:
-	@echo "Integration tests (stub — not yet implemented)"
+	@echo "Running integration tests..."
+	@echo "Step 1: Tearing down existing docker compose stack..."
+	docker compose -f infra/compose/docker-compose.yml down -v || true
+	@echo "Step 2: Starting postgres+AGE..."
+	docker compose -f infra/compose/docker-compose.yml up -d
+	@echo "Step 3: Waiting for postgres to be healthy..."
+	@for i in 1 2 3 4 5 6; do \
+		if docker compose -f infra/compose/docker-compose.yml ps db | grep -q "healthy"; then \
+			echo "Postgres is healthy"; \
+			break; \
+		fi; \
+		echo "Waiting... ($$i/6)"; \
+		sleep 3; \
+	done
+	@echo "Step 4: Running Rust integration tests..."
+	AGE_TEST_URL="postgresql://activable:activable_dev@localhost:5433/activable" \
+	  rtk cargo test -p activable-graph --test integration -- --test-threads=1 --nocapture
+	@echo "Step 5: Running Go integration tests..."
+	ACTIVABLE_INTEGRATION=1 ACTIVABLE_DB_URL="postgresql://activable:activable_dev@localhost:5433/activable" \
+	  rtk go test ./go/tests/integration/... -v
+	@echo "Step 6: Cleaning up docker compose stack..."
+	docker compose -f infra/compose/docker-compose.yml down -v
+	@echo "Integration tests complete"
 
 bindgen:
 	@echo "Regenerating UniFFI bindings..."

@@ -1,0 +1,48 @@
+[
+  {
+    "id": "arn:aws:s3:::activable-data",
+    "name": "activable-data",
+    "resource_type": "S3Bucket",
+    "account_id": "123456789012",
+    "region": "us-east-1",
+    "attributes": {
+      "creation_date": "2024-01-01T00:00:00Z",
+      "bucket_encryption": {
+        "Rules": [
+          {
+            "ApplyServerSideEncryptionByDefault": {
+              "SSEAlgorithm": "AES256"
+            }
+          }
+        ]
+      }
+    }
+  },
+  {
+    "id": "arn:aws:s3:::activable-logs",
+    "name": "activable-logs",
+    "resource_type": "S3Bucket",
+    "account_id": "123456789012",
+    "region": "us-east-1",
+    "attributes": {
+      "creation_date": "2024-01-02T00:00:00Z",
+      "versioning_status": "Enabled"
+    }
+  },
+  {
+    "id": "arn:aws:s3:::activable-backup",
+    "name": "activable-backup",
+    "resource_type": "S3Bucket",
+    "account_id": "123456789012",
+    "region": "us-west-2",
+    "attributes": {
+      "creation_date": "2024-01-03T00:00:00Z",
+      "public_access_block": {
+        "BlockPublicAcls": true,
+        "IgnorePublicAcls": true,
+        "BlockPublicPolicy": true,
+        "RestrictPublicBuckets": true
+      }
+    }
+  }
+]

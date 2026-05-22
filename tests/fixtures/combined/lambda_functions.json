@@ -1,0 +1,32 @@
+[
+  {
+    "id": "arn:aws:lambda:us-east-1:123456789012:function:activable-graph-query",
+    "name": "activable-graph-query",
+    "resource_type": "LambdaFunction",
+    "account_id": "123456789012",
+    "region": "us-east-1",
+    "attributes": {
+      "runtime": "python3.11",
+      "handler": "index.handler",
+      "role": "arn:aws:iam::123456789012:role/lambda-execution",
+      "code_size": 5242880,
+      "memory_size": 512,
+      "timeout": 60
+    }
+  },
+  {
+    "id": "arn:aws:lambda:us-east-1:123456789012:function:activable-ingestion-scheduler",
+    "name": "activable-ingestion-scheduler",
+    "resource_type": "LambdaFunction",
+    "account_id": "123456789012",
+    "region": "us-east-1",
+    "attributes": {
+      "runtime": "python3.11",
+      "handler": "scheduler.main",
+      "role": "arn:aws:iam::123456789012:role/lambda-execution",
+      "code_size": 3145728,
+      "memory_size": 256,
+      "timeout": 300
+    }
+  }
+]

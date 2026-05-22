@@ -1,0 +1,100 @@
+[
+  {
+    "id": "user-alice-assume-admin",
+    "source": "arn:aws:iam::123456789012:user/alice",
+    "target": "arn:aws:iam::123456789012:role/admin",
+    "edge_type": "CanAssume",
+    "attributes": {}
+  },
+  {
+    "id": "user-bob-assume-developer",
+    "source": "arn:aws:iam::123456789012:user/bob",
+    "target": "arn:aws:iam::123456789012:role/developer",
+    "edge_type": "CanAssume",
+    "attributes": {}
+  },
+  {
+    "id": "user-charlie-assume-service",
+    "source": "arn:aws:iam::123456789012:user/charlie",
+    "target": "arn:aws:iam::123456789012:role/service",
+    "edge_type": "CanAssume",
+    "attributes": {}
+  },
+  {
+    "id": "admin-role-attach-s3-full",
+    "source": "arn:aws:iam::123456789012:role/admin",
+    "target": "arn:aws:iam::123456789012:policy/s3-full-access",
+    "edge_type": "AttachedPolicy",
+    "attributes": {}
+  },
+  {
+    "id": "developer-role-attach-ec2-read",
+    "source": "arn:aws:iam::123456789012:role/developer",
+    "target": "arn:aws:iam::123456789012:policy/ec2-read",
+    "edge_type": "AttachedPolicy",
+    "attributes": {}
+  },
+  {
+    "id": "service-role-attach-dynamodb",
+    "source": "arn:aws:iam::123456789012:role/service",
+    "target": "arn:aws:iam::123456789012:policy/dynamodb-read",
+    "edge_type": "AttachedPolicy",
+    "attributes": {}
+  },
+  {
+    "id": "lambda-role-attach-logs",
+    "source": "arn:aws:iam::123456789012:role/lambda-execution",
+    "target": "arn:aws:iam::123456789012:policy/logs-write",
+    "edge_type": "AttachedPolicy",
+    "attributes": {}
+  },
+  {
+    "id": "admin-role-attach-lambda",
+    "source": "arn:aws:iam::123456789012:role/admin",
+    "target": "arn:aws:iam::123456789012:policy/lambda-invoke",
+    "edge_type": "AttachedPolicy",
+    "attributes": {}
+  },
+  {
+    "id": "lambda-query-access-s3-data",
+    "source": "arn:aws:lambda:us-east-1:123456789012:function:activable-graph-query",
+    "target": "arn:aws:s3:::activable-data",
+    "edge_type": "CanAccess",
+    "attributes": {}
+  },
+  {
+    "id": "lambda-scheduler-trigger-query",
+    "source": "arn:aws:lambda:us-east-1:123456789012:function:activable-ingestion-scheduler",
+    "target": "arn:aws:lambda:us-east-1:123456789012:function:activable-graph-query",
+    "edge_type": "CanInvoke",
+    "attributes": {}
+  },
+  {
+    "id": "ec2-api-assume-ec2-role",
+    "source": "arn:aws:ec2:us-east-1:123456789012:instance/i-0123456789abcdef0",
+    "target": "arn:aws:iam::123456789012:role/ec2-instance",
+    "edge_type": "CanAssume",
+    "attributes": {}
+  },
+  {
+    "id": "ec2-worker-assume-ec2-role",
+    "source": "arn:aws:ec2:us-east-1:123456789012:instance/i-0abcdef0123456789",
+    "target": "arn:aws:iam::123456789012:role/ec2-instance",
+    "edge_type": "CanAssume",
+    "attributes": {}
+  },
+  {
+    "id": "admin-policy-allows-s3",
+    "source": "arn:aws:iam::123456789012:policy/s3-full-access",
+    "target": "arn:aws:s3:::activable-data",
+    "edge_type": "Allows",
+    "attributes": {}
+  },
+  {
+    "id": "admin-policy-allows-logs",
+    "source": "arn:aws:iam::123456789012:policy/s3-full-access",
+    "target": "arn:aws:s3:::activable-logs",
+    "edge_type": "Allows",
+    "attributes": {}
+  }
+]

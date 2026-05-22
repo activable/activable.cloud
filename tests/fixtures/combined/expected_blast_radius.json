@@ -1,0 +1,74 @@
+{
+  "admin_role_blast_radius_1_hop": {
+    "center": "arn:aws:iam::123456789012:role/admin",
+    "max_hops": 1,
+    "node_count": 4,
+    "edge_count": 3,
+    "nodes": [
+      {
+        "id": "arn:aws:iam::123456789012:role/admin",
+        "label": "Principal"
+      },
+      {
+        "id": "arn:aws:iam::123456789012:user/alice",
+        "label": "Principal"
+      },
+      {
+        "id": "arn:aws:iam::123456789012:policy/s3-full-access",
+        "label": "Principal"
+      },
+      {
+        "id": "arn:aws:iam::123456789012:policy/lambda-invoke",
+        "label": "Principal"
+      }
+    ]
+  },
+  "admin_role_blast_radius_2_hops": {
+    "center": "arn:aws:iam::123456789012:role/admin",
+    "max_hops": 2,
+    "node_count": 6,
+    "edge_count": 5,
+    "nodes": [
+      {
+        "id": "arn:aws:iam::123456789012:role/admin",
+        "label": "Principal"
+      },
+      {
+        "id": "arn:aws:iam::123456789012:user/alice",
+        "label": "Principal"
+      },
+      {
+        "id": "arn:aws:iam::123456789012:policy/s3-full-access",
+        "label": "Principal"
+      },
+      {
+        "id": "arn:aws:iam::123456789012:policy/lambda-invoke",
+        "label": "Principal"
+      },
+      {
+        "id": "arn:aws:s3:::activable-data",
+        "label": "Resource"
+      },
+      {
+        "id": "arn:aws:s3:::activable-logs",
+        "label": "Resource"
+      }
+    ]
+  },
+  "s3_data_bucket_blast_radius_1_hop": {
+    "center": "arn:aws:s3:::activable-data",
+    "max_hops": 1,
+    "node_count": 2,
+    "edge_count": 1,
+    "nodes": [
+      {
+        "id": "arn:aws:s3:::activable-data",
+        "label": "Resource"
+      },
+      {
+        "id": "arn:aws:iam::123456789012:policy/s3-full-access",
+        "label": "Principal"
+      }
+    ]
+  }
+}

@@ -1,0 +1,74 @@
+{
+  "user_alice_to_admin_role": {
+    "from": "arn:aws:iam::123456789012:user/alice",
+    "to": "arn:aws:iam::123456789012:role/admin",
+    "found": true,
+    "num_paths": 1,
+    "shortest_length": 1,
+    "path_example": [
+      {
+        "id": "arn:aws:iam::123456789012:user/alice",
+        "label": "Principal"
+      },
+      {
+        "id": "arn:aws:iam::123456789012:role/admin",
+        "label": "Principal"
+      }
+    ]
+  },
+  "user_bob_to_developer_role": {
+    "from": "arn:aws:iam::123456789012:user/bob",
+    "to": "arn:aws:iam::123456789012:role/developer",
+    "found": true,
+    "num_paths": 1,
+    "shortest_length": 1,
+    "path_example": [
+      {
+        "id": "arn:aws:iam::123456789012:user/bob",
+        "label": "Principal"
+      },
+      {
+        "id": "arn:aws:iam::123456789012:role/developer",
+        "label": "Principal"
+      }
+    ]
+  },
+  "alice_to_s3_bucket_via_admin_policy": {
+    "from": "arn:aws:iam::123456789012:user/alice",
+    "to": "arn:aws:s3:::activable-data",
+    "found": true,
+    "num_paths": 1,
+    "shortest_length": 3,
+    "path_example": [
+      {
+        "id": "arn:aws:iam::123456789012:user/alice",
+        "label": "Principal"
+      },
+      {
+        "id": "arn:aws:iam::123456789012:role/admin",
+        "label": "Principal"
+      },
+      {
+        "id": "arn:aws:iam::123456789012:policy/s3-full-access",
+        "label": "Principal"
+      },
+      {
+        "id": "arn:aws:s3:::activable-data",
+        "label": "Resource"
+      }
+    ]
+  },
+  "unknown_user_to_admin": {
+    "from": "arn:aws:iam::123456789012:user/unknown",
+    "to": "arn:aws:iam::123456789012:role/admin",
+    "found": false,
+    "num_paths": 0
+  },
+  "lambda_scheduler_to_query_function": {
+    "from": "arn:aws:lambda:us-east-1:123456789012:function:activable-ingestion-scheduler",
+    "to": "arn:aws:lambda:us-east-1:123456789012:function:activable-graph-query",
+    "found": true,
+    "num_paths": 1,
+    "shortest_length": 1
+  }
+}
