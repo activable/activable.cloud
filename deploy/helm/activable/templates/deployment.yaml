@@ -96,6 +96,12 @@ spec:
             configMapKeyRef:
               name: {{ include "activable.fullname" . }}
               key: db.max_connections
+        {{- if .Values.environment }}
+        {{- range $key, $val := .Values.environment }}
+        - name: {{ $key }}
+          value: {{ $val | quote }}
+        {{- end }}
+        {{- end }}
         resources:
           {{- toYaml .Values.resources | nindent 12 }}
       {{- with .Values.nodeSelector }}

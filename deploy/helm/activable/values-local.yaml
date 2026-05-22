@@ -1,6 +1,14 @@
+# Local Kubernetes development values
+# Use with: helm install activable deploy/helm/activable -f deploy/helm/activable/values-local.yaml
+#
+# This configuration runs the Activable GraphQL API in Docker Desktop Kubernetes,
+# while Postgres+AGE and Floci (AWS emulator) run in Docker Compose on the host.
+# The K8s pod reaches host services via host.docker.internal (Docker Desktop built-in).
+
 replicaCount: 1
 
 image:
+  # Locally-built image via: docker build -t activable/activable-server:latest -f deploy/docker/Dockerfile .
   repository: activable/activable-server
   pullPolicy: Never
   tag: "latest"
@@ -9,7 +17,7 @@ service:
   type: NodePort
   port: 8080
   targetPort: 8080
-  nodePort: 30080
+  nodePort: 30080  # Access GraphQL API at http://localhost:30080
 
 ingress:
   enabled: false
@@ -17,51 +25,46 @@ ingress:
 resources:
   limits:
     cpu: 500m
-    memory: 256Mi
+    memory: 512Mi
   requests:
     cpu: 100m
-    memory: 128Mi
+    memory: 256Mi
 
 autoscaling:
   enabled: false
 
-# Local database uses PostgreSQL subchart
+# Database runs in Docker Compose (not in K8s)
+# K8s pods reach it via host.docker.internal (Docker Desktop networking)
 database:
-  host: "activable-postgresql"
-  port: 5432
+  host: "host.docker.internal"
+  port: 5433
   name: "activable"
   sslMode: "disable"
   username: "activable"
-  password: "activable-local-password"
+  password: "activable_dev"
 
+# GraphQL API configuration
 graphql:
   port: 8080
-  maxConnections: 10
+  maxConnections: 50
   logLevel: "debug"
-  graphName: "activable"
+  graphName: "cloud"
 
-# PostgreSQL subchart configuration
-postgresql:
-  enabled: true
-  auth:
-    username: activable
-    password: activable-local-password
-    database: activable
-  primary:
-    persistence:
-      enabled: false
-    resources:
-      limits:
-        cpu: 500m
-        memory: 256Mi
-      requests:
-        cpu: 100m
-        memory: 128Mi
+# AWS endpoint and credentials for Floci (mock AWS)
+# Pod reaches floci via host.docker.internal (Docker Compose network)
+environment:
+  ACTIVABLE_LOCAL_DEV: "1"
+  AWS_ENDPOINT_URL: "http://host.docker.internal:4566"
+  AWS_REGION: "us-east-1"
+  AWS_ACCESS_KEY_ID: "test"
+  AWS_SECRET_ACCESS_KEY: "test"
+  ACTIVABLE_BATCH_SIZE: "500"
+  ACTIVABLE_REGIONS: "us-east-1"
 
 securityContext:
   runAsNonRoot: false
   runAsUser: 0
-  allowPrivilegeEscalation: false
+  allowPrivilegeEscalation: true
 
 podSecurityContext:
   runAsNonRoot: false

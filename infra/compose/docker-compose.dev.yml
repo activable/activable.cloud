@@ -1,0 +1,61 @@
+version: "3.8"
+
+services:
+  db:
+    image: apache/age:release_PG16_1.6.0
+    container_name: activable-postgres-dev
+    environment:
+      POSTGRES_USER: ${ACTIVABLE_DB_USER:-activable}
+      POSTGRES_PASSWORD: ${ACTIVABLE_DB_PASSWORD:-activable_dev}
+      POSTGRES_DB: activable
+      POSTGRES_INITDB_ARGS: >-
+        -c shared_preload_libraries=age
+        -c search_path='"$user", public, ag_catalog'
+    ports:
+      - "${ACTIVABLE_DB_PORT:-5433}:5432"
+    volumes:
+      - activable-db-data-dev:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U activable -h localhost -p 5432"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    networks:
+      - activable-local
+    profiles:
+      - default
+
+  floci:
+    image: floci/floci:latest
+    container_name: activable-floci-dev
+    ports:
+      - "${FLOCI_PORT:-4566}:4566"
+    environment:
+      FLOCI_HOSTNAME: floci
+      FLOCI_DEFAULT_REGION: ${AWS_REGION:-us-east-1}
+      FLOCI_DEFAULT_ACCOUNT_ID: ${AWS_ACCOUNT_ID:-000000000000}
+      FLOCI_STORAGE_MODE: memory
+      DEBUG: "0"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4566/"]
+      interval: 2s
+      timeout: 2s
+      retries: 10
+      start_period: 5s
+    networks:
+      - activable-local
+    depends_on:
+      db:
+        condition: service_healthy
+    profiles:
+      - default
+
+networks:
+  activable-local:
+    driver: bridge
+    name: activable-local
+
+volumes:
+  activable-db-data-dev:
+    driver: local
