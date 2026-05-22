@@ -1,0 +1,16 @@
+apiVersion: v2
+name: activable
+description: A Helm chart for the Activable GraphQL API server and graph database
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - activable
+  - graph
+  - graphql
+home: https://github.com/activable-cloud/activable.cloud
+sources:
+  - https://github.com/activable-cloud/activable.cloud
+maintainers:
+  - name: Activable
+    email: team@activable.cloud

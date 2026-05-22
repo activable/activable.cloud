@@ -1,0 +1,44 @@
+# Local development values for Kind/k3d clusters
+# Minimal resources, local Postgres+AGE, no persistence
+
+replicaCount: 1
+
+image:
+  repository: localhost:5000/activable
+  pullPolicy: IfNotPresent
+  tag: "latest"
+
+resources:
+  limits:
+    cpu: 200m
+    memory: 256Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+# Use local Postgres subchart for development
+postgresql:
+  enabled: true
+  auth:
+    username: postgres
+    password: postgres
+    database: graph
+  primary:
+    persistence:
+      enabled: false
+    resources:
+      limits:
+        memory: 256Mi
+      requests:
+        memory: 128Mi
+
+# Point to local Postgres
+database:
+  host: activable-postgresql
+  port: 5432
+  name: graph
+  user: postgres
+
+# Simple logging for development
+logging:
+  level: debug

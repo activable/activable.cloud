@@ -1,0 +1,87 @@
+# Default values for Activable Helm chart
+# Production and staging-ready defaults
+
+replicaCount: 2
+
+image:
+  repository: activable-cloud/activable
+  pullPolicy: IfNotPresent
+  tag: "latest"
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+podAnnotations:
+  prometheus.io/scrape: "false"
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  fsGroup: 1000
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+  readOnlyRootFilesystem: true
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 8080
+  annotations: {}
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 250m
+    memory: 256Mi
+
+autoscaling:
+  enabled: false
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 80
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}
+
+# Database configuration
+database:
+  host: postgresql
+  port: 5432
+  name: graph
+  user: postgres
+  # password: must be provided via secret in production
+
+# Graph configuration
+graph:
+  name: default
+
+# Logging configuration
+logging:
+  level: info
+
+# Persistence (for PostgreSQL statefulset, if using subchart)
+postgresql:
+  enabled: false
+  auth:
+    username: postgres
+    password: postgres
+    database: graph
+  primary:
+    persistence:
+      enabled: true
+      size: 10Gi
