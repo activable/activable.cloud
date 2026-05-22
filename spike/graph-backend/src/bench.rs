@@ -357,3 +357,183 @@ fn percentile(values: &[f64], p: f64) -> f64 {
     let idx = ((p * (sorted.len() - 1) as f64).ceil()) as usize;
     sorted[idx.min(sorted.len() - 1)]
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── percentile() ─────────────────────────────────────────────────────────
+
+    /// Empty slice returns 0.0 (documented behaviour; not NaN, not panic).
+    #[test]
+    fn percentile_empty_returns_zero() {
+        assert_eq!(percentile(&[], 0.50), 0.0);
+        assert_eq!(percentile(&[], 0.95), 0.0);
+        assert_eq!(percentile(&[], 0.99), 0.0);
+    }
+
+    /// Single sample: p50 == p95 == p99 == that sample.
+    #[test]
+    fn percentile_single_sample() {
+        let v = vec![42.0];
+        assert_eq!(percentile(&v, 0.50), 42.0);
+        assert_eq!(percentile(&v, 0.95), 42.0);
+        assert_eq!(percentile(&v, 0.99), 42.0);
+    }
+
+    /// Sorted and unsorted input must produce the same result.
+    #[test]
+    fn percentile_sorted_vs_unsorted_same_result() {
+        let sorted = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0];
+        let unsorted = vec![10.0, 3.0, 7.0, 1.0, 5.0, 9.0, 2.0, 6.0, 4.0, 8.0];
+        assert_eq!(
+            percentile(&sorted, 0.50),
+            percentile(&unsorted, 0.50)
+        );
+        assert_eq!(
+            percentile(&sorted, 0.95),
+            percentile(&unsorted, 0.95)
+        );
+        assert_eq!(
+            percentile(&sorted, 0.99),
+            percentile(&unsorted, 0.99)
+        );
+    }
+
+    /// p99 of 100 samples: formula is ceil(0.99 * 99) = ceil(98.01) = 99.
+    /// Index 99 in 0-based sorted array of 100 elements is the last element (100.0).
+    #[test]
+    fn percentile_p99_of_100_samples_picks_last() {
+        // Samples 1..=100; sorted order is 1.0..100.0.
+        let v: Vec<f64> = (1..=100).map(|x| x as f64).collect();
+        // ceil(0.99 * 99) = ceil(98.01) = 99 → sorted[99] = 100.0
+        assert_eq!(percentile(&v, 0.99), 100.0);
+    }
+
+    /// p95 of 100 samples: ceil(0.95 * 99) = ceil(94.05) = 95 → sorted[95] = 96.0
+    #[test]
+    fn percentile_p95_of_100_samples() {
+        let v: Vec<f64> = (1..=100).map(|x| x as f64).collect();
+        assert_eq!(percentile(&v, 0.95), 96.0);
+    }
+
+    /// Pool-exhaustion sentinel (10_000_000 µs) surfaces in p95/p99 when present.
+    /// If 10% of samples are sentinel, they appear at the top of the distribution.
+    #[test]
+    fn percentile_pool_exhaustion_sentinel_surfaces_in_p99() {
+        // 90 normal samples (1–90 µs) + 10 sentinel (10_000_000 µs).
+        let mut v: Vec<f64> = (1..=90).map(|x| x as f64).collect();
+        v.extend(std::iter::repeat(10_000_000.0).take(10));
+        // p99: ceil(0.99 * 99) = 99 → sorted[99] is one of the sentinels.
+        assert_eq!(percentile(&v, 0.99), 10_000_000.0);
+        // p95: ceil(0.95 * 99) = 95 → sorted[95] is also a sentinel (index 90–99 are sentinels).
+        assert_eq!(percentile(&v, 0.95), 10_000_000.0);
+        // p50 is within the normal range (not a sentinel).
+        assert!(percentile(&v, 0.50) < 100.0);
+    }
+
+    /// p50 of an even-length slice uses ceil convention (not floor or midpoint).
+    #[test]
+    fn percentile_p50_ceil_convention() {
+        // 4 elements: [1, 2, 3, 4]; ceil(0.5 * 3) = ceil(1.5) = 2 → sorted[2] = 3.0
+        let v = vec![4.0, 1.0, 3.0, 2.0];
+        assert_eq!(percentile(&v, 0.50), 3.0);
+    }
+
+    // ── evaluate_gate() ───────────────────────────────────────────────────────
+
+    #[test]
+    fn evaluate_gate_six_hop_go() {
+        let (status, pass) = evaluate_gate("03-six-hop-varlen", 1_000_000.0, 1_500_000.0);
+        assert!(pass);
+        assert!(status.contains("GO"));
+    }
+
+    #[test]
+    fn evaluate_gate_six_hop_borderline_single() {
+        // single_p95 = 2_200_000 (between 2_000_000 and 2_400_000) → BORDERLINE
+        let (status, pass) = evaluate_gate("03-six-hop-varlen", 2_200_000.0, 1_500_000.0);
+        assert!(!pass);
+        assert!(status.contains("BORDERLINE"));
+    }
+
+    #[test]
+    fn evaluate_gate_six_hop_borderline_concurrent() {
+        // concurrent_p95 = 2_700_000 (between 2_500_000 and 3_000_000) → BORDERLINE
+        let (status, pass) = evaluate_gate("03-six-hop-varlen", 1_000_000.0, 2_700_000.0);
+        assert!(!pass);
+        assert!(status.contains("BORDERLINE"));
+    }
+
+    #[test]
+    fn evaluate_gate_six_hop_no_go() {
+        // Both fail and beyond borderline thresholds
+        let (status, pass) = evaluate_gate("03-six-hop-varlen", 3_000_000.0, 4_000_000.0);
+        assert!(!pass);
+        assert!(status.contains("NO-GO"));
+    }
+
+    #[test]
+    fn evaluate_gate_shortest_path_go() {
+        let (status, pass) = evaluate_gate("04-shortest-path", 2_000_000.0, 0.0);
+        assert!(pass);
+        assert!(status.contains("GO"));
+    }
+
+    #[test]
+    fn evaluate_gate_shortest_path_borderline() {
+        // single_p95 = 3_200_000 (between 3_000_000 and 3_600_000) → BORDERLINE
+        let (status, pass) = evaluate_gate("04-shortest-path", 3_200_000.0, 0.0);
+        assert!(!pass);
+        assert!(status.contains("BORDERLINE"));
+    }
+
+    #[test]
+    fn evaluate_gate_shortest_path_no_go() {
+        let (status, pass) = evaluate_gate("04-shortest-path", 4_000_000.0, 0.0);
+        assert!(!pass);
+        assert!(status.contains("NO-GO"));
+    }
+
+    #[test]
+    fn evaluate_gate_other_queries_always_pass() {
+        // Queries other than 03/04 are always "—" / pass=true regardless of latency.
+        for name in &["01-one-hop", "02-three-hop", "05-subgraph"] {
+            let (status, pass) = evaluate_gate(name, 99_999_999.0, 99_999_999.0);
+            assert!(pass, "Expected pass for {}", name);
+            assert_eq!(status, "—");
+        }
+    }
+
+    // ── verdict_gate() ────────────────────────────────────────────────────────
+
+    #[test]
+    fn verdict_gate_go_returns_zero() {
+        let md = "## Verdict\n\n**GO** — PG+AGE meets all performance thresholds:\n";
+        assert_eq!(verdict_gate(md), 0);
+    }
+
+    #[test]
+    fn verdict_gate_no_go_returns_one() {
+        let md = "## Verdict\n\n**NO-GO** — PG+AGE fails one or more performance gates:\n";
+        assert_eq!(verdict_gate(md), 1);
+    }
+
+    /// When both **GO** and **NO-GO** appear (e.g. combined multi-size output), NO-GO wins.
+    #[test]
+    fn verdict_gate_both_go_and_no_go_returns_one() {
+        let md = "**GO** something\n**NO-GO** something else";
+        assert_eq!(verdict_gate(md), 1);
+    }
+
+    #[test]
+    fn verdict_gate_borderline_returns_two() {
+        let md = "## Verdict\n\nBORDERLINE results detected.\n";
+        assert_eq!(verdict_gate(md), 2);
+    }
+
+    #[test]
+    fn verdict_gate_empty_returns_two() {
+        assert_eq!(verdict_gate(""), 2);
+    }
+}

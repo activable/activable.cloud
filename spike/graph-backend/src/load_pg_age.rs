@@ -474,14 +474,475 @@ async fn run_cypher(client: &tokio_postgres::Client, cypher: &str) -> Result<()>
 
 /// Escape single quotes in Cypher string literals.
 /// AGE uses single-quoted strings; escape ' as \'.
-fn escape_cypher(s: &str) -> String {
+pub(crate) fn escape_cypher(s: &str) -> String {
     s.replace('\\', "\\\\").replace('\'', "\\'")
 }
 
 /// Escape a value for embedding inside an agtype string literal in SQL.
 /// Used in the SQL fast-path edge loader where values appear inside '\"...\"'::agtype.
-fn escape_sql_literal(s: &str) -> String {
+pub(crate) fn escape_sql_literal(s: &str) -> String {
     // In the SQL string '\"value\"'::agtype, the outer quotes are SQL single-quotes.
     // We need to escape both backslashes and single-quotes for SQL safety.
     s.replace('\\', "\\\\").replace('\'', "''")
+}
+
+/// Build the agtype string literal fragment for a single ID value.
+/// Produces the fragment `'"<escaped_value>"'::agtype` used in SQL VALUES lists.
+pub(crate) fn build_agtype_id_literal(id: &str) -> String {
+    format!("'\"{}\"'::agtype", escape_sql_literal(id))
+}
+
+/// Build the VALUES list fragment for a slice of (from_id, to_id) pairs.
+/// Returns a comma-joined string of `('\"from\"'::agtype, '\"to\"'::agtype)` rows.
+/// Returns `None` when `batch` is empty (no SQL should be emitted).
+pub(crate) fn build_edge_values_list(batch: &[(String, String)]) -> Option<String> {
+    if batch.is_empty() {
+        return None;
+    }
+    let values: Vec<String> = batch
+        .iter()
+        .map(|(from, to)| {
+            format!(
+                "('\"{}\"'::agtype, '\"{}\"'::agtype)",
+                escape_sql_literal(from),
+                escape_sql_literal(to)
+            )
+        })
+        .collect();
+    Some(values.join(", "))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── escape_cypher() ───────────────────────────────────────────────────────
+
+    #[test]
+    fn escape_cypher_empty() {
+        assert_eq!(escape_cypher(""), "");
+    }
+
+    #[test]
+    fn escape_cypher_plain_ascii() {
+        assert_eq!(escape_cypher("hello_world"), "hello_world");
+    }
+
+    #[test]
+    fn escape_cypher_single_quote() {
+        // Single quote must be escaped as \' so it is safe inside Cypher single-quoted strings.
+        assert_eq!(escape_cypher("it's"), "it\\'s");
+    }
+
+    #[test]
+    fn escape_cypher_double_quote() {
+        // Double quotes are not special in Cypher single-quoted strings; pass through unchanged.
+        assert_eq!(escape_cypher(r#"he said "hi""#), r#"he said "hi""#);
+    }
+
+    #[test]
+    fn escape_cypher_backslash() {
+        // Backslash must be doubled before any other substitution.
+        assert_eq!(escape_cypher("a\\b"), "a\\\\b");
+    }
+
+    #[test]
+    fn escape_cypher_both_quote_types() {
+        // Both in same input: \\ first, then \'.
+        let input = "it's a \"test\"";
+        let result = escape_cypher(input);
+        assert_eq!(result, "it\\'s a \"test\"");
+    }
+
+    #[test]
+    fn escape_cypher_null_byte() {
+        // NULL byte passes through; Cypher doesn't define NUL escape here.
+        let input = "ab\0cd";
+        let result = escape_cypher(input);
+        assert_eq!(result, "ab\0cd");
+    }
+
+    #[test]
+    fn escape_cypher_whitespace() {
+        let input = "line1\nline2\r\ntab\there";
+        let result = escape_cypher(input);
+        // Whitespace is unchanged (no escaping defined for \n/\r/\t in this function).
+        assert_eq!(result, input);
+    }
+
+    #[test]
+    fn escape_cypher_unicode_nfc() {
+        // Precomposed é (U+00E9) — single code-point; passes through as-is.
+        assert_eq!(escape_cypher("café"), "café");
+    }
+
+    #[test]
+    fn escape_cypher_unicode_nfd() {
+        // Decomposed é (e + combining acute) — two code-points; passes through as-is.
+        let nfd = "cafe\u{0301}";
+        assert_eq!(escape_cypher(nfd), nfd);
+    }
+
+    #[test]
+    fn escape_cypher_japanese() {
+        assert_eq!(escape_cypher("日本語"), "日本語");
+    }
+
+    #[test]
+    fn escape_cypher_emoji() {
+        assert_eq!(escape_cypher("🔥"), "🔥");
+    }
+
+    #[test]
+    fn escape_cypher_rtl_override() {
+        // Right-to-left override (U+202E) — passes through, no special handling.
+        let input = "normal\u{202E}reversed";
+        let result = escape_cypher(input);
+        assert_eq!(result, input);
+    }
+
+    #[test]
+    fn escape_cypher_sql_injection_canary() {
+        // SQL injection payload must be escaped so it cannot break out of the Cypher literal.
+        let payload = "principal_1' OR '1'='1";
+        let result = escape_cypher(payload);
+        // All single quotes escaped; result is safe inside Cypher '...' string.
+        assert!(!result.contains("' OR '"));
+        assert_eq!(result, "principal_1\\' OR \\'1\\'=\\'1");
+    }
+
+    #[test]
+    fn escape_cypher_drop_table_canary() {
+        // The security property: every ' must be escaped as \\' so it cannot
+        // terminate the surrounding Cypher string literal.
+        let payload = "'; DROP TABLE x; --";
+        let result = escape_cypher(payload);
+        // After escaping, the leading ' becomes \\'. Verify it is now prefixed.
+        assert!(result.starts_with("\\'"), "Leading quote must be escaped: {}", result);
+        // No unescaped single-quote remains (every ' is preceded by \\).
+        for (i, c) in result.char_indices() {
+            if c == '\'' {
+                assert!(
+                    i > 0 && result.as_bytes()[i - 1] == b'\\',
+                    "Unescaped single-quote at index {}: {}",
+                    i, result
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn escape_cypher_cypher_injection_canary() {
+        // Attempt to break out of Cypher literal with } RETURN 1 {
+        let payload = "} RETURN 1 {";
+        let result = escape_cypher(payload);
+        // Curly braces are not special in Cypher string literals; no escaping needed.
+        // Single quotes not present; result == input.
+        assert_eq!(result, payload);
+    }
+
+    #[test]
+    fn escape_cypher_very_long_input() {
+        // ≥10KB: verify no quadratic blowup (function should complete promptly).
+        let long = "a".repeat(10_001);
+        let result = escape_cypher(&long);
+        assert_eq!(result.len(), 10_001);
+    }
+
+    #[test]
+    fn escape_cypher_very_long_with_quotes() {
+        // 10KB of single-quotes: each expands to 2 chars → output is 20_002 chars.
+        let long = "'".repeat(10_001);
+        let result = escape_cypher(&long);
+        // Each ' becomes \' (2 chars)
+        assert_eq!(result.len(), 20_002);
+    }
+
+    #[test]
+    fn escape_cypher_idempotency_check() {
+        // Applying escape_cypher twice is NOT idempotent (backslashes are doubled again).
+        // Document: do NOT double-escape. The function is applied once per value.
+        let input = "it's";
+        let once = escape_cypher(input);
+        let twice = escape_cypher(&once);
+        // Second pass escapes the backslash introduced by first pass.
+        assert_ne!(once, twice);
+    }
+
+    // ── escape_sql_literal() ─────────────────────────────────────────────────
+
+    #[test]
+    fn escape_sql_literal_empty() {
+        assert_eq!(escape_sql_literal(""), "");
+    }
+
+    #[test]
+    fn escape_sql_literal_plain_ascii() {
+        assert_eq!(escape_sql_literal("principal_42"), "principal_42");
+    }
+
+    #[test]
+    fn escape_sql_literal_single_quote() {
+        // SQL standard: single quote escaped as '' (not backslash).
+        assert_eq!(escape_sql_literal("it's"), "it''s");
+    }
+
+    #[test]
+    fn escape_sql_literal_double_quote() {
+        // Double quotes are not special in SQL string literals; pass through.
+        assert_eq!(escape_sql_literal(r#"he said "hi""#), r#"he said "hi""#);
+    }
+
+    #[test]
+    fn escape_sql_literal_backslash() {
+        // Backslash doubled (for SQL standard_conforming_strings=off compatibility).
+        assert_eq!(escape_sql_literal("a\\b"), "a\\\\b");
+    }
+
+    #[test]
+    fn escape_sql_literal_both_quote_types() {
+        let input = "it's a \"test\"";
+        let result = escape_sql_literal(input);
+        assert_eq!(result, "it''s a \"test\"");
+    }
+
+    #[test]
+    fn escape_sql_literal_null_byte() {
+        let input = "ab\0cd";
+        let result = escape_sql_literal(input);
+        assert_eq!(result, "ab\0cd");
+    }
+
+    #[test]
+    fn escape_sql_literal_whitespace() {
+        let input = "line1\nline2\r\ntab\there";
+        assert_eq!(escape_sql_literal(input), input);
+    }
+
+    #[test]
+    fn escape_sql_literal_unicode_nfc() {
+        assert_eq!(escape_sql_literal("café"), "café");
+    }
+
+    #[test]
+    fn escape_sql_literal_unicode_nfd() {
+        let nfd = "cafe\u{0301}";
+        assert_eq!(escape_sql_literal(nfd), nfd);
+    }
+
+    #[test]
+    fn escape_sql_literal_japanese() {
+        assert_eq!(escape_sql_literal("日本語"), "日本語");
+    }
+
+    #[test]
+    fn escape_sql_literal_emoji() {
+        assert_eq!(escape_sql_literal("🔥"), "🔥");
+    }
+
+    #[test]
+    fn escape_sql_literal_rtl_override() {
+        let input = "normal\u{202E}reversed";
+        assert_eq!(escape_sql_literal(input), input);
+    }
+
+    #[test]
+    fn escape_sql_literal_sql_injection_canary() {
+        let payload = "principal_1' OR '1'='1";
+        let result = escape_sql_literal(payload);
+        // Single quotes are doubled: the exact escaped form.
+        assert_eq!(result, "principal_1'' OR ''1''=''1");
+        // Every ' in the result is immediately followed by another ' (proper doubling).
+        let bytes = result.as_bytes();
+        let mut i = 0;
+        while i < bytes.len() {
+            if bytes[i] == b'\'' {
+                assert!(
+                    i + 1 < bytes.len() && bytes[i + 1] == b'\'',
+                    "Unescaped single-quote at index {}: {}",
+                    i, result
+                );
+                i += 2;
+            } else {
+                i += 1;
+            }
+        }
+    }
+
+    #[test]
+    fn escape_sql_literal_drop_table_canary() {
+        // The security property: every ' must be doubled (SQL standard) so it
+        // cannot terminate the surrounding SQL string literal.
+        let payload = "'; DROP TABLE x; --";
+        let result = escape_sql_literal(payload);
+        // After escaping, the leading ' becomes ''. The result starts with ''.
+        assert!(result.starts_with("''"), "Leading quote must be doubled: {}", result);
+        // Verify no isolated single-quote (each ' must be followed by another ').
+        let bytes = result.as_bytes();
+        let mut i = 0;
+        while i < bytes.len() {
+            if bytes[i] == b'\'' {
+                assert!(
+                    i + 1 < bytes.len() && bytes[i + 1] == b'\'',
+                    "Unescaped single-quote at index {}: {}",
+                    i, result
+                );
+                i += 2; // skip the pair
+            } else {
+                i += 1;
+            }
+        }
+    }
+
+    #[test]
+    fn escape_sql_literal_cypher_injection_canary() {
+        let payload = "} RETURN 1 {";
+        let result = escape_sql_literal(payload);
+        // No quotes → unchanged.
+        assert_eq!(result, payload);
+    }
+
+    #[test]
+    fn escape_sql_literal_very_long_input() {
+        let long = "x".repeat(10_001);
+        let result = escape_sql_literal(&long);
+        assert_eq!(result.len(), 10_001);
+    }
+
+    #[test]
+    fn escape_sql_literal_very_long_with_quotes() {
+        let long = "'".repeat(10_001);
+        let result = escape_sql_literal(&long);
+        // Each ' becomes '' (2 chars)
+        assert_eq!(result.len(), 20_002);
+    }
+
+    #[test]
+    fn escape_sql_literal_idempotency_check() {
+        // NOT idempotent: second pass doubles the backslashes introduced by first pass.
+        let input = "it's\\here";
+        let once = escape_sql_literal(input);
+        let twice = escape_sql_literal(&once);
+        assert_ne!(once, twice);
+    }
+
+    // ── build_agtype_id_literal() ─────────────────────────────────────────────
+
+    #[test]
+    fn agtype_id_literal_plain() {
+        // Produces '"<value>"'::agtype shape.
+        let result = build_agtype_id_literal("principal_1");
+        assert_eq!(result, "'\"principal_1\"'::agtype");
+    }
+
+    #[test]
+    fn agtype_id_literal_with_single_quote() {
+        // Single quote in ID → doubled in SQL literal.
+        let result = build_agtype_id_literal("it's");
+        assert_eq!(result, "'\"it''s\"'::agtype");
+    }
+
+    #[test]
+    fn agtype_id_literal_with_backslash() {
+        let result = build_agtype_id_literal("a\\b");
+        assert_eq!(result, "'\"a\\\\b\"'::agtype");
+    }
+
+    #[test]
+    fn agtype_id_literal_with_unicode() {
+        let result = build_agtype_id_literal("日本語");
+        assert_eq!(result, "'\"日本語\"'::agtype");
+    }
+
+    #[test]
+    fn agtype_id_literal_shape_invariant() {
+        // Regardless of content the result must start with '\"  and end with \"'::agtype
+        for id in &["", "simple", "with'quote", "with\\back"] {
+            let result = build_agtype_id_literal(id);
+            assert!(result.starts_with("'\""), "Missing opening for id={}", id);
+            assert!(result.ends_with("\"'::agtype"), "Missing closing for id={}", id);
+        }
+    }
+
+    // ── build_edge_values_list() (batch boundary tests) ──────────────────────
+
+    #[test]
+    fn edge_values_list_empty_returns_none() {
+        // 0 rows → None; no SQL should be emitted.
+        assert!(build_edge_values_list(&[]).is_none());
+    }
+
+    #[test]
+    fn edge_values_list_one_row() {
+        let batch = vec![("from_1".to_string(), "to_1".to_string())];
+        let result = build_edge_values_list(&batch).expect("expected Some for 1-row batch");
+        // Should be a single values tuple.
+        assert!(!result.contains(", ("));
+        assert!(result.contains("from_1"));
+        assert!(result.contains("to_1"));
+    }
+
+    #[test]
+    fn edge_values_list_exact_batch_size() {
+        // BATCH_SIZE = 500 rows → exactly one batch of 500 tuples.
+        let batch: Vec<(String, String)> = (0..500)
+            .map(|i| (format!("from_{}", i), format!("to_{}", i)))
+            .collect();
+        let result = build_edge_values_list(&batch).expect("expected Some for 500-row batch");
+        // 500 rows = 499 ", (" separators between tuples.
+        let tuple_count = result.matches("'::agtype, '\"to_").count();
+        assert_eq!(tuple_count, 500);
+    }
+
+    #[test]
+    fn edge_values_list_batch_size_plus_one_count() {
+        // 501 rows: verify both the 500-row and 1-row slices produce expected counts.
+        let batch_a: Vec<(String, String)> = (0..500)
+            .map(|i| (format!("f{}", i), format!("t{}", i)))
+            .collect();
+        let batch_b: Vec<(String, String)> = vec![("f500".to_string(), "t500".to_string())];
+
+        let result_a = build_edge_values_list(&batch_a).unwrap();
+        let result_b = build_edge_values_list(&batch_b).unwrap();
+
+        let count_a = result_a.matches("'::agtype, '\"t").count();
+        let count_b = result_b.matches("'::agtype, '\"t").count();
+        assert_eq!(count_a, 500);
+        assert_eq!(count_b, 1);
+    }
+
+    #[test]
+    fn edge_values_list_n_times_batch_size() {
+        // 3 × 500 = 1500 rows.
+        let batch: Vec<(String, String)> = (0..1500)
+            .map(|i| (format!("f{}", i), format!("t{}", i)))
+            .collect();
+        let result = build_edge_values_list(&batch).expect("expected Some for 1500-row batch");
+        let count = result.matches("'::agtype, '\"t").count();
+        assert_eq!(count, 1500);
+    }
+
+    #[test]
+    fn edge_values_list_n_times_batch_size_plus_k() {
+        // 2 × 500 + 7 = 1007 rows.
+        let batch: Vec<(String, String)> = (0..1007)
+            .map(|i| (format!("f{}", i), format!("t{}", i)))
+            .collect();
+        let result = build_edge_values_list(&batch).expect("expected Some for 1007-row batch");
+        let count = result.matches("'::agtype, '\"t").count();
+        assert_eq!(count, 1007);
+    }
+
+    /// Values with special characters are correctly escaped in VALUES list output.
+    #[test]
+    fn edge_values_list_escapes_special_chars() {
+        let batch = vec![
+            ("from'quote".to_string(), "to\\back".to_string()),
+        ];
+        let result = build_edge_values_list(&batch).unwrap();
+        // Single quote becomes '' in SQL literals.
+        assert!(result.contains("from''quote"));
+        // Backslash becomes \\\\ in the final string.
+        assert!(result.contains("to\\\\back"));
+    }
 }

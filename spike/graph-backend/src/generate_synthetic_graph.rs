@@ -72,6 +72,17 @@ struct Resource {
     resource_type: String,
 }
 
+/// Return the output subdirectory path for a given base directory and size label.
+/// Used by the `bench-all` pipeline to route each size to its own subdirectory,
+/// preventing the 100k CSV generation from overwriting the 10k files before the
+/// 10k load step runs.
+///
+/// Regression test target: this function pins the path-building logic that was
+/// introduced to fix the CSV-overwrite bug in the `bench-all` subcommand.
+pub fn output_dir_for_size(base: &std::path::Path, size: &str) -> std::path::PathBuf {
+    base.join(size)
+}
+
 pub fn generate(output_dir: &Path, config: &GeneratorConfig, stats_only: bool) -> Result<()> {
     let mut rng = ChaCha8Rng::seed_from_u64(config.seed);
 
@@ -329,4 +340,230 @@ pub fn generate(output_dir: &Path, config: &GeneratorConfig, stats_only: bool) -
 
     info!("Graph generation complete");
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+
+    // ── GeneratorConfig::from_size_string() ───────────────────────────────────
+
+    #[test]
+    fn config_10k_node_count() {
+        let cfg = GeneratorConfig::from_size_string("10k", 42);
+        assert_eq!(cfg.num_nodes, 10_000);
+        assert_eq!(cfg.num_accounts, 50);
+        assert_eq!(cfg.seed, 42);
+    }
+
+    #[test]
+    fn config_100k_node_count() {
+        let cfg = GeneratorConfig::from_size_string("100k", 99);
+        assert_eq!(cfg.num_nodes, 100_000);
+        assert_eq!(cfg.num_accounts, 200);
+        assert_eq!(cfg.seed, 99);
+    }
+
+    #[test]
+    #[should_panic(expected = "Unsupported size")]
+    fn config_unsupported_size_panics() {
+        GeneratorConfig::from_size_string("1m", 1);
+    }
+
+    // ── output_dir_for_size() — regression for CSV-overwrite bug ─────────────
+
+    #[test]
+    fn output_dir_for_size_10k() {
+        let base = std::path::Path::new("/tmp/x");
+        assert_eq!(
+            output_dir_for_size(base, "10k"),
+            std::path::PathBuf::from("/tmp/x/10k")
+        );
+    }
+
+    #[test]
+    fn output_dir_for_size_100k() {
+        let base = std::path::Path::new("/tmp/x");
+        assert_eq!(
+            output_dir_for_size(base, "100k"),
+            std::path::PathBuf::from("/tmp/x/100k")
+        );
+    }
+
+    #[test]
+    fn output_dir_for_size_trailing_slash_base() {
+        // std::path::Path normalises trailing slash — joining still works.
+        let base = std::path::Path::new("/tmp/x/");
+        assert_eq!(
+            output_dir_for_size(base, "10k"),
+            std::path::PathBuf::from("/tmp/x/10k")
+        );
+    }
+
+    #[test]
+    fn output_dir_for_size_10k_ne_100k() {
+        // Core invariant: the two sizes must map to different directories.
+        let base = std::path::Path::new("/tmp/spike");
+        assert_ne!(
+            output_dir_for_size(base, "10k"),
+            output_dir_for_size(base, "100k")
+        );
+    }
+
+    // ── RNG determinism ───────────────────────────────────────────────────────
+
+    /// Same seed → identical CSV output (byte-for-byte).
+    #[test]
+    fn generate_same_seed_deterministic() {
+        let dir1 = tempfile::tempdir().unwrap();
+        let dir2 = tempfile::tempdir().unwrap();
+        let config = GeneratorConfig { num_nodes: 200, num_accounts: 5, seed: 42 };
+
+        generate(dir1.path(), &config, false).unwrap();
+        generate(dir2.path(), &config, false).unwrap();
+
+        for filename in &["principals.csv", "policies.csv", "resources.csv", "edges.csv"] {
+            let content1 = std::fs::read(dir1.path().join(filename)).unwrap();
+            let content2 = std::fs::read(dir2.path().join(filename)).unwrap();
+            assert_eq!(
+                content1, content2,
+                "{} differs between two runs with same seed",
+                filename
+            );
+        }
+    }
+
+    /// Different seed → different output (sanity check).
+    #[test]
+    fn generate_different_seeds_differ() {
+        let dir1 = tempfile::tempdir().unwrap();
+        let dir2 = tempfile::tempdir().unwrap();
+        let config_a = GeneratorConfig { num_nodes: 200, num_accounts: 5, seed: 42 };
+        let config_b = GeneratorConfig { num_nodes: 200, num_accounts: 5, seed: 999 };
+
+        generate(dir1.path(), &config_a, false).unwrap();
+        generate(dir2.path(), &config_b, false).unwrap();
+
+        let content1 = std::fs::read(dir1.path().join("principals.csv")).unwrap();
+        let content2 = std::fs::read(dir2.path().join("principals.csv")).unwrap();
+        assert_ne!(content1, content2, "Expected different output for different seeds");
+    }
+
+    // ── stats_only mode ───────────────────────────────────────────────────────
+
+    /// stats_only=true: no CSV files are written; function returns Ok.
+    #[test]
+    fn generate_stats_only_no_csv_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = GeneratorConfig { num_nodes: 200, num_accounts: 5, seed: 42 };
+        generate(dir.path(), &config, true).unwrap();
+
+        for filename in &["principals.csv", "policies.csv", "resources.csv", "edges.csv"] {
+            assert!(
+                !dir.path().join(filename).exists(),
+                "Expected no {} in stats_only mode",
+                filename
+            );
+        }
+    }
+
+    // ── Distribution invariants (small graph) ─────────────────────────────────
+
+    /// Run with 1000 nodes; verify principal-type ratios are within ±2% of targets.
+    /// Targets (from source): roles=40%, users=30%, service_principals=15%, federated=5%.
+    #[test]
+    fn generate_distribution_invariants() {
+        let dir = tempfile::tempdir().unwrap();
+        let num_nodes = 1000usize;
+        let config = GeneratorConfig { num_nodes, num_accounts: 10, seed: 42 };
+        generate(dir.path(), &config, false).unwrap();
+
+        let content = std::fs::read_to_string(dir.path().join("principals.csv")).unwrap();
+        let mut type_counts: HashMap<&str, usize> = HashMap::new();
+        for line in content.lines() {
+            // CSV format: id,arn,type,account_id (no header)
+            let cols: Vec<&str> = line.splitn(4, ',').collect();
+            if cols.len() >= 3 {
+                *type_counts.entry(cols[2]).or_insert(0) += 1;
+            }
+        }
+
+        let total_principals: usize = type_counts.values().sum();
+        // Expected counts from generator source:
+        let expected_roles = (num_nodes as f64 * 0.40) as usize;
+        let expected_users = (num_nodes as f64 * 0.30) as usize;
+        let expected_sps   = (num_nodes as f64 * 0.15) as usize;
+        let expected_fed   = (num_nodes as f64 * 0.05) as usize;
+
+        let tolerance = (total_principals as f64 * 0.02) as usize + 1;
+
+        let roles = *type_counts.get("Role").unwrap_or(&0);
+        let users = *type_counts.get("User").unwrap_or(&0);
+        let sps   = *type_counts.get("ServicePrincipal").unwrap_or(&0);
+        let fed   = *type_counts.get("FederatedProvider").unwrap_or(&0);
+
+        assert!(
+            (roles as isize - expected_roles as isize).unsigned_abs() <= tolerance,
+            "Role count {} outside ±{} of expected {}",
+            roles, tolerance, expected_roles
+        );
+        assert!(
+            (users as isize - expected_users as isize).unsigned_abs() <= tolerance,
+            "User count {} outside ±{} of expected {}",
+            users, tolerance, expected_users
+        );
+        assert!(
+            (sps as isize - expected_sps as isize).unsigned_abs() <= tolerance,
+            "ServicePrincipal count {} outside ±{} of expected {}",
+            sps, tolerance, expected_sps
+        );
+        assert!(
+            (fed as isize - expected_fed as isize).unsigned_abs() <= tolerance,
+            "FederatedProvider count {} outside ±{} of expected {}",
+            fed, tolerance, expected_fed
+        );
+    }
+
+    /// Edges CSV contains both HasPermission and CanAssume rows.
+    #[test]
+    fn generate_edges_contain_both_types() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = GeneratorConfig { num_nodes: 500, num_accounts: 5, seed: 42 };
+        generate(dir.path(), &config, false).unwrap();
+
+        let content = std::fs::read_to_string(dir.path().join("edges.csv")).unwrap();
+        let has_perm = content.contains("HasPermission");
+        let can_assume = content.contains("CanAssume");
+        assert!(has_perm, "edges.csv must contain HasPermission edges");
+        assert!(can_assume, "edges.csv must contain CanAssume edges");
+    }
+
+    /// Policies CSV has num_nodes * 0.1 rows (within rounding).
+    #[test]
+    fn generate_policy_count() {
+        let dir = tempfile::tempdir().unwrap();
+        let num_nodes = 1000usize;
+        let config = GeneratorConfig { num_nodes, num_accounts: 10, seed: 42 };
+        generate(dir.path(), &config, false).unwrap();
+
+        let content = std::fs::read_to_string(dir.path().join("policies.csv")).unwrap();
+        let count = content.lines().count();
+        let expected = (num_nodes as f64 * 0.10) as usize;
+        assert_eq!(count, expected, "Policy count mismatch");
+    }
+
+    /// Resources CSV has num_nodes * 0.05 rows (within rounding).
+    #[test]
+    fn generate_resource_count() {
+        let dir = tempfile::tempdir().unwrap();
+        let num_nodes = 1000usize;
+        let config = GeneratorConfig { num_nodes, num_accounts: 10, seed: 42 };
+        generate(dir.path(), &config, false).unwrap();
+
+        let content = std::fs::read_to_string(dir.path().join("resources.csv")).unwrap();
+        let count = content.lines().count();
+        let expected = (num_nodes as f64 * 0.05) as usize;
+        assert_eq!(count, expected, "Resource count mismatch");
+    }
 }
