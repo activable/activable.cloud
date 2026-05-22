@@ -94,5 +94,18 @@ assets/
 # External repos for study/reference
 external/
 
+# Rust build artifacts
+/target/
+**/target/
+**/*.rs.bk
+
+# Go build artifacts
+/go/bin/
+/activable
+*.dylib
+*.so
+*.dll
+!crates/activable-ffi/src/*.udl
+
 # Git worktrees (local development only)
 worktrees/

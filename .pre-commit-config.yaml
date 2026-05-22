@@ -1,0 +1,87 @@
+# .pre-commit-config.yaml
+#
+# Local enforcement of basic quality checks. CI is the safety net for anyone
+# who does not install hooks. See README.md "Developer setup" for install.
+#
+# Stages:
+#   pre-commit  — runs on every `git commit` (fast checks only)
+#   pre-push    — runs on every `git push` (slower checks)
+#   commit-msg  — runs against the commit message text
+#
+# Install once per clone:
+#   pre-commit install --install-hooks
+
+default_install_hook_types: [pre-commit, pre-push, commit-msg]
+
+repos:
+  # File hygiene — fast, universal
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+        exclude: '\.(svg|patch)$'
+      - id: end-of-file-fixer
+        exclude: '\.(svg|patch)$'
+      - id: check-yaml
+        args: [--allow-multiple-documents]
+      - id: check-json
+      - id: check-added-large-files
+        args: ['--maxkb=500']
+      - id: check-merge-conflict
+      - id: check-case-conflict
+      - id: mixed-line-ending
+        args: ['--fix=lf']
+
+  # Rust — uses local cargo toolchain from rust-toolchain.toml
+  - repo: local
+    hooks:
+      - id: cargo-fmt
+        name: cargo fmt
+        entry: cargo fmt --all -- --check
+        language: system
+        types: [rust]
+        pass_filenames: false
+
+      - id: cargo-clippy
+        name: cargo clippy
+        entry: cargo clippy --workspace --all-targets -- -D warnings
+        language: system
+        types: [rust]
+        pass_filenames: false
+        # Slow — run only on push, not every commit
+        stages: [pre-push]
+
+  # Go — golangci-lint via system binary
+  - repo: local
+    hooks:
+      - id: golangci-lint
+        name: golangci-lint
+        entry: bash -c 'cd go && golangci-lint run --timeout=2m ./...'
+        language: system
+        types: [go]
+        pass_filenames: false
+
+  # Shell scripts
+  - repo: https://github.com/koalaman/shellcheck-precommit
+    rev: v0.11.0
+    hooks:
+      - id: shellcheck
+        files: \.(sh|bash)$
+
+  # Plan-taxonomy guard — prevents internal plan taxonomy from leaking into
+  # tracked artifacts. Enforces .claude/rules/development-rules.md
+  # "Plan-Taxonomy Exposure" rule. Runs against staged content only.
+  - repo: local
+    hooks:
+      - id: no-plan-taxonomy
+        name: no plan taxonomy in tracked files
+        entry: scripts/check-no-plan-taxonomy.sh
+        language: script
+        pass_filenames: false
+
+  # DCO sign-off validation on commit message
+  - repo: https://github.com/jorisroovers/gitlint
+    rev: v0.19.1
+    hooks:
+      - id: gitlint
+        stages: [commit-msg]

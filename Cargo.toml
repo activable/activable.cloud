@@ -1,0 +1,28 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/activable-schema",
+    "crates/activable-graph",
+    "crates/activable-iam-eval",
+    "crates/activable-ffi",
+]
+exclude = [
+    "spike/graph-backend",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["Thinh Nguyen <ducthinh993@gmail.com>"]
+license = "Apache-2.0"
+repository = "https://github.com/activable-cloud/activable.cloud"
+
+[workspace.lints.rust]
+warnings = "deny"
+unsafe_code = "warn"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true
