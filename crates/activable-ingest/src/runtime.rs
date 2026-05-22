@@ -14,6 +14,8 @@ pub struct IngestResult {
     pub errors: Vec<(String, IngestError)>,
     pub enrichment_stats: Vec<crate::native::EnrichmentStats>,
     pub enrichment_errors: Vec<(String, IngestError)>,
+    pub relationship_stats: Vec<crate::relationship::RelationshipStats>,
+    pub relationship_errors: Vec<(String, IngestError)>,
     pub duration: std::time::Duration,
 }
 
@@ -191,6 +193,28 @@ impl IngestRuntime {
             }
         }
 
+        // Phase 3: Apply declarative relationship rules
+        let mut relationship_stats = Vec::new();
+        let mut relationship_errors = Vec::new();
+
+        info!("Starting relationship inference...");
+        match crate::relationship::apply_relationships(&self.pool, &self.graph_name).await {
+            Ok(rel_stats) => {
+                for rs in &rel_stats {
+                    info!(
+                        rule = %rs.rule_name,
+                        edges = rs.edges_created,
+                        "relationship rule complete"
+                    );
+                }
+                relationship_stats = rel_stats;
+            }
+            Err(e) => {
+                warn!(error = %e, "relationship inference failed");
+                relationship_errors.push(("relationships".to_string(), e));
+            }
+        }
+
         let duration = start.elapsed();
 
         info!(
@@ -199,6 +223,8 @@ impl IngestRuntime {
             failed = errors.len(),
             enrichers_completed = enrichment_stats.len(),
             enrichers_failed = enrichment_errors.len(),
+            relationships_completed = relationship_stats.len(),
+            relationships_failed = relationship_errors.len(),
             duration_secs = duration.as_secs(),
             "Ingestion run complete"
         );
@@ -208,6 +234,8 @@ impl IngestRuntime {
             errors,
             enrichment_stats,
             enrichment_errors,
+            relationship_stats,
+            relationship_errors,
             duration,
         }
     }
@@ -244,12 +272,15 @@ mod tests {
             errors: vec![],
             enrichment_stats: vec![],
             enrichment_errors: vec![],
+            relationship_stats: vec![],
+            relationship_errors: vec![],
             duration: std::time::Duration::from_secs(10),
         };
 
         assert_eq!(result.stats.len(), 2);
         assert_eq!(result.errors.len(), 0);
         assert_eq!(result.enrichment_stats.len(), 0);
+        assert_eq!(result.relationship_stats.len(), 0);
         assert_eq!(result.duration.as_secs(), 10);
 
         let total_nodes: u32 = result.stats.iter().map(|s| s.nodes_ingested).sum();
@@ -274,6 +305,8 @@ mod tests {
             errors: errors.clone(),
             enrichment_stats: vec![],
             enrichment_errors: vec![],
+            relationship_stats: vec![],
+            relationship_errors: vec![],
             duration: std::time::Duration::from_secs(5),
         };
 
@@ -281,5 +314,6 @@ mod tests {
         assert_eq!(result.errors.len(), 1);
         assert_eq!(result.errors[0].0, "AWS::EC2::Instance");
         assert_eq!(result.enrichment_stats.len(), 0);
+        assert_eq!(result.relationship_stats.len(), 0);
     }
 }

@@ -1,0 +1,21 @@
+relationships:
+  - name: "lambda-execution-role"
+    from_label: "Resource"
+    to_label: "Principal"
+    edge_type: "AssumedBy"
+    from_property: "role_arn"
+    to_property: "id"
+
+  - name: "instance-vpc"
+    from_label: "Resource"
+    to_label: "Vpc"
+    edge_type: "InVpc"
+    from_property: "vpc_id"
+    to_property: "id"
+
+  - name: "instance-security-group"
+    from_label: "Resource"
+    to_label: "SecurityGroup"
+    edge_type: "HasSecurityGroup"
+    from_property: "security_group_id"
+    to_property: "id"
