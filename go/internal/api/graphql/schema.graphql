@@ -1,0 +1,54 @@
+type Query {
+  findNode(label: String!, id: String!): Node
+  walkEdges(startId: String!, edgeTypes: [String!]!, direction: String!, depth: Int!): [NodeRef!]!
+  pathFinder(startId: String!, endId: String!, edgeTypes: [String!]!, maxHops: Int!): [Path!]!
+  blastRadius(nodeId: String!, edgeTypes: [String!]!, maxHops: Int!): [NodeRef!]!
+  subgraph(centerId: String!, radius: Int!): Subgraph!
+  ingestStatus(runId: String!): IngestRun
+}
+
+type Mutation {
+  triggerIngest(provider: String!, regions: [String!]): IngestRun!
+}
+
+type Node {
+  id: String!
+  label: String!
+  properties: String!
+}
+
+type NodeRef {
+  id: String!
+  label: String!
+}
+
+type Path {
+  nodes: [NodeRef!]!
+  length: Int!
+}
+
+type Subgraph {
+  nodes: [NodeRef!]!
+  edges: [Edge!]!
+}
+
+type Edge {
+  fromId: String!
+  toId: String!
+  edgeType: String!
+}
+
+type IngestRun {
+  id: String!
+  status: String!
+  startedAt: String!
+  services: [ServiceStatus!]!
+}
+
+type ServiceStatus {
+  name: String!
+  status: String!
+  nodeCount: Int!
+  edgeCount: Int!
+  error: String
+}
