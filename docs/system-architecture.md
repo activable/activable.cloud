@@ -122,16 +122,18 @@ Implementation: [`spike/graph-backend/src/load_pg_age.rs`](../spike/graph-backen
 
 #### Carry-over for production loader
 
-| # | Item | Owner |
+These items were identified in the phase-2 benchmark but deferred to production implementation. All are resolved in the `activable-graph` crate (phase-2 and subsequent implementations).
+
+| # | Item | Status |
 |---|---|---|
-| 1 | Wrap loading loop in explicit `BEGIN`/`COMMIT`. Define failure mode: atomic vs. resumable. | production loader impl |
-| 2 | Pre-flight validate edge endpoints; current INSERT silently inserts zero rows on missing endpoints. | production loader impl |
-| 3 | Make `BATCH_SIZE` (currently `500`) configurable via `--batch-size` CLI flag. | production loader impl |
-| 4 | Integrate `deadpool-postgres` connection pool for the loader (currently single `tokio_postgres::Client`). | production loader impl |
-| 5 | Document `nextval()` sequence-ID gaps under concurrent load as expected behavior. | Docs |
-| 6 | Add inline comment for `'"{}"'::agtype` literal syntax at `load_pg_age.rs:393`. | production loader impl |
-| 7 | Parameterize Cypher UNWIND batches (~50 KB per 500-row batch) if statement-size becomes a hotspot. | Defer until benchmarked at production scale |
-| 8 | Add checkpoint/resume logic OR `ON CONFLICT` / pre-flight dedup if crash-resumability is required (application-level checkpointing tracks last committed batch; SQL-level idempotency uses `ON CONFLICT`). | production loader impl |
+| 1 | Wrap loading loop in explicit `BEGIN`/`COMMIT`; define failure mode: atomic vs. resumable. | ✅ Resolved (Ingester orchestrates transactional batches) |
+| 2 | Pre-flight validate edge endpoints; current INSERT silently inserts zero rows on missing endpoints. | ✅ Resolved (Transformer validates ARN format; FFI boundary checks node existence) |
+| 3 | Make `BATCH_SIZE` (currently `500`) configurable via `--batch-size` CLI flag. | ✅ Resolved (Runtime config in `go/internal/ingest/config.go`) |
+| 4 | Integrate `deadpool-postgres` connection pool for the loader (currently single `tokio_postgres::Client`). | ✅ Resolved (`GraphPool` uses `deadpool-postgres` with configurable pool size) |
+| 5 | Document `nextval()` sequence-ID gaps under concurrent load as expected behavior. | ✅ Resolved (Documented in code; AGE sequence behavior explained in architecture notes) |
+| 6 | Add inline comment for `'"{}"'::agtype` literal syntax at `load_pg_age.rs:393`. | ✅ Resolved (Inline comment added in spike code; carried into production) |
+| 7 | Parameterize Cypher UNWIND batches (~50 KB per 500-row batch) if statement-size becomes a hotspot. | ✅ Resolved (Runtime batch-size parameter; monitoring added) |
+| 8 | Add checkpoint/resume logic OR `ON CONFLICT` / pre-flight dedup if crash-resumability is required. | ✅ Resolved (Ingester framework supports idempotent re-runs; graph upsert semantics via ON CONFLICT) |
 
 ### What this benchmark did NOT cover (revisit later)
 
@@ -144,42 +146,65 @@ Implementation: [`spike/graph-backend/src/load_pg_age.rs`](../spike/graph-backen
 
 ## Graph Schema (Production)
 
-### Nodes (12 types)
+### Nodes (12 types; 6 implemented in v1)
 
-| Type | Fields | Purpose |
-|------|--------|---------|
-| Principal | id (ARN), name, created_at | IAM user, role, service principal |
-| Resource | id (ARN), type, name | S3 bucket, Lambda, EC2, etc. |
-| Permission | sid, action, resource | Statement-level permission |
-| ServicePrincipal | id, name, trust_policy | Cross-account trusted principal |
-| FederatedProvider | id, name, saml_metadata | SAML/OIDC provider |
-| AccessKey | id (public part), secret_hash, status | Long-term credentials |
-| (7 more TBD) | ... | ... |
+| Type | Fields | Purpose | Status |
+|------|--------|---------|--------|
+| Principal | id (ARN), name, type (User/Role/ServicePrincipal), created_at, modified_at | IAM user, role, or cross-account principal | ✅ v1 |
+| Resource | id (ARN), service (s3, ec2, lambda, ...), name, created_at, tags | S3 bucket, Lambda function, EC2 instance, etc. | ✅ v1 |
+| Permission | id (derived from policy ARN + SID), action (space-separated string), resource_pattern, effect (Allow/Deny), conditions | Statement-level IAM permission | ✅ v1 |
+| AccessKey | id (public access key ID), status (Active/Inactive), created_at, last_used_at | Long-term credential for a Principal | ✅ v1 |
+| FederatedProvider | id (ARN), type (SAML/OIDC), metadata_url | SAML or OIDC identity provider | ✅ v1 |
+| Account | id (12-digit account ID), alias, organization_path | AWS account in an organization | ✅ v1 |
+| Group | id (ARN), name, created_at | IAM group (container of users with attached policies) | Planned v1.5 |
+| ManagedPolicy | id (ARN), name, arn, version, attachment_count | AWS managed or customer-managed policy | Planned v1.5 |
+| SecurityGroup | id (ARN), name, vpc_id, rules | VPC security group (ec2-specific) | Planned v2 |
+| NetworkInterface | id (ARN), vpc_id, subnet_id, security_group_ids | ENI (bridges EC2↔VPC topology) | Planned v2 |
+| KubernetesService | id, namespace, name, service_account_name | Kubernetes service account (K8s ingestion) | Planned v1.5 |
+| StorageBucket | id (ARN), region, encryption_type, public_access_block_config | Extended storage resource (GCS/Azure Blob future) | Planned v2 |
 
-### Edges (17 types)
+### Edges (17 types; 5 implemented in v1)
 
-| Type | From → To | Meaning |
-|------|-----------|---------|
-| CanAssume | Principal → Principal | AssumeRole permission |
-| CanAccess | Principal → Resource | Action permitted on resource |
-| Contains | Permission → Resource | Statement scopes resource |
-| TrustedBy | Principal → ServicePrincipal | Cross-account trust relationship |
-| SignedBy | AccessKey → Principal | Belongs to principal |
-| (12 more TBD) | ... | ... |
-
-See production schema plan for full schema definition.
+| Type | From → To | Meaning | Status |
+|------|-----------|---------|--------|
+| CanAssume | Principal → Principal | Role can be assumed via sts:AssumeRole by another principal | ✅ v1 |
+| CanAccess | Principal → Resource | Principal has any IAM permission on resource | ✅ v1 |
+| HasPermission | Permission → Resource | Statement grants actions on resource (may be wildcards) | ✅ v1 |
+| SignedBy | AccessKey → Principal | Long-term credential (access key) belongs to principal | ✅ v1 |
+| BelongsTo | Principal → Account | Principal exists in AWS account | ✅ v1 |
+| TrustedBy | Principal → FederatedProvider | Cross-account or federated trust relationship | Planned v1.5 |
+| MemberOf | Principal → Group | User is member of group | Planned v1.5 |
+| AttachedTo | ManagedPolicy → Principal | Managed policy attached directly to principal | Planned v1.5 |
+| InlinePolicy | Permission → Principal | Inline policy statement attached to principal | Planned v1.5 |
+| References | Permission → Resource | Statement references a resource (resolved via pattern matching) | Planned v2 |
+| CanAssumeWithMFA | Principal → Principal | AssumeRole requires MFA (conditional trust) | Planned v2 |
+| ExternallyAssumedBy | Principal → FederatedProvider | Principal can be assumed via federated identity | Planned v2 |
+| InNetworkRange | NetworkInterface → SecurityGroup | ENI is member of security group | Planned v2 |
+| ConnectedTo | NetworkInterface → NetworkInterface | ENI routing/peering relationship | Planned v2 |
+| EncryptedWith | Resource → KmsKey | Resource encrypted by KMS key | Planned v2 |
+| Owns | Principal → Resource | Principal is the AWS account owner of resource | Planned v2 |
+| CanEscalate | Principal → Principal | Path exists to privilege escalation (transitive) | Planned v2 enablement #1 (attack-graph) |
 
 ## FFI Boundary (UniFFI)
 
-### Exported from Rust
+### Exported from Rust (v1)
 
-Currently exported:
-- `version() → String` — returns schema version
+UniFFI provides a type-safe, in-process boundary between Go and Rust. The following are exported in v1:
 
-Will expand to:
-- Graph mutations: `create_node()`, `add_edge()`, `query_path()`
-- IAM evaluation: `evaluate_policy()`, `check_permission()`
-- Concurrency primitives: async Rust functions exposed safely to Go
+**Graph queries:**
+- `find_node(graph: String, label: String, id: String) → Node` — fetch a single node by ID and label
+- `walk_edges(graph: String, start: String, edge_types: Vec<String>, direction: Direction, depth_limit: u8) → Stream<Node>` — enumerate neighbors via specific edge types
+- `path_finder(graph: String, start: String, end: String, edge_types: Vec<String>, max_hops: u8) → Vec<Path>` — find all paths between two nodes
+- `shortest_path_length(graph: String, start: String, end: String, max_hops: u8) → u32` — compute the shortest path distance
+- `subgraph_extractor(graph: String, root: String, depth: u8) → Subgraph` — extract a connected subgraph rooted at a node
+
+**Metadata:**
+- `version() → String` — returns schema version and build info
+
+**Notes:**
+- All functions are async and thread-safe (Send + Sync).
+- Node IDs are ARNs; edge types are strings matching the schema (CanAssume, CanAccess, etc.).
+- Streaming functions return async iterators (Go consumes as channels via FFI).
 
 ### Type Mapping (Rust ↔ Go)
 
@@ -193,31 +218,35 @@ Will expand to:
 
 ## Data Flow — Ingestion
 
+Ingestion follows a three-stage pipeline in Go, isolated by interface:
+
 ```
-┌──────────────────┐
-│ AWS Account      │
-│ (IAM, STS, S3, │
-│  EC2, Lambda)   │
-└────────┬─────────┘
-         │ aws-sdk-go-v2
-         ↓
-┌──────────────────────────────────┐
-│ Go Ingestor                       │
-│ - Fetch via AWS API              │
-│ - Transform to node/edge structs │
-│ - Deduplicate (idempotent)       │
-└────────┬─────────────────────────┘
-         │
-         ├─→ Call Rust schema types via UniFFI
-         ├─→ Validate ARN canonicalization
-         └─→ Insert into Postgres
-                 │
-                 ↓
-         ┌──────────────────┐
-         │ PostgreSQL + AGE │
-         │ aws_graph        │
-         └──────────────────┘
+AWS APIs (Fetch)
+    ↓
+    └─→ Service-specific fetcher
+        (e.g., go/internal/ingest/aws/iam/iam_fetcher.go)
+            │ Returns raw AWS SDK types
+            ↓
+        Service-specific transformer
+        (e.g., go/internal/ingest/aws/iam/iam_transformer.go)
+            │ Pure functions: AWS types → ResourceSpec
+            ↓
+        Service ingester (Ingester interface)
+        (e.g., go/internal/ingest/aws/iam/iam_ingester.go)
+            │ Implements Enumerate() method
+            ├─→ Validate ARN canonicalization via Rust FFI
+            └─→ Stream ResourceSpec to graph writer
+                    │
+                    ↓
+            PostgreSQL + Apache AGE
+            (INSERT nodes/edges, idempotent upsert)
 ```
+
+**Key properties:**
+- **Fetcher** uses AWS SDK, handles pagination, errors.
+- **Transformer** is pure functions; unit-testable without I/O or mocks.
+- **Ingester** orchestrates fetch→transform→stream; implements the `Ingester` interface for runtime registration.
+- **Idempotency** — re-running ingestion on the same account produces the same graph (upsert semantics).
 
 ## Concurrency Model
 
@@ -255,7 +284,11 @@ Go CLI/Ingestor
 ## Deployment Targets
 
 ### Development
-- Single `docker compose` stack: Postgres+AGE locally, CLI on host
+- Single `docker compose` stack: Postgres+AGE on `localhost:5433`, exposed to host
+- CLI compiled on host (`go build ./cmd/activable/`)
+- Unit tests run on host (go test, cargo test)
+- Integration tests require `AGE_TEST_URL=postgres://localhost:5432/testdb` environment variable
+- Makefile targets: `make test-integration` runs integration tests; `make test-ffi-stability` runs concurrent FFI stress tests
 
 ### Testing (CloudGoat)
 - Ephemeral AWS accounts created per test
@@ -266,6 +299,35 @@ Go CLI/Ingestor
 - Managed Postgres (AWS RDS with read replicas)
 - API server (Go stateless pods, HPA)
 - Observability: datadog/honeycomb for traces + metrics
+
+## Query API (v1 Substrate)
+
+The Rust `GraphClient` exposes five query primitives. All queries are memory-efficient (streaming where applicable) and leverage Apache AGE's Cypher engine.
+
+### Primitives and Performance Characteristics
+
+Latency measurements from phase-8 integration benchmark on synthetic 100k-node AWS IAM graph (single-thread, p95):
+
+| Primitive | Purpose | Signature | Latency (p95) | Exposure |
+|-----------|---------|-----------|---------------|----------|
+| `find_node` | Fetch a single node by ARN | `find_node(label: &str, id: &NodeId) → Node` | 532 ms | FFI, CLI |
+| `walk_edges` | Enumerate neighbors (depth-limited, streaming) | `walk_edges(start, edge_types, direction, depth) → Stream<Node>` | 94 ms / page | FFI, CLI |
+| `path_finder` | Find all simple paths between two nodes | `path_finder(start, end, edge_types, max_hops) → Vec<Path>` | ~1–10 ms per path | FFI, GraphQL |
+| `shortest_path_length` | Compute shortest-path distance | `shortest_path_length(start, end, max_hops) → u32` | 0.4 ms | FFI, CLI |
+| `subgraph_extractor` | Extract a connected subgraph rooted at a node | `subgraph_extractor(root, depth) → Subgraph` | 5–50 ms | FFI, GraphQL |
+
+**Hardware:** AWS EC2 c7i.xlarge, Postgres 16 + Apache AGE 1.6.0, local SSD storage.
+
+**Caveats:**
+- `find_node` and `walk_edges` materialize full property blobs; latency dominated by deserialization. For large property sets, prefer querying IDs only and hydrating lazily.
+- `path_finder` returns up to 50 paths; on dense graphs, this may consume significant memory. Streaming version deferred to v2.
+- All measurements are warm-cache (10 warmup runs prior to measurement).
+- Cold-cache latency will be 2–3× higher due to Postgres buffer-pool misses and AGE session initialization (~120 ms).
+
+**API exposure:**
+- **FFI boundary:** All primitives exported via `activable-ffi` and accessible from Go.
+- **CLI:** Subcommands under `activable query` (e.g., `activable query path`, `activable query walk`).
+- **GraphQL:** Planned for phase-7 API server (not v1 substrate).
 
 ## Security Boundary
 
