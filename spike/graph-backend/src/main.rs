@@ -7,7 +7,7 @@ mod bench;
 mod generate_synthetic_graph;
 mod load_pg_age;
 
-use generate_synthetic_graph::GeneratorConfig;
+use generate_synthetic_graph::{GeneratorConfig, output_dir_for_size};
 
 #[derive(Parser)]
 #[command(name = "spike")]
@@ -258,7 +258,7 @@ async fn main() -> Result<()> {
             // Generate each graph size into its own subdirectory so the 100k run
             // does not overwrite the 10k CSVs before the 10k load step executes.
             for size in ["10k", "100k"] {
-                let size_dir = output.join(size);
+                let size_dir = output_dir_for_size(&output, size);
                 std::fs::create_dir_all(&size_dir)
                     .context(format!("Failed to create output directory for {} graph", size))?;
                 info!("=== Generating {}-node graph → {} ===", size, size_dir.display());
@@ -280,7 +280,7 @@ async fn main() -> Result<()> {
 
             for size in ["10k", "100k"] {
                 // Each size reads from its own subdirectory, preventing cross-contamination.
-                let size_dir = output.join(size);
+                let size_dir = output_dir_for_size(&output, size);
                 info!("=== Loading {}-node graph from {} ===", size, size_dir.display());
                 load_pg_age::load(
                     &size_dir,
@@ -311,7 +311,7 @@ async fn main() -> Result<()> {
                 println!("\n{}", results);
 
                 // Write per-size results file into the size-scoped subdirectory.
-                let size_dir = output.join(size);
+                let size_dir = output_dir_for_size(&output, size);
                 let results_path = size_dir.join(format!("results-{}.md", size));
                 std::fs::write(&results_path, &results)
                     .context(format!("Failed to write {} results", size))?;

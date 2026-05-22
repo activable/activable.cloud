@@ -279,6 +279,39 @@ docker exec activable-postgres psql -U activable -d activable -c "SELECT extname
 - **Memory:** [Captured at runtime]
 - **Date:** [Captured at runtime]
 
+## Branch Coverage (Optional, Nightly Required)
+
+The project rule (`.claude/rules/development-rules.md`) requires ≥98% branch coverage for full compliance.
+
+Branch coverage measurement via `cargo llvm-cov --branch` requires a **nightly Rust toolchain**.
+
+### Installation
+
+If you don't have rustup yet, install it:
+
+```bash
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+```
+
+Add nightly toolchain + llvm-tools-preview component:
+
+```bash
+rustup toolchain install nightly
+rustup component add llvm-tools-preview --toolchain nightly
+```
+
+### Running Branch Coverage
+
+From `spike/graph-backend/`:
+
+```bash
+cargo +nightly llvm-cov --branch --summary-only \
+    --ignore-filename-regex 'src/main\.rs' \
+    --fail-under-branches 98
+```
+
+**Note:** Today (2026-05-22) the spike's pure-function line coverage is 98%+ on stable; branch coverage is filed as a follow-up to enable in CI once nightly is part of the toolchain matrix.
+
 ## References
 
 - [Apache AGE GitHub](https://github.com/apache/age) — Main project
