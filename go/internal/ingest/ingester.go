@@ -14,6 +14,7 @@ type ResourceSpec struct {
 
 // EdgeSpec represents a relationship between resources.
 type EdgeSpec struct {
+	FromID     string                 `json:"from_id"`
 	TargetID   string                 `json:"target_id"`
 	EdgeType   string                 `json:"edge_type"`
 	Properties map[string]interface{} `json:"properties"`

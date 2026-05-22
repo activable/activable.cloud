@@ -96,6 +96,7 @@ func PolicyStatementToPermissionSpec(bucketName string, sid string, actions []st
 	for _, resource := range resources {
 		if resource != "" && resource != "*" {
 			edge := ingest.EdgeSpec{
+				FromID:   permissionID,
 				TargetID: resource,
 				EdgeType: "Contains",
 				Properties: map[string]interface{}{

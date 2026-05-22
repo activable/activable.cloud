@@ -41,6 +41,7 @@ func FunctionToResourceSpec(function types.FunctionConfiguration) ingest.Resourc
 	if function.Role != nil {
 		roleARN := *function.Role
 		spec.Edges = append(spec.Edges, ingest.EdgeSpec{
+			FromID:   functionARN,
 			TargetID: roleARN,
 			EdgeType: "CanAssume",
 			Properties: map[string]interface{}{
@@ -111,6 +112,7 @@ func PolicyStatementToPermissionSpec(functionName string, sid string, actions []
 	for _, resource := range resources {
 		if resource != "" && resource != "*" {
 			edge := ingest.EdgeSpec{
+				FromID:   permissionID,
 				TargetID: resource,
 				EdgeType: "Contains",
 				Properties: map[string]interface{}{

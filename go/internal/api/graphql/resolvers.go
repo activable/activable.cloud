@@ -245,7 +245,8 @@ func (r *Resolver) TriggerIngest(provider string, regions []string) (*IngestRun,
 			BatchSize: 500,
 			Regions:   ingestRegions,
 		}
-		rt := ingest.NewRuntime(cfg, nil) // DB passed via FFI, not direct connection
+		// nil DB — run status tracking disabled; graph writes go through FFI
+		rt := ingest.NewRuntime(cfg, nil)
 		for serviceName, serviceIngesters := range allIngesters {
 			for _, ingester := range serviceIngesters {
 				rt.Register(ingester)

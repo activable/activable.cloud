@@ -41,6 +41,7 @@ func InstanceToResourceSpec(instance types.Instance, region string, accountID st
 		vpcID := *instance.VpcId
 		vpcARN := fmt.Sprintf("arn:aws:ec2:%s:%s:vpc/%s", region, accountID, vpcID)
 		spec.Edges = append(spec.Edges, ingest.EdgeSpec{
+			FromID:   instanceARN,
 			TargetID: vpcARN,
 			EdgeType: "Contains",
 			Properties: map[string]interface{}{
@@ -55,6 +56,7 @@ func InstanceToResourceSpec(instance types.Instance, region string, accountID st
 			sgID := *sg.GroupId
 			sgARN := fmt.Sprintf("arn:aws:ec2:%s:%s:security-group/%s", region, accountID, sgID)
 			spec.Edges = append(spec.Edges, ingest.EdgeSpec{
+				FromID:   instanceARN,
 				TargetID: sgARN,
 				EdgeType: "Contains",
 				Properties: map[string]interface{}{
@@ -68,6 +70,7 @@ func InstanceToResourceSpec(instance types.Instance, region string, accountID st
 	if instance.IamInstanceProfile != nil && instance.IamInstanceProfile.Arn != nil {
 		roleARN := *instance.IamInstanceProfile.Arn
 		spec.Edges = append(spec.Edges, ingest.EdgeSpec{
+			FromID:   instanceARN,
 			TargetID: roleARN,
 			EdgeType: "Contains",
 			Properties: map[string]interface{}{

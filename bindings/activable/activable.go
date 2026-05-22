@@ -41,3 +41,28 @@ func QuerySubgraph(center string, radius uint32) (string, error) {
 func HealthCheck() (string, error) {
 	return activable_ffi.HealthCheck()
 }
+
+// AddNode adds a single node to the graph.
+func AddNode(label, id, propertiesJson string) error {
+	return activable_ffi.AddNode(label, id, propertiesJson)
+}
+
+// AddNodesBatch adds a batch of nodes to the graph from a JSON array.
+func AddNodesBatch(nodesJson string) (uint32, error) {
+	return activable_ffi.AddNodesBatch(nodesJson)
+}
+
+// AddEdge adds a single edge to the graph.
+func AddEdge(fromId, toId, edgeType, propertiesJson string) error {
+	return activable_ffi.AddEdge(fromId, toId, edgeType, propertiesJson)
+}
+
+// AddEdgesBatch adds a batch of edges to the graph from a JSON array.
+func AddEdgesBatch(edgesJson string) (uint32, error) {
+	return activable_ffi.AddEdgesBatch(edgesJson)
+}
+
+// Flush commits any pending operations to the database.
+func Flush() error {
+	return activable_ffi.Flush()
+}

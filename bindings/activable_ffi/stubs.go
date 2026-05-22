@@ -44,3 +44,33 @@ func HealthCheck() (string, error) {
 	// Stub: placeholder until FFI bindings are generated
 	return "ok", nil
 }
+
+// AddNode adds a single node to the graph.
+// Stub: placeholder until FFI bindings are generated
+func AddNode(label, id, propertiesJson string) error {
+	return nil
+}
+
+// AddNodesBatch adds a batch of nodes to the graph from a JSON array.
+// Stub: placeholder until FFI bindings are generated
+func AddNodesBatch(nodesJson string) (uint32, error) {
+	return 0, nil
+}
+
+// AddEdge adds a single edge to the graph.
+// Stub: placeholder until FFI bindings are generated
+func AddEdge(fromId, toId, edgeType, propertiesJson string) error {
+	return nil
+}
+
+// AddEdgesBatch adds a batch of edges to the graph from a JSON array.
+// Stub: placeholder until FFI bindings are generated
+func AddEdgesBatch(edgesJson string) (uint32, error) {
+	return 0, nil
+}
+
+// Flush commits any pending operations to the database.
+// Stub: placeholder until FFI bindings are generated
+func Flush() error {
+	return nil
+}

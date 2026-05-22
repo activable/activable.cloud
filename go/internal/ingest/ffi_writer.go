@@ -3,6 +3,9 @@ package ingest
 import (
 	"encoding/json"
 	"fmt"
+	"log"
+
+	"github.com/activable-cloud/activable.cloud/bindings/activable"
 )
 
 // FFIWriter defines the interface for writing nodes and edges to the graph via FFI.
@@ -25,53 +28,69 @@ func NewDefaultFFIWriter() *DefaultFFIWriter {
 }
 
 // AddNodesBatch sends a batch of nodes to the Rust FFI layer.
-// Each node is serialized as JSON and passed to the FFI function.
+// Nodes are serialized as a JSON array matching the Rust contract format:
+// [{"label":"Type","id":"arn:...","properties":{...}}, ...]
 func (w *DefaultFFIWriter) AddNodesBatch(nodes []ResourceSpec) error {
 	if len(nodes) == 0 {
 		return nil
 	}
 
-	// Serialize nodes to JSON for FFI transmission
+	// Serialize nodes to JSON array format expected by Rust FFI
+	nodeArray := make([]map[string]interface{}, 0, len(nodes))
 	for _, node := range nodes {
-		nodeJSON, err := json.Marshal(map[string]interface{}{
+		nodeArray = append(nodeArray, map[string]interface{}{
 			"label":      node.Label,
 			"id":         node.ID,
 			"properties": node.Properties,
 		})
-		if err != nil {
-			return fmt.Errorf("failed to marshal node to JSON: %w", err)
-		}
-
-		// Call the real FFI function
-		// Note: This would call activable_ffi.AddNode or similar once the FFI surface is complete.
-		// For now, we're prepared for the real implementation.
-		_ = nodeJSON // Use the variable to avoid compiler warning
 	}
 
+	nodesJSON, err := json.Marshal(nodeArray)
+	if err != nil {
+		return fmt.Errorf("failed to marshal nodes to JSON: %w", err)
+	}
+
+	// Call the real FFI function with the batch
+	count, err := activable.AddNodesBatch(string(nodesJSON))
+	if err != nil {
+		return fmt.Errorf("FFI AddNodesBatch failed: %w", err)
+	}
+
+	log.Printf("[ingest] wrote %d nodes via FFI", count)
 	return nil
 }
 
 // AddEdgesBatch sends a batch of edges to the Rust FFI layer.
+// Edges are serialized as a JSON array matching the Rust contract format:
+// [{"from_id":"...","to_id":"...","edge_type":"...","properties":{...}}, ...]
 func (w *DefaultFFIWriter) AddEdgesBatch(edges []EdgeSpec) error {
 	if len(edges) == 0 {
 		return nil
 	}
 
-	// Serialize edges to JSON for FFI transmission
+	// Serialize edges to JSON array format expected by Rust FFI
+	edgeArray := make([]map[string]interface{}, 0, len(edges))
 	for _, edge := range edges {
-		edgeJSON, err := json.Marshal(map[string]interface{}{
-			"target_id":  edge.TargetID,
+		edgeArray = append(edgeArray, map[string]interface{}{
+			"from_id":    edge.FromID,
+			"to_id":      edge.TargetID,
 			"edge_type":  edge.EdgeType,
 			"properties": edge.Properties,
 		})
-		if err != nil {
-			return fmt.Errorf("failed to marshal edge to JSON: %w", err)
-		}
-
-		// Call the real FFI function once available
-		_ = edgeJSON // Use the variable to avoid compiler warning
 	}
 
+	edgesJSON, err := json.Marshal(edgeArray)
+	if err != nil {
+		return fmt.Errorf("failed to marshal edges to JSON: %w", err)
+	}
+
+	// Call the real FFI function with the batch
+	count, err := activable.AddEdgesBatch(string(edgesJSON))
+	if err != nil {
+		return fmt.Errorf("FFI AddEdgesBatch failed: %w", err)
+	}
+
+	log.Printf("[ingest] wrote %d edges via FFI", count)
 	return nil
 }
 
@@ -81,7 +100,10 @@ type GraphInitializer interface {
 	Initialize(databaseURL string, poolSize int, graphName string) error
 }
 
-// DefaultGraphInitializer implements GraphInitializer by calling activable_ffi.
+// DefaultGraphInitializer implements GraphInitializer by validating configuration.
+// The actual graph initialization (FFI pool setup) is performed by the GraphQL server
+// at startup via activable.GraphInitialize(). Ingestion runs in-process and uses
+// the already-initialized pool.
 type DefaultGraphInitializer struct{}
 
 // NewDefaultGraphInitializer creates a graph initializer.
@@ -89,8 +111,10 @@ func NewDefaultGraphInitializer() *DefaultGraphInitializer {
 	return &DefaultGraphInitializer{}
 }
 
-// Initialize calls the FFI layer to initialize the graph.
-// For v1, this may be a no-op if the graph is already initialized.
+// Initialize validates the graph configuration and logs that initialization
+// is handled by the server process at startup.
+// The actual FFI pool initialization happens once in the server's main(),
+// not in each ingestion runtime.
 func (g *DefaultGraphInitializer) Initialize(databaseURL string, poolSize int, graphName string) error {
 	// Validate inputs
 	if databaseURL == "" {
@@ -103,9 +127,9 @@ func (g *DefaultGraphInitializer) Initialize(databaseURL string, poolSize int, g
 		return fmt.Errorf("graph name cannot be empty")
 	}
 
-	// Call would go here to activable_ffi once GraphInitialize is exposed in the FFI surface.
-	// For now, this is a placeholder that validates the configuration.
-	// The real FFI call will be implemented when the UniFFI surface includes graph_initialize.
+	// Graph initialization is already handled by the server process.
+	// Log this for operational clarity.
+	log.Printf("[ingest] graph initialization validated (pool already initialized by server)")
 
 	return nil
 }

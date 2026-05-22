@@ -68,22 +68,27 @@ func (r *Runtime) Register(ingester Ingester) {
 // 6. Track partial failures and commit independent per-service results
 // 7. Record run status to the metadata table
 func (r *Runtime) Ingest(ctx context.Context) error {
-	// Initialize run status table
-	if err := InitRunStatusTable(ctx, r.db); err != nil {
-		return fmt.Errorf("failed to initialize run status table: %w", err)
-	}
-
-	// Generate run ID and record start
+	// Generate run ID
 	runID := uuid.New()
-	runStatus := RunStatus{
-		RunID:      runID,
-		StartedAt:  time.Now(),
-		Status:     "running",
-		PartialFailures: []string{},
-	}
 
-	if err := WriteRunStatus(ctx, r.db, runStatus); err != nil {
-		return fmt.Errorf("failed to write initial run status: %w", err)
+	// Initialize run status table and record start (skip if no database connection)
+	if r.db != nil {
+		if err := InitRunStatusTable(ctx, r.db); err != nil {
+			return fmt.Errorf("failed to initialize run status table: %w", err)
+		}
+
+		runStatus := RunStatus{
+			RunID:           runID,
+			StartedAt:       time.Now(),
+			Status:          "running",
+			PartialFailures: []string{},
+		}
+
+		if err := WriteRunStatus(ctx, r.db, runStatus); err != nil {
+			return fmt.Errorf("failed to write initial run status: %w", err)
+		}
+	} else {
+		log.Printf("[ingest:%s] run status tracking disabled (no database connection)", runID)
 	}
 
 	// Initialize the graph database
@@ -143,30 +148,56 @@ func (r *Runtime) Ingest(ctx context.Context) error {
 			serviceName := ingester.Service()
 			resourcesChan, errorsChan := ingester.Enumerate(egCtx)
 
-			// Batch resources and write to graph
-			batch := make([]ResourceSpec, 0, r.config.BatchSize)
+			// Batch resources and edges separately for writing to graph
+			nodeBatch := make([]ResourceSpec, 0, r.config.BatchSize)
+			edgeBatch := make([]EdgeSpec, 0, r.config.BatchSize)
 
 			for {
 				select {
 				case resource, ok := <-resourcesChan:
 					if !ok {
-						// Channel closed, flush final batch
-						if len(batch) > 0 {
-							if err := r.ffiWriter.AddNodesBatch(batch); err != nil {
-								log.Printf("failed to write final batch for service %s: %v", serviceName, err)
+						// Channel closed, flush final batches
+						if len(nodeBatch) > 0 {
+							if err := r.ffiWriter.AddNodesBatch(nodeBatch); err != nil {
+								log.Printf("[ingest] failed to write final node batch for service %s: %v", serviceName, err)
 								partialFailuresMu.Lock()
 								partialFailures = append(partialFailures, serviceName)
 								partialFailuresMu.Unlock()
 								return nil // Continue with other ingesters
 							}
 						}
+						if len(edgeBatch) > 0 {
+							if err := r.ffiWriter.AddEdgesBatch(edgeBatch); err != nil {
+								log.Printf("[ingest] failed to write final edge batch for service %s: %v", serviceName, err)
+								partialFailuresMu.Lock()
+								partialFailures = append(partialFailures, serviceName)
+								partialFailuresMu.Unlock()
+								return nil
+							}
+						}
 						return nil
 					}
 
-					batch = append(batch, resource)
-					if len(batch) >= r.config.BatchSize {
-						if err := r.ffiWriter.AddNodesBatch(batch); err != nil {
-							log.Printf("failed to write batch for service %s: %v", serviceName, err)
+					// Extract edges from resource and add to edge batch
+					if len(resource.Edges) > 0 {
+						edgeBatch = append(edgeBatch, resource.Edges...)
+						if len(edgeBatch) >= r.config.BatchSize {
+							if err := r.ffiWriter.AddEdgesBatch(edgeBatch); err != nil {
+								log.Printf("[ingest] failed to write edge batch for service %s: %v", serviceName, err)
+								partialFailuresMu.Lock()
+								partialFailures = append(partialFailures, serviceName)
+								partialFailuresMu.Unlock()
+								// Continue writing nodes even if edges fail
+							}
+							edgeBatch = make([]EdgeSpec, 0, r.config.BatchSize)
+						}
+					}
+
+					// Add resource node to node batch
+					nodeBatch = append(nodeBatch, resource)
+					if len(nodeBatch) >= r.config.BatchSize {
+						if err := r.ffiWriter.AddNodesBatch(nodeBatch); err != nil {
+							log.Printf("[ingest] failed to write node batch for service %s: %v", serviceName, err)
 							partialFailuresMu.Lock()
 							partialFailures = append(partialFailures, serviceName)
 							partialFailuresMu.Unlock()
@@ -175,12 +206,12 @@ func (r *Runtime) Ingest(ctx context.Context) error {
 							}
 							return nil
 						}
-						batch = make([]ResourceSpec, 0, r.config.BatchSize)
+						nodeBatch = make([]ResourceSpec, 0, r.config.BatchSize)
 					}
 
 				case err := <-errorsChan:
 					if err != nil {
-						log.Printf("error from ingester %s: %v", serviceName, err)
+						log.Printf("[ingest] error from ingester %s: %v", serviceName, err)
 						partialFailuresMu.Lock()
 						partialFailures = append(partialFailures, serviceName)
 						partialFailuresMu.Unlock()
@@ -201,13 +232,17 @@ func (r *Runtime) Ingest(ctx context.Context) error {
 		finalStatus = "partial_failure"
 	}
 
-	// Update run status with completion info
-	if err := UpdateRunStatus(ctx, r.db, runID, finalStatus, partialFailures); err != nil {
-		return fmt.Errorf("failed to update run status: %w", err)
+	// Update run status with completion info (skip if no database connection)
+	if r.db != nil {
+		if err := UpdateRunStatus(ctx, r.db, runID, finalStatus, partialFailures); err != nil {
+			return fmt.Errorf("failed to update run status: %w", err)
+		}
 	}
 
 	if len(partialFailures) > 0 {
-		log.Printf("ingestion completed with partial failures: %v", partialFailures)
+		log.Printf("[ingest:%s] ingestion completed with partial failures: %v", runID, partialFailures)
+	} else {
+		log.Printf("[ingest:%s] ingestion completed successfully", runID)
 	}
 
 	return nil
