@@ -19,9 +19,7 @@ pub struct LoaderConfig {
 impl LoaderConfig {
     /// Create a new loader configuration with default settings.
     pub fn new() -> Self {
-        Self {
-            batch_size: 500,
-        }
+        Self { batch_size: 500 }
     }
 
     /// Set the batch size for bulk operations.
@@ -159,11 +157,7 @@ mod tests {
     fn test_build_agtype_id_literal_shape_invariant() {
         for id in &["", "simple", "with'quote", "with\\back"] {
             let result = build_agtype_id_literal(id);
-            assert!(
-                result.starts_with("'\""),
-                "Missing opening for id={}",
-                id
-            );
+            assert!(result.starts_with("'\""), "Missing opening for id={}", id);
             assert!(
                 result.ends_with("\"'::agtype"),
                 "Missing closing for id={}",

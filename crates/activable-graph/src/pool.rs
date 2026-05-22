@@ -82,9 +82,7 @@ impl GraphPool {
 /// # Returns
 ///
 /// An error if any setup command fails.
-pub async fn initialize_age_connection(
-    client: &tokio_postgres::Client,
-) -> Result<(), GraphError> {
+pub async fn initialize_age_connection(client: &tokio_postgres::Client) -> Result<(), GraphError> {
     // Load the AGE extension if not already loaded
     client
         .batch_execute("CREATE EXTENSION IF NOT EXISTS age; LOAD 'age'; SET search_path = ag_catalog, \"$user\", public;")

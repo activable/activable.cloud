@@ -25,11 +25,12 @@ mod integration_tests {
     }
 
     /// Helper to parse a Postgres connection string and create a pool.
-    async fn create_test_pool() -> Result<Arc<GraphPool>, Box<dyn std::error::Error>> {
+    async fn create_test_pool() -> Result<Arc<deadpool_postgres::Pool>, Box<dyn std::error::Error>>
+    {
         let url = test_db_url().ok_or("AGE_TEST_URL not set")?;
         let config: tokio_postgres::Config = url.parse()?;
         let pool = GraphPool::build(&config, 5)?;
-        Ok(Arc::new(pool))
+        Ok(pool)
     }
 
     #[tokio::test]
@@ -41,7 +42,12 @@ mod integration_tests {
         };
 
         let client = GraphClient::new(pool, "test_graph");
-        let result = client.find_by_id("Principal", &NodeId::from("arn:aws:iam::123456789012:user/unknown")).await;
+        let result = client
+            .find_by_id(
+                "Principal",
+                &NodeId::from("arn:aws:iam::123456789012:user/unknown"),
+            )
+            .await;
 
         // Should either return Ok(None) or an error if the graph doesn't exist yet
         match result {
@@ -59,15 +65,20 @@ mod integration_tests {
         };
 
         let client = GraphClient::new(pool, "test_graph");
-        let result = client.walk_edges(
-            &NodeId::from("arn:aws:iam::123456789012:user/alice"),
-            &["CanAssume"],
-            Direction::Outgoing,
-            1,
-        ).await;
+        let result = client
+            .walk_edges(
+                &NodeId::from("arn:aws:iam::123456789012:user/alice"),
+                &["CanAssume"],
+                Direction::Outgoing,
+                1,
+            )
+            .await;
 
         match result {
-            Ok(nodes) => assert!(nodes.is_empty() || !nodes.is_empty(), "walk_edges returned a result"),
+            Ok(nodes) => assert!(
+                nodes.is_empty() || !nodes.is_empty(),
+                "walk_edges returned a result"
+            ),
             Err(_) => {} // Expected if test graph doesn't exist
         }
     }
@@ -81,17 +92,22 @@ mod integration_tests {
         };
 
         let client = GraphClient::new(pool, "test_graph");
-        let result = client.path_finder(
-            &NodeId::from("arn:aws:iam::123456789012:user/alice"),
-            &NodeId::from("arn:aws:iam::123456789012:user/bob"),
-            &["CanAssume"],
-            5,
-        ).await;
+        let result = client
+            .path_finder(
+                &NodeId::from("arn:aws:iam::123456789012:user/alice"),
+                &NodeId::from("arn:aws:iam::123456789012:user/bob"),
+                &["CanAssume"],
+                5,
+            )
+            .await;
 
         match result {
             Ok(paths) => {
                 // May be empty if nodes don't exist or no path connects them
-                assert!(paths.is_empty() || !paths.is_empty(), "path_finder returned a result");
+                assert!(
+                    paths.is_empty() || !paths.is_empty(),
+                    "path_finder returned a result"
+                );
             }
             Err(_) => {} // Expected if test graph doesn't exist
         }
@@ -106,16 +122,21 @@ mod integration_tests {
         };
 
         let client = GraphClient::new(pool, "test_graph");
-        let result = client.blast_radius(
-            &NodeId::from("arn:aws:iam::123456789012:role/admin"),
-            &[],
-            1,
-        ).await;
+        let result = client
+            .blast_radius(
+                &NodeId::from("arn:aws:iam::123456789012:role/admin"),
+                &[],
+                1,
+            )
+            .await;
 
         match result {
             Ok(nodes) => {
                 // Should return a list of nodes (may be empty if node doesn't exist)
-                assert!(nodes.is_empty() || !nodes.is_empty(), "blast_radius returned a result");
+                assert!(
+                    nodes.is_empty() || !nodes.is_empty(),
+                    "blast_radius returned a result"
+                );
             }
             Err(_) => {} // Expected if test graph doesn't exist
         }
@@ -130,16 +151,17 @@ mod integration_tests {
         };
 
         let client = GraphClient::new(pool, "test_graph");
-        let result = client.subgraph(
-            &NodeId::from("arn:aws:iam::123456789012:role/admin"),
-            2,
-        ).await;
+        let result = client
+            .subgraph(&NodeId::from("arn:aws:iam::123456789012:role/admin"), 2)
+            .await;
 
         match result {
             Ok(subgraph) => {
-                // Subgraph should have nodes and edges arrays
-                assert!(!subgraph.nodes.is_empty() || subgraph.nodes.is_empty(), "subgraph returned a result");
-                assert!(!subgraph.edges.is_empty() || subgraph.edges.is_empty(), "subgraph edges returned");
+                // Subgraph should have center node and nodes array
+                assert!(
+                    !subgraph.nodes.is_empty() || subgraph.nodes.is_empty(),
+                    "subgraph returned a result"
+                );
             }
             Err(_) => {} // Expected if test graph doesn't exist
         }
@@ -160,7 +182,9 @@ mod integration_tests {
         for _ in 0..10 {
             let client_clone = client.clone();
             tasks.push(tokio::spawn(async move {
-                let _ = client_clone.find_by_id("Principal", &NodeId::from("test")).await;
+                let _ = client_clone
+                    .find_by_id("Principal", &NodeId::from("test"))
+                    .await;
             }));
         }
 

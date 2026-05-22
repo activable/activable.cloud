@@ -88,11 +88,7 @@ mod tests {
 
         let mut seen = std::collections::HashSet::new();
         for label in labels {
-            assert!(
-                seen.insert(label),
-                "Duplicate node label found: {}",
-                label
-            );
+            assert!(seen.insert(label), "Duplicate node label found: {}", label);
         }
     }
 
@@ -108,11 +104,7 @@ mod tests {
 
         let mut seen = std::collections::HashSet::new();
         for label in labels {
-            assert!(
-                seen.insert(label),
-                "Duplicate edge label found: {}",
-                label
-            );
+            assert!(seen.insert(label), "Duplicate edge label found: {}", label);
         }
     }
 }

@@ -47,10 +47,7 @@ pub fn validate_label(label: &str) -> Result<&str, GraphError> {
         )));
     }
 
-    if !label
-        .chars()
-        .all(|c| c.is_alphanumeric() || c == '_')
-    {
+    if !label.chars().all(|c| c.is_alphanumeric() || c == '_') {
         return Err(GraphError::invalid_label(format!(
             "label contains invalid characters: {}",
             label
@@ -402,12 +399,8 @@ mod tests {
     #[test]
     fn builder_walk_edges() {
         let builder = CypherBuilder::new("graph");
-        let result = builder.walk_edges(
-            &NodeId::from("n1"),
-            &["CanAccess"],
-            Direction::Outgoing,
-            1,
-        );
+        let result =
+            builder.walk_edges(&NodeId::from("n1"), &["CanAccess"], Direction::Outgoing, 1);
         assert!(result.is_ok());
         let cypher = result.unwrap();
         assert!(cypher.contains("CanAccess"));
@@ -416,12 +409,7 @@ mod tests {
     #[test]
     fn builder_walk_edges_multi_hop() {
         let builder = CypherBuilder::new("graph");
-        let result = builder.walk_edges(
-            &NodeId::from("n1"),
-            &[],
-            Direction::Both,
-            3,
-        );
+        let result = builder.walk_edges(&NodeId::from("n1"), &[], Direction::Both, 3);
         assert!(result.is_ok());
         let cypher = result.unwrap();
         assert!(cypher.contains("*1..3"));
@@ -444,11 +432,7 @@ mod tests {
     #[test]
     fn builder_shortest_path_length() {
         let builder = CypherBuilder::new("graph");
-        let result = builder.shortest_path_length(
-            &NodeId::from("a"),
-            &NodeId::from("b"),
-            6,
-        );
+        let result = builder.shortest_path_length(&NodeId::from("a"), &NodeId::from("b"), 6);
         assert!(result.is_ok());
         let cypher = result.unwrap();
         assert!(cypher.contains("length(p)"));
@@ -457,11 +441,7 @@ mod tests {
     #[test]
     fn builder_blast_radius() {
         let builder = CypherBuilder::new("graph");
-        let result = builder.blast_radius(
-            &NodeId::from("center"),
-            &["CanAccess"],
-            2,
-        );
+        let result = builder.blast_radius(&NodeId::from("center"), &["CanAccess"], 2);
         assert!(result.is_ok());
         let cypher = result.unwrap();
         assert!(cypher.contains("CanAccess"));
@@ -479,6 +459,8 @@ mod tests {
     #[test]
     fn builder_invalid_label() {
         let builder = CypherBuilder::new("graph");
-        assert!(builder.find_by_id("123Invalid", &NodeId::from("id")).is_err());
+        assert!(builder
+            .find_by_id("123Invalid", &NodeId::from("id"))
+            .is_err());
     }
 }

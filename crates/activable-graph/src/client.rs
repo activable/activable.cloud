@@ -135,7 +135,9 @@ impl GraphClient {
                                 .trim_matches('"')
                                 .to_string();
 
-                            let label = if let Some(labels) = node_obj.get("labels").and_then(|v| v.as_array()) {
+                            let label = if let Some(labels) =
+                                node_obj.get("labels").and_then(|v| v.as_array())
+                            {
                                 labels
                                     .first()
                                     .and_then(|l| l.as_str())
@@ -221,11 +223,7 @@ impl GraphClient {
     /// Retrieve a local subgraph around a center node.
     ///
     /// Returns the center node plus all nodes within `radius` hops.
-    pub async fn subgraph(
-        &self,
-        center: &NodeId,
-        radius: u8,
-    ) -> Result<Subgraph, GraphError> {
+    pub async fn subgraph(&self, center: &NodeId, radius: u8) -> Result<Subgraph, GraphError> {
         let builder = CypherBuilder::new(&self.graph_name);
         let sql = builder.subgraph(center, radius)?;
 

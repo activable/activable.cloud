@@ -205,7 +205,10 @@ pub async fn add_edges_batch(edges_json: String) -> String {
             return r#"{"error": "each edge must be a JSON object"}"#.to_string();
         }
         let obj = edge.as_object().unwrap();
-        if !obj.contains_key("from_id") || !obj.contains_key("to_id") || !obj.contains_key("edge_type") {
+        if !obj.contains_key("from_id")
+            || !obj.contains_key("to_id")
+            || !obj.contains_key("edge_type")
+        {
             return r#"{"error": "each edge must have from_id, to_id, and edge_type"}"#.to_string();
         }
     }
@@ -262,13 +265,11 @@ pub async fn health_check() -> String {
         Err(e) => return e.to_string(),
     };
 
-    match global
-        .block_on(async {
-            let client = global.client();
-            let _ = client;
-            Ok::<String, String>("ok".to_string())
-        })
-    {
+    match global.block_on(async {
+        let client = global.client();
+        let _ = client;
+        Ok::<String, String>("ok".to_string())
+    }) {
         Ok(msg) => msg,
         Err(e) => e,
     }
@@ -297,24 +298,22 @@ pub async fn query_find_node(_graph_name: String, _label: String, id: String) ->
 
     let _node_id = NodeId::from(id);
 
-    match global
-        .block_on(async {
-            let _client = global.client();
+    match global.block_on(async {
+        let _client = global.client();
 
-            // In a real implementation:
-            // let node_ref = client.find_by_id(&label, &node_id).await?;
-            // return match node_ref {
-            //     Some(ref_) => {
-            //         let hydrated = client.hydrate(ref_).execute().await?;
-            //         let json = serde_json::to_string(&hydrated)?;
-            //         Ok(Some(json))
-            //     }
-            //     None => Ok(None)
-            // };
+        // In a real implementation:
+        // let node_ref = client.find_by_id(&label, &node_id).await?;
+        // return match node_ref {
+        //     Some(ref_) => {
+        //         let hydrated = client.hydrate(ref_).execute().await?;
+        //         let json = serde_json::to_string(&hydrated)?;
+        //         Ok(Some(json))
+        //     }
+        //     None => Ok(None)
+        // };
 
-            Ok::<Option<String>, String>(None)
-        })
-    {
+        Ok::<Option<String>, String>(None)
+    }) {
         Ok(Some(json)) => json,
         Ok(None) => "null".to_string(),
         Err(e) => format!(r#"{{"error": "{}"}}"#, e),
@@ -355,18 +354,16 @@ pub async fn query_walk_edges(
         other => return format!(r#"{{"error": "invalid direction: {}"}}"#, other),
     };
 
-    match global
-        .block_on(async {
-            let _client = global.client();
+    match global.block_on(async {
+        let _client = global.client();
 
-            // In a real implementation:
-            // let results = client.walk_edges(&start, &edge_types_refs, dir, depth as u8).await?;
-            // let json = serde_json::to_string(&results)?;
-            // Ok(json)
+        // In a real implementation:
+        // let results = client.walk_edges(&start, &edge_types_refs, dir, depth as u8).await?;
+        // let json = serde_json::to_string(&results)?;
+        // Ok(json)
 
-            Ok::<String, String>("[]".to_string())
-        })
-    {
+        Ok::<String, String>("[]".to_string())
+    }) {
         Ok(json) => json,
         Err(e) => format!(r#"{{"error": "{}"}}"#, e),
     }
@@ -401,18 +398,16 @@ pub async fn query_path_finder(
     let _end = NodeId::from(end_id);
     let _edge_types_refs: Vec<&str> = edge_types.iter().map(|s| s.as_str()).collect();
 
-    match global
-        .block_on(async {
-            let _client = global.client();
+    match global.block_on(async {
+        let _client = global.client();
 
-            // In a real implementation:
-            // let paths = client.path_finder(&start, &end, &edge_types_refs, max_hops as u8).await?;
-            // let json = serde_json::to_string(&paths)?;
-            // Ok(json)
+        // In a real implementation:
+        // let paths = client.path_finder(&start, &end, &edge_types_refs, max_hops as u8).await?;
+        // let json = serde_json::to_string(&paths)?;
+        // Ok(json)
 
-            Ok::<String, String>("[]".to_string())
-        })
-    {
+        Ok::<String, String>("[]".to_string())
+    }) {
         Ok(json) => json,
         Err(e) => format!(r#"{{"error": "{}"}}"#, e),
     }
@@ -444,18 +439,16 @@ pub async fn query_blast_radius(
     let _node = NodeId::from(node_id);
     let _edge_types_refs: Vec<&str> = edge_types.iter().map(|s| s.as_str()).collect();
 
-    match global
-        .block_on(async {
-            let _client = global.client();
+    match global.block_on(async {
+        let _client = global.client();
 
-            // In a real implementation:
-            // let reachable = client.walk_edges(&node, &edge_types_refs, Direction::Both, max_hops as u8).await?;
-            // let json = serde_json::to_string(&reachable)?;
-            // Ok(json)
+        // In a real implementation:
+        // let reachable = client.walk_edges(&node, &edge_types_refs, Direction::Both, max_hops as u8).await?;
+        // let json = serde_json::to_string(&reachable)?;
+        // Ok(json)
 
-            Ok::<String, String>("[]".to_string())
-        })
-    {
+        Ok::<String, String>("[]".to_string())
+    }) {
         Ok(json) => json,
         Err(e) => format!(r#"{{"error": "{}"}}"#, e),
     }
@@ -480,18 +473,16 @@ pub async fn query_subgraph(_graph_name: String, center_id: String, _radius: u32
 
     let _center = NodeId::from(center_id);
 
-    match global
-        .block_on(async {
-            let _client = global.client();
+    match global.block_on(async {
+        let _client = global.client();
 
-            // In a real implementation:
-            // let subgraph = client.subgraph(&center, radius).await?;
-            // let json = serde_json::to_string(&subgraph)?;
-            // Ok(json)
+        // In a real implementation:
+        // let subgraph = client.subgraph(&center, radius).await?;
+        // let json = serde_json::to_string(&subgraph)?;
+        // Ok(json)
 
-            Ok::<String, String>(r#"{"nodes": [], "edges": []}"#.to_string())
-        })
-    {
+        Ok::<String, String>(r#"{"nodes": [], "edges": []}"#.to_string())
+    }) {
         Ok(json) => json,
         Err(e) => format!(r#"{{"error": "{}"}}"#, e),
     }
