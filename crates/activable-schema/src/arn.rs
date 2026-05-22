@@ -61,7 +61,8 @@ mod tests {
 
     #[test]
     fn test_arn_parse_placeholder() {
-        let arn = Arn::parse("arn:aws:iam::123456789012:user/TestUser").unwrap();
+        let arn = Arn::parse("arn:aws:iam::123456789012:user/TestUser")
+            .unwrap_or_else(|_| panic!("Expected parse to succeed"));
         assert_eq!(arn.partition, "aws");
     }
 
