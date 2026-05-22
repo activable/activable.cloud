@@ -33,8 +33,42 @@ test:
 	@echo "Testing Go code..."
 	go test -race -v ./go/...
 
-test-integration:
-	@echo "Integration tests (stub — not yet implemented)"
+test-integration: build
+	@echo "Integration tests: teardown → deploy → wait-healthy → test → teardown"
+	@echo "Step 1: Teardown (clean slate)"
+	docker compose -f infra/compose/docker-compose.yml down -v || true
+	@echo "Step 2: Deploy Postgres+AGE"
+	docker compose -f infra/compose/docker-compose.yml up -d db
+	@echo "Step 3: Wait for healthy status (timeout 30s)"
+	@timeout=30; \
+	while [ $$timeout -gt 0 ]; do \
+		if docker compose -f infra/compose/docker-compose.yml ps db | grep -q healthy; then \
+			echo "✓ Postgres ready"; \
+			break; \
+		fi; \
+		echo "  Waiting... ($$(expr 30 - $$timeout)s)"; \
+		sleep 2; \
+		timeout=$$(expr $$timeout - 2); \
+	done; \
+	if [ $$timeout -le 0 ]; then \
+		echo "✗ Postgres failed to become healthy"; \
+		docker compose -f infra/compose/docker-compose.yml down -v; \
+		exit 1; \
+	fi
+	@echo "Step 4: Run integration tests"
+	@export AGE_TEST_URL="postgres://activable:activable_dev@localhost:5433/activable?sslmode=disable"; \
+	export ACTIVABLE_DB_URL="postgres://activable:activable_dev@localhost:5433/activable?sslmode=disable"; \
+	export ACTIVABLE_INTEGRATION=1; \
+	export DYLD_LIBRARY_PATH=$(PWD)/target/release; \
+	export LD_LIBRARY_PATH=$(PWD)/target/release; \
+	set -e; \
+	echo "Running Rust integration tests..."; \
+	cargo test --test '*_integration*' --release -- --nocapture 2>&1; \
+	echo "Running Go integration tests..."; \
+	go test -v -tags integration ./tests/integration/go/... 2>&1
+	@echo "Step 5: Teardown"
+	docker compose -f infra/compose/docker-compose.yml down -v
+	@echo "✓ Integration tests completed"
 
 bindgen:
 	@echo "Regenerating UniFFI bindings..."

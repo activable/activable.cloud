@@ -13,12 +13,16 @@ services:
     volumes:
       - activable-db-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U activable"]
-      interval: 10s
+      test: ["CMD-SHELL", "pg_isready -U activable -h localhost -p 5432"]
+      interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 10
+      start_period: 10s
     networks:
       - activable
+    profiles:
+      - default
+      - test
 
 networks:
   activable:

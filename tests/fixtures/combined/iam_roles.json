@@ -1,0 +1,14 @@
+[
+  {
+    "arn": "arn:aws:iam::123456789012:role/AdminRole",
+    "id": "AIDAR1111111111AAAA",
+    "name": "AdminRole",
+    "principal_type": "IAMRole"
+  },
+  {
+    "arn": "arn:aws:iam::123456789012:role/S3ReadRole",
+    "id": "AIDAR2222222222BBBB",
+    "name": "S3ReadRole",
+    "principal_type": "IAMRole"
+  }
+]

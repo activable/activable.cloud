@@ -1,0 +1,12 @@
+[
+  {
+    "arn": "arn:aws:iam::123456789012:policy/AdministratorAccess",
+    "id": "ANPAI1111111111AAAA",
+    "name": "AdministratorAccess"
+  },
+  {
+    "arn": "arn:aws:iam::123456789012:policy/S3FullAccess",
+    "id": "ANPAI2222222222BBBB",
+    "name": "S3FullAccess"
+  }
+]
