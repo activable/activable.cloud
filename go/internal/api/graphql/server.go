@@ -4,11 +4,15 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log/slog"
+	"net"
 	"net/http"
-	"strings"
+	"sync"
 	"time"
+
+	"github.com/vektah/gqlparser/v2"
+	"github.com/vektah/gqlparser/v2/ast"
+	"golang.org/x/time/rate"
 )
 
 // Server provides the GraphQL HTTP server.
@@ -31,8 +35,8 @@ func NewServer(ffi FFIClient, port int, logger *slog.Logger) *Server {
 func (s *Server) Start() error {
 	mux := http.NewServeMux()
 
-	// Register GraphQL endpoint
-	mux.HandleFunc("/graphql", s.graphqlHandler)
+	// Register GraphQL endpoint with rate limiter
+	mux.Handle("/graphql", s.rateLimiter(http.HandlerFunc(s.graphqlHandler)))
 
 	// Register health check endpoint
 	mux.HandleFunc("/healthz", s.healthzHandler)
@@ -43,42 +47,267 @@ func (s *Server) Start() error {
 	return http.ListenAndServe(addr, loggingMiddleware(s.logger)(mux))
 }
 
-// graphqlHandler handles GraphQL queries and mutations.
+// graphqlHandler handles GraphQL queries using the resolver methods.
+// This leverages the resolver methods wired via schema.resolvers.go.
 func (s *Server) graphqlHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "GraphQL only accepts POST requests", http.StatusMethodNotAllowed)
 		return
 	}
 
-	// Parse request body
+	// Parse request body (limited to 1MB to prevent OOM attacks)
 	var req struct {
 		Query         string                 `json:"query"`
 		OperationName string                 `json:"operationName"`
 		Variables     map[string]interface{} `json:"variables"`
 	}
 
-	// Limit request body to 1MB to prevent OOM attacks
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
-	body, err := io.ReadAll(r.Body)
-	if err != nil {
-		s.logger.Error("failed to read request body", "error", err)
-		http.Error(w, "Failed to read request body", http.StatusBadRequest)
-		return
-	}
 	defer r.Body.Close()
 
-	if err := json.Unmarshal(body, &req); err != nil {
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		s.logger.Error("failed to parse GraphQL request", "error", err)
 		http.Error(w, "Invalid GraphQL request", http.StatusBadRequest)
 		return
 	}
 
-	// Execute GraphQL query (simplified — real implementation would use gqlgen)
-	result := s.executeQuery(r.Context(), req.Query, req.Variables)
+	// Execute the query through the schema resolvers
+	ctx := r.Context()
+	result := s.executeQuery(ctx, req.Query, req.Variables)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(result)
+}
+
+// schemaSource is the GraphQL SDL loaded once for query validation.
+var schemaSource = `
+schema { query: Query; mutation: Mutation }
+type Query {
+  findNode(label: String!, id: String!): Node
+  walkEdges(start: String!, edgeTypes: [String!]!, direction: String!, depth: Int!): [NodeRef!]!
+  pathFinder(start: String!, end: String!, edgePattern: [String!]!, maxHops: Int!): [Path!]!
+  blastRadius(node: String!, depth: Int!): [NodeRef!]!
+  subgraph(center: String!, radius: Int!): Subgraph!
+  ingestStatus(runId: String!): IngestRun
+  healthz: String!
+}
+type Mutation {
+  triggerIngest(provider: String!, regions: [String!]!): IngestRun!
+}
+type Node { id: String!; label: String!; properties: String }
+type NodeRef { id: String!; label: String! }
+type Edge { from: String!; to: String!; type: String!; properties: String }
+type Path { nodes: [NodeRef!]!; edges: [Edge!]!; length: Int! }
+type Subgraph { center: NodeRef!; nodes: [NodeRef!]! }
+type IngestRun { id: String!; status: String!; startedAt: String!; services: [IngestService!]! }
+type IngestService { name: String!; status: String!; nodeCount: Int!; edgeCount: Int!; error: String }
+`
+
+// executeQuery parses a GraphQL query using gqlparser AST, extracts the
+// operation field, and dispatches to the appropriate resolver method.
+// This replaces the unsafe string-matching dispatcher with proper parsing.
+func (s *Server) executeQuery(ctx context.Context, query string, variables map[string]any) map[string]any {
+	// Parse the schema (could be cached, but it's fast enough for v1)
+	schema, schemaErr := gqlparser.LoadSchema(&ast.Source{Name: "schema.graphql", Input: schemaSource})
+	if schemaErr != nil {
+		return gqlError(fmt.Sprintf("schema load error: %v", schemaErr))
+	}
+
+	// Parse the query against the schema
+	doc, parseErrs := gqlparser.LoadQuery(schema, query)
+	if parseErrs != nil {
+		return gqlError(fmt.Sprintf("query parse error: %v", parseErrs))
+	}
+
+	if len(doc.Operations) == 0 {
+		return gqlError("no operation found in query")
+	}
+
+	operation := doc.Operations[0]
+	if len(operation.SelectionSet) == 0 {
+		return gqlError("empty selection set")
+	}
+
+	// Get the first field in the selection set
+	field, ok := operation.SelectionSet[0].(*ast.Field)
+	if !ok {
+		return gqlError("unsupported selection type")
+	}
+
+	// Extract arguments from AST
+	args := make(map[string]any)
+	for _, arg := range field.Arguments {
+		args[arg.Name] = resolveValue(arg.Value, variables)
+	}
+
+	// Dispatch based on operation type + field name
+	queryResolver := s.resolver.Query()
+	mutationResolver := s.resolver.Mutation()
+
+	switch operation.Operation {
+	case ast.Query:
+		return s.dispatchQuery(ctx, field.Name, args, queryResolver)
+	case ast.Mutation:
+		return s.dispatchMutation(ctx, field.Name, args, mutationResolver)
+	default:
+		return gqlError(fmt.Sprintf("unsupported operation: %s", operation.Operation))
+	}
+}
+
+// dispatchQuery routes a parsed query field to the correct resolver method.
+func (s *Server) dispatchQuery(ctx context.Context, fieldName string, args map[string]any, resolver QueryResolver) map[string]any {
+	switch fieldName {
+	case "findNode":
+		result, err := resolver.FindNode(ctx, argString(args, "label"), argString(args, "id"))
+		if err != nil {
+			return gqlError(err.Error())
+		}
+		return gqlData(fieldName, result)
+
+	case "walkEdges":
+		result, err := resolver.WalkEdges(ctx, argString(args, "start"), argStringSlice(args, "edgeTypes"), argString(args, "direction"), argInt(args, "depth"))
+		if err != nil {
+			return gqlError(err.Error())
+		}
+		return gqlData(fieldName, result)
+
+	case "pathFinder":
+		result, err := resolver.PathFinder(ctx, argString(args, "start"), argString(args, "end"), argStringSlice(args, "edgePattern"), argInt(args, "maxHops"))
+		if err != nil {
+			return gqlError(err.Error())
+		}
+		return gqlData(fieldName, result)
+
+	case "blastRadius":
+		result, err := resolver.BlastRadius(ctx, argString(args, "node"), argInt(args, "depth"))
+		if err != nil {
+			return gqlError(err.Error())
+		}
+		return gqlData(fieldName, result)
+
+	case "subgraph":
+		result, err := resolver.Subgraph(ctx, argString(args, "center"), argInt(args, "radius"))
+		if err != nil {
+			return gqlError(err.Error())
+		}
+		return gqlData(fieldName, result)
+
+	case "ingestStatus":
+		result, err := resolver.IngestStatus(ctx, argString(args, "runId"))
+		if err != nil {
+			return gqlError(err.Error())
+		}
+		return gqlData(fieldName, result)
+
+	case "healthz":
+		result, err := resolver.Healthz(ctx)
+		if err != nil {
+			return gqlError(err.Error())
+		}
+		return gqlData(fieldName, result)
+
+	case "__schema":
+		return gqlData("__schema", map[string]any{
+			"queryType":    map[string]any{"name": "Query"},
+			"mutationType": map[string]any{"name": "Mutation"},
+		})
+
+	default:
+		return gqlError(fmt.Sprintf("unknown query field: %s", fieldName))
+	}
+}
+
+// dispatchMutation routes a parsed mutation field to the correct resolver method.
+func (s *Server) dispatchMutation(ctx context.Context, fieldName string, args map[string]any, resolver MutationResolver) map[string]any {
+	switch fieldName {
+	case "triggerIngest":
+		result, err := resolver.TriggerIngest(ctx, argString(args, "provider"), argStringSlice(args, "regions"))
+		if err != nil {
+			return gqlError(err.Error())
+		}
+		return gqlData(fieldName, result)
+
+	default:
+		return gqlError(fmt.Sprintf("unknown mutation field: %s", fieldName))
+	}
+}
+
+func gqlData(field string, data any) map[string]any {
+	return map[string]any{"data": map[string]any{field: data}}
+}
+
+func gqlError(message string) map[string]any {
+	return map[string]any{"data": nil, "errors": []map[string]any{{"message": message}}}
+}
+
+// resolveValue converts a gqlparser AST value to a Go value.
+func resolveValue(value *ast.Value, variables map[string]any) any {
+	if value == nil {
+		return nil
+	}
+	switch value.Kind {
+	case ast.Variable:
+		if v, ok := variables[value.Raw]; ok {
+			return v
+		}
+		return nil
+	case ast.IntValue:
+		var n int
+		fmt.Sscanf(value.Raw, "%d", &n)
+		return n
+	case ast.StringValue, ast.BlockValue, ast.EnumValue:
+		return value.Raw
+	case ast.ListValue:
+		var items []any
+		for _, child := range value.Children {
+			items = append(items, resolveValue(child.Value, variables))
+		}
+		return items
+	default:
+		return value.Raw
+	}
+}
+
+// Argument extraction helpers with type-safe defaults.
+
+func argString(args map[string]any, key string) string {
+	if v, ok := args[key]; ok {
+		if s, ok := v.(string); ok {
+			return s
+		}
+	}
+	return ""
+}
+
+func argInt(args map[string]any, key string) int {
+	if v, ok := args[key]; ok {
+		switch n := v.(type) {
+		case int:
+			return n
+		case float64:
+			return int(n)
+		}
+	}
+	return 0
+}
+
+func argStringSlice(args map[string]any, key string) []string {
+	if v, ok := args[key]; ok {
+		switch items := v.(type) {
+		case []any:
+			result := make([]string, 0, len(items))
+			for _, item := range items {
+				if s, ok := item.(string); ok {
+					result = append(result, s)
+				}
+			}
+			return result
+		case []string:
+			return items
+		}
+	}
+	return nil
 }
 
 // healthzHandler returns the health status.
@@ -101,213 +330,59 @@ func (s *Server) healthzHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "Healthy: %s", status)
 }
 
-// executeQuery parses a GraphQL query string and dispatches to resolver methods.
-// This is a lightweight hand-rolled dispatcher — production would use gqlgen.
-// It handles the 5 queries + 2 mutations defined in schema.graphql.
-func (s *Server) executeQuery(ctx context.Context, query string, variables map[string]interface{}) map[string]interface{} {
-	q := strings.TrimSpace(query)
-
-	// Detect mutation vs query
-	if strings.HasPrefix(q, "mutation") {
-		return s.executeMutation(ctx, q, variables)
+// rateLimiter returns middleware that rate-limits requests per IP address.
+// Configured at 100 requests per minute with burst of 10.
+func (s *Server) rateLimiter(next http.Handler) http.Handler {
+	type client struct {
+		limiter  *rate.Limiter
+		lastSeen time.Time
 	}
 
-	// Strip "query" prefix and outer braces
-	q = strings.TrimPrefix(q, "query")
-	q = strings.TrimSpace(q)
-	// Remove operation name if present (e.g., "MyQuery { ... }")
-	if idx := strings.Index(q, "{"); idx >= 0 {
-		q = q[idx:]
-	}
+	var (
+		mu      sync.Mutex
+		clients = make(map[string]*client)
+	)
 
-	// Route based on which field is requested
-	switch {
-	case strings.Contains(q, "findNode"):
-		label := extractStringArg(q, "label")
-		id := extractStringArg(q, "id")
-		result, err := s.resolver.FindNode(label, id)
-		if err != nil {
-			return gqlError(err.Error())
-		}
-		return gqlData("findNode", result)
-
-	case strings.Contains(q, "walkEdges"):
-		startId := extractStringArg(q, "startId")
-		edgeTypes := extractArrayArg(q, "edgeTypes")
-		direction := extractStringArg(q, "direction")
-		depth := extractIntArg(q, "depth")
-		result, err := s.resolver.WalkEdges(startId, edgeTypes, direction, depth)
-		if err != nil {
-			return gqlError(err.Error())
-		}
-		return gqlData("walkEdges", result)
-
-	case strings.Contains(q, "pathFinder"):
-		startId := extractStringArg(q, "startId")
-		endId := extractStringArg(q, "endId")
-		edgeTypes := extractArrayArg(q, "edgeTypes")
-		maxHops := extractIntArg(q, "maxHops")
-		result, err := s.resolver.PathFinder(startId, endId, edgeTypes, maxHops)
-		if err != nil {
-			return gqlError(err.Error())
-		}
-		return gqlData("pathFinder", result)
-
-	case strings.Contains(q, "blastRadius"):
-		nodeId := extractStringArg(q, "nodeId")
-		maxHops := extractIntArg(q, "maxHops")
-		result, err := s.resolver.BlastRadius(nodeId, maxHops)
-		if err != nil {
-			return gqlError(err.Error())
-		}
-		return gqlData("blastRadius", result)
-
-	case strings.Contains(q, "subgraph"):
-		centerId := extractStringArg(q, "centerId")
-		radius := extractIntArg(q, "radius")
-		result, err := s.resolver.Subgraph(centerId, radius)
-		if err != nil {
-			return gqlError(err.Error())
-		}
-		return gqlData("subgraph", result)
-
-	case strings.Contains(q, "ingestStatus"):
-		runId := extractStringArg(q, "runId")
-		result, err := s.resolver.IngestStatus(runId)
-		if err != nil {
-			return gqlError(err.Error())
-		}
-		return gqlData("ingestStatus", result)
-
-	case strings.Contains(q, "__schema"):
-		return gqlData("__schema", map[string]any{
-			"queryType":    map[string]any{"name": "Query"},
-			"mutationType": map[string]any{"name": "Mutation"},
-		})
-
-	default:
-		return gqlError(fmt.Sprintf("unrecognized query field in: %s", q[:min(len(q), 100)]))
-	}
-}
-
-func (s *Server) executeMutation(ctx context.Context, q string, variables map[string]interface{}) map[string]interface{} {
-	switch {
-	case strings.Contains(q, "triggerIngest"):
-		provider := extractStringArg(q, "provider")
-		regions := extractArrayArg(q, "regions")
-		result, err := s.resolver.TriggerIngest(provider, regions)
-		if err != nil {
-			return gqlError(err.Error())
-		}
-		return gqlData("triggerIngest", result)
-
-	default:
-		return gqlError("unrecognized mutation")
-	}
-}
-
-func gqlData(field string, data any) map[string]interface{} {
-	return map[string]interface{}{
-		"data": map[string]interface{}{field: data},
-	}
-}
-
-func gqlError(msg string) map[string]interface{} {
-	return map[string]interface{}{
-		"data":   nil,
-		"errors": []map[string]interface{}{{"message": msg}},
-	}
-}
-
-// extractStringArg extracts a string argument value from a raw GraphQL query.
-// Looks for: argName: "value" or argName: \"value\"
-func extractStringArg(q, argName string) string {
-	patterns := []string{
-		argName + `: "`,
-		argName + `: \"`,
-		argName + `:"`,
-	}
-	for _, prefix := range patterns {
-		idx := strings.Index(q, prefix)
-		if idx < 0 {
-			continue
-		}
-		start := idx + len(prefix)
-		// Find closing quote
-		for end := start; end < len(q); end++ {
-			if q[end] == '"' || (q[end] == '\\' && end+1 < len(q) && q[end+1] == '"') {
-				if q[end] == '"' {
-					return q[start:end]
+	// Clean up stale entries every 3 minutes
+	go func() {
+		for {
+			time.Sleep(3 * time.Minute)
+			mu.Lock()
+			for ip, c := range clients {
+				if time.Since(c.lastSeen) > 5*time.Minute {
+					delete(clients, ip)
 				}
-				end++ // skip escaped quote
+			}
+			mu.Unlock()
+		}
+	}()
+
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Extract IP without port
+		ip, _, err := net.SplitHostPort(r.RemoteAddr)
+		if err != nil {
+			ip = r.RemoteAddr
+		}
+
+		mu.Lock()
+		if _, exists := clients[ip]; !exists {
+			// 100 requests per minute = 100/60 per second ≈ 1.667 per second
+			clients[ip] = &client{
+				limiter: rate.NewLimiter(rate.Limit(100.0/60.0), 10),
 			}
 		}
-		// No closing quote found — return what we have until next special char
-		end := strings.IndexAny(q[start:], `")\}`)
-		if end >= 0 {
-			return q[start : start+end]
-		}
-	}
-	return ""
-}
+		clients[ip].lastSeen = time.Now()
+		limiter := clients[ip].limiter
+		mu.Unlock()
 
-// extractIntArg extracts an integer argument from a raw GraphQL query.
-func extractIntArg(q, argName string) int {
-	patterns := []string{argName + `: `, argName + `:`}
-	for _, prefix := range patterns {
-		idx := strings.Index(q, prefix)
-		if idx < 0 {
-			continue
+		if !limiter.Allow() {
+			s.logger.Warn("rate limit exceeded", "ip", ip)
+			http.Error(w, "Rate limit exceeded", http.StatusTooManyRequests)
+			return
 		}
-		start := idx + len(prefix)
-		// Read digits
-		end := start
-		for end < len(q) && q[end] >= '0' && q[end] <= '9' {
-			end++
-		}
-		if end > start {
-			val := 0
-			for _, c := range q[start:end] {
-				val = val*10 + int(c-'0')
-			}
-			return val
-		}
-	}
-	return 0
-}
 
-// extractArrayArg extracts a string array argument like: edgeTypes: ["a", "b"]
-func extractArrayArg(q, argName string) []string {
-	idx := strings.Index(q, argName+":")
-	if idx < 0 {
-		return nil
-	}
-	sub := q[idx:]
-	open := strings.Index(sub, "[")
-	if open < 0 {
-		return nil
-	}
-	close := strings.Index(sub[open:], "]")
-	if close < 0 {
-		return nil
-	}
-	inner := sub[open+1 : open+close]
-	var result []string
-	for _, part := range strings.Split(inner, ",") {
-		part = strings.TrimSpace(part)
-		part = strings.Trim(part, `"\"`)
-		if part != "" {
-			result = append(result, part)
-		}
-	}
-	return result
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
+		next.ServeHTTP(w, r)
+	})
 }
 
 // loggingMiddleware logs HTTP requests and responses.
