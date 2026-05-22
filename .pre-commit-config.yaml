@@ -49,16 +49,6 @@ repos:
         types: [rust]
         pass_filenames: false
 
-  # Go — golangci-lint via system binary
-  - repo: local
-    hooks:
-      - id: golangci-lint
-        name: golangci-lint
-        entry: bash -c 'cd go && golangci-lint run --timeout=2m ./...'
-        language: system
-        types: [go]
-        pass_filenames: false
-
   # Shell scripts
   - repo: https://github.com/koalaman/shellcheck-precommit
     rev: v0.11.0

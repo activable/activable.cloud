@@ -4,7 +4,6 @@ members = [
     "crates/activable-schema",
     "crates/activable-graph",
     "crates/activable-iam-eval",
-    "crates/activable-ffi",
     "crates/activable-graphql",
     "crates/activable-ingest",
 ]
