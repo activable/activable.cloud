@@ -106,13 +106,13 @@ activable.cloud/
 ├── crates/                    # Rust workspace
 │   ├── activable-schema/      # Node/edge types, ARN canonicalizer
 │   ├── activable-graph/       # PostgreSQL + Apache AGE driver
-│   ├── activable-iam-eval/    # IAM evaluator (Slice B stub)
+│   ├── activable-iam-eval/    # IAM evaluator (Parliament port — pending implementation)
 │   └── activable-ffi/         # UniFFI boundary (Rust → Go)
 ├── go/                        # Go module
 │   ├── cmd/activable/         # CLI entry point
 │   ├── internal/ingest/       # Ingestion framework
 │   ├── internal/telemetry/    # OpenTelemetry setup
-│   └── internal/api/          # REST API (Slice F)
+│   └── internal/api/          # REST API
 ├── bindings/                  # UniFFI-generated Go bindings (committed)
 ├── infra/
 │   ├── compose/               # Docker Compose (Postgres+AGE)
@@ -162,12 +162,12 @@ Contributions welcome! Please:
 
 Activable is in active development. Current focus:
 
-- **Slice A** (Phase 1–6): Graph schema, AWS IAM ingestion, Postgres+AGE backend
-- **Slice B** (TBD): Parliament integration (IAM policy evaluator)
-- **Slice C** (TBD): Attack-path queries and rule engine
-- **Slice D** (TBD): Kubernetes ingestion and IRSA bridge
-- **Slice E** (TBD): LLM/agent layer
-- **Slice F** (TBD): REST API and web UI
+- Graph schema and AWS IAM ingestion with Postgres+AGE backend
+- Parliament integration (IAM policy evaluator) — planned
+- Attack-path queries and rule engine — planned
+- Kubernetes ingestion and IRSA bridge — planned
+- LLM/agent layer — planned
+- REST API and web UI — planned
 
 See `plans/ROADMAP.md` for details *(local only)*.
 

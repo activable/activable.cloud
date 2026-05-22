@@ -4,7 +4,7 @@
 //! for populating and querying the cloud attack graph.
 
 /// Placeholder for AGE driver initialization.
-/// Populated in Phase 2.
+/// Pending implementation: connection pooling and Cypher query helpers.
 #[allow(dead_code)]
 pub struct AgeDriver {
     pool: Option<String>,

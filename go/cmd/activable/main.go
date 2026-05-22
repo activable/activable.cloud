@@ -31,7 +31,7 @@ var ingestCmd = &cobra.Command{
 	Use:   "ingest",
 	Short: "Ingest cloud provider data (not implemented)",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return fmt.Errorf("ingest command not yet implemented (Phase 4)")
+		return fmt.Errorf("ingest command not yet implemented")
 	},
 }
 

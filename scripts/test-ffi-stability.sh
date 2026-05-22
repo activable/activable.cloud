@@ -1,6 +1,6 @@
 #!/bin/bash
 # FFI stability test: concurrent stress test of UniFFI bindings.
-# Red-team-v2 P1: runs 100+ concurrent goroutines calling Rust version() function.
+# Runs 100+ concurrent goroutines calling Rust version() function.
 
 set -e
 
@@ -18,7 +18,7 @@ fi
 
 echo "Running FFI stability test (100+ concurrent goroutines calling Rust version())..."
 
-# Placeholder test runner (Phase 4 adds actual concurrent test harness)
+# Concurrent test runner via go test -race
 go test -race -count=10 -timeout=60s ./go/cmd/activable/... || {
     echo "Error: FFI stability test failed"
     exit 1

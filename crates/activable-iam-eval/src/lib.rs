@@ -1,16 +1,15 @@
-//! Activable IAM evaluator — Parliament port (Slice B stub).
+//! Activable IAM evaluator — Parliament port (pending implementation).
 //!
-//! SLICE-B-STUB: This crate is a placeholder for the Parliament-to-Rust port.
-//! Parliament integration is deferred to Slice B; this crate exports nothing functional.
-//! See plans/260521-1130-slice-a-graph-schema-aws-ingest/plan.md § "Out of scope".
+//! This crate is a placeholder for the Parliament-to-Rust port.
+//! Parliament integration is deferred; this crate exports nothing functional.
 
 /// Placeholder for IAM evaluator.
-/// Populated during Slice B.
+/// Pending implementation: Parliament IAM policy evaluation.
 pub mod evaluator {
     /// Stub evaluator function.
-    /// Will evaluate IAM policies in Slice B.
+    /// Pending implementation: evaluates IAM policies against resource ARNs.
     #[allow(unconditional_panic)]
     pub fn evaluate() {
-        unimplemented!("IAM evaluator porting deferred to Slice B")
+        unimplemented!("IAM evaluator porting not yet implemented")
     }
 }

@@ -1,7 +1,7 @@
 //! ARN parsing and canonicalization.
 //!
 //! Parses AWS ARNs into canonical form for consistent graph node identity.
-//! Phase 3 will populate this with full parser logic.
+//! Pending implementation: full parser logic for all ARN formats.
 
 use std::fmt;
 
@@ -26,7 +26,7 @@ impl Arn {
     /// # Errors
     /// Returns an error if the ARN format is invalid.
     pub fn parse(s: &str) -> Result<Self, String> {
-        // Placeholder implementation; Phase 3 expands this.
+        // Placeholder implementation; full ARN field parsing is pending.
         if !s.starts_with("arn:") {
             return Err("ARN must start with 'arn:'".to_string());
         }

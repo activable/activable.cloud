@@ -1,7 +1,7 @@
 package ingest
 
 // Runtime manages the ingestion lifecycle.
-// Populated in Phase 4.
+// Pending implementation: provider registration and orchestration.
 type Runtime struct {
 	ingestors map[string]Ingestor
 }

@@ -11,7 +11,7 @@ import (
 // TestConcurrentFFI exercises the FFI interface with concurrent goroutine calls.
 //
 // This test is critical for ensuring thread safety of the UniFFI bindings.
-// Red-team-v2 P1 requires: 100+ concurrent goroutine calls to Rust FFI functions
+// Requirement: 100+ concurrent goroutine calls to Rust FFI functions
 // returning String, with no segfaults, races, or panics.
 //
 // The test launches 100 goroutines, each calling activable.Version() 10 times,
@@ -122,7 +122,7 @@ func TestVersionFormat(t *testing.T) {
 
 	// The Rust version() function returns "activable vX.Y.Z"
 	if len(version) < 3 || version == "0.1.0" && !contains(version, "activable") {
-		t.Logf("Version format check (not enforced in Phase 1): %s", version)
+		t.Logf("Version format check (not enforced yet): %s", version)
 	}
 }
 

@@ -204,7 +204,7 @@ If results are borderline or NO-GO, check:
    - If concurrent p95 >> single-thread p95 (e.g., 5×), connection pool is bottleneck, not AGE.
    - Increase pool_size or reduce concurrency.
 
-## Vela-Kuzu Escape Hatch (Red-Team C5)
+## Vela-Kuzu Escape Hatch
 
 If verdict is NO-GO and the user chooses Vela-Kuzu:
 

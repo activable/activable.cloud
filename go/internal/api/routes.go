@@ -1,11 +1,10 @@
 package api
 
-// REST API scaffolding for Slice F.
-// Placeholder for Phase 6.
+// REST API scaffolding — pending implementation.
 
 // Routes defines the HTTP server routes.
 type Routes struct {
-	// Populated in Slice F
+	// Pending implementation: HTTP route registration
 }
 
 // NewRoutes creates a new Routes instance.

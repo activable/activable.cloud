@@ -1,6 +1,6 @@
 #!/bin/bash
 # Binary size check: validates that the stripped binary is <= 50MB.
-# Red-team-v2 I3: phase 1 requirement.
+# 50MB binary-size budget (enforced in CI).
 
 set -e
 
