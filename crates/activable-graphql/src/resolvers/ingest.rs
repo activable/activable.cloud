@@ -21,7 +21,8 @@ fn format_rfc3339_now() -> String {
     let z = days as i64 + 719468;
     let era = z / 146097;
     let day_of_era = z - era * 146097;
-    let year_of_era = (day_of_era - day_of_era / 1460 + day_of_era / 36524 - day_of_era / 146096) / 365;
+    let year_of_era =
+        (day_of_era - day_of_era / 1460 + day_of_era / 36524 - day_of_era / 146096) / 365;
     let year = year_of_era + era * 400;
     let day_of_year = day_of_era - (365 * year_of_era + year_of_era / 4 - year_of_era / 100);
     let month = (5 * day_of_year + 2) / 153;
@@ -29,7 +30,10 @@ fn format_rfc3339_now() -> String {
     let month = if month < 10 { month + 3 } else { month - 9 };
     let year = if month <= 2 { year + 1 } else { year };
 
-    format!("{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z", year, month, day, hours, minutes, seconds)
+    format!(
+        "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z",
+        year, month, day, hours, minutes, seconds
+    )
 }
 
 /// Trigger an ingestion run (v1: placeholder that logs and returns pending status).

@@ -1,10 +1,10 @@
 //! Resolvers for graph traversal: walkEdges and blastRadius.
 
-use async_graphql::Context;
-use activable_graph::GraphClient;
-use activable_graph::types::{NodeId, Direction};
-use crate::types::GqlNodeRef;
 use crate::error::map_graph_error;
+use crate::types::GqlNodeRef;
+use activable_graph::types::{Direction, NodeId};
+use activable_graph::GraphClient;
+use async_graphql::Context;
 use futures::StreamExt;
 
 const MAX_EDGE_TYPES: usize = 10;
@@ -20,18 +20,20 @@ pub async fn walk_edges(
 ) -> async_graphql::Result<Vec<GqlNodeRef>> {
     if edge_types.len() > MAX_EDGE_TYPES {
         return Err(async_graphql::Error::new(format!(
-            "Too many edge types (max {})", MAX_EDGE_TYPES
+            "Too many edge types (max {})",
+            MAX_EDGE_TYPES
         )));
     }
     if !(0..=MAX_DEPTH).contains(&depth) {
         return Err(async_graphql::Error::new(format!(
-            "Depth must be 0-{}", MAX_DEPTH
+            "Depth must be 0-{}",
+            MAX_DEPTH
         )));
     }
 
-    let client = ctx.data::<GraphClient>().map_err(|_| {
-        async_graphql::Error::new("GraphClient not available")
-    })?;
+    let client = ctx
+        .data::<GraphClient>()
+        .map_err(|_| async_graphql::Error::new("GraphClient not available"))?;
 
     let dir = match direction.to_uppercase().as_str() {
         "OUTGOING" => Direction::Outgoing,
@@ -43,7 +45,12 @@ pub async fn walk_edges(
     let edge_type_refs: Vec<&str> = edge_types.iter().map(|s| s.as_str()).collect();
 
     let stream = client
-        .walk_edges(&NodeId::from(start.as_str()), &edge_type_refs, dir, depth as u8)
+        .walk_edges(
+            &NodeId::from(start.as_str()),
+            &edge_type_refs,
+            dir,
+            depth as u8,
+        )
         .await
         .map_err(|e| {
             tracing::error!("walk_edges failed: {}", e);
@@ -73,13 +80,14 @@ pub async fn blast_radius(
 ) -> async_graphql::Result<Vec<GqlNodeRef>> {
     if !(0..=MAX_DEPTH).contains(&depth) {
         return Err(async_graphql::Error::new(format!(
-            "Depth must be 0-{}", MAX_DEPTH
+            "Depth must be 0-{}",
+            MAX_DEPTH
         )));
     }
 
-    let client = ctx.data::<GraphClient>().map_err(|_| {
-        async_graphql::Error::new("GraphClient not available")
-    })?;
+    let client = ctx
+        .data::<GraphClient>()
+        .map_err(|_| async_graphql::Error::new("GraphClient not available"))?;
 
     let stream = client
         .blast_radius(&NodeId::from(node.as_str()), &[], depth as u8)

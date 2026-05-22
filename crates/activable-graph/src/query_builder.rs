@@ -35,16 +35,18 @@ pub fn validate_label(label: &str) -> Result<&str, GraphError> {
 
     let first = label.chars().next().unwrap();
     if !first.is_ascii_alphabetic() {
-        return Err(GraphError::UnsafeParameter(
-            format!("label must start with a letter: {}", label),
-        ));
+        return Err(GraphError::UnsafeParameter(format!(
+            "label must start with a letter: {}",
+            label
+        )));
     }
 
     for c in label.chars() {
         if !c.is_ascii_alphanumeric() && c != '_' {
-            return Err(GraphError::UnsafeParameter(
-                format!("label contains invalid character '{}': {}", c, label),
-            ));
+            return Err(GraphError::UnsafeParameter(format!(
+                "label contains invalid character '{}': {}",
+                c, label
+            )));
         }
     }
 
@@ -85,9 +87,7 @@ impl CypherBuilder {
         } else {
             let labels: Vec<String> = edge_types
                 .iter()
-                .map(|et| {
-                    validate_label(et).unwrap_or(et).to_string()
-                })
+                .map(|et| validate_label(et).unwrap_or(et).to_string())
                 .collect();
             format!("[r:{}]", labels.join("|"))
         };
@@ -296,13 +296,18 @@ mod tests {
     fn escape_cypher_drop_table_canary() {
         let payload = "'; DROP TABLE x; --";
         let result = escape_cypher(payload);
-        assert!(result.starts_with("\\'"), "Leading quote must be escaped: {}", result);
+        assert!(
+            result.starts_with("\\'"),
+            "Leading quote must be escaped: {}",
+            result
+        );
         for (i, c) in result.char_indices() {
             if c == '\'' {
                 assert!(
                     i > 0 && result.as_bytes()[i - 1] == b'\\',
                     "Unescaped single-quote at index {}: {}",
-                    i, result
+                    i,
+                    result
                 );
             }
         }
@@ -415,7 +420,8 @@ mod tests {
                 assert!(
                     i + 1 < bytes.len() && bytes[i + 1] == b'\'',
                     "Unescaped single-quote at index {}: {}",
-                    i, result
+                    i,
+                    result
                 );
                 i += 2;
             } else {
@@ -428,7 +434,11 @@ mod tests {
     fn escape_sql_literal_drop_table_canary() {
         let payload = "'; DROP TABLE x; --";
         let result = escape_sql_literal(payload);
-        assert!(result.starts_with("''"), "Leading quote must be doubled: {}", result);
+        assert!(
+            result.starts_with("''"),
+            "Leading quote must be doubled: {}",
+            result
+        );
         let bytes = result.as_bytes();
         let mut i = 0;
         while i < bytes.len() {
@@ -436,7 +446,8 @@ mod tests {
                 assert!(
                     i + 1 < bytes.len() && bytes[i + 1] == b'\'',
                     "Unescaped single-quote at index {}: {}",
-                    i, result
+                    i,
+                    result
                 );
                 i += 2;
             } else {
@@ -586,9 +597,7 @@ mod tests {
     fn builder_walk_edges_direction_both() {
         let builder = CypherBuilder::new("test_graph");
         let id = NodeId::from("principal_1");
-        let sql = builder
-            .walk_edges(&id, &[], Direction::Both, 1)
-            .unwrap();
+        let sql = builder.walk_edges(&id, &[], Direction::Both, 1).unwrap();
         assert!(!sql.contains("->"));
         assert!(!sql.contains("<-"));
     }

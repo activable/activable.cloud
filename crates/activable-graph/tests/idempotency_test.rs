@@ -7,11 +7,13 @@ use activable_graph::GraphPool;
 fn test_url_parts() -> Option<(String, u16, String, String, String)> {
     let url = std::env::var("AGE_TEST_URL").ok()?;
     let url = url.strip_prefix("postgres://")?;
-    
+
     let (auth, rest) = url.split_once('@')?;
     let (user, password) = auth.split_once(':')?;
     let (host_port, dbname) = rest.split_once('/')?;
-    let (host, port_str) = host_port.split_once(':').or_else(|| Some((host_port, "5432")))?;
+    let (host, port_str) = host_port
+        .split_once(':')
+        .or_else(|| Some((host_port, "5432")))?;
     let port: u16 = port_str.parse().ok()?;
 
     Some((
@@ -24,11 +26,18 @@ fn test_url_parts() -> Option<(String, u16, String, String, String)> {
 }
 
 /// Helper to count nodes in a graph via raw SQL query
-async fn count_nodes(pool: &deadpool_postgres::Pool, graph_name: &str) -> Result<i64, Box<dyn std::error::Error>> {
+async fn count_nodes(
+    pool: &deadpool_postgres::Pool,
+    graph_name: &str,
+) -> Result<i64, Box<dyn std::error::Error>> {
     let conn = pool.get().await?;
-    conn.batch_execute("LOAD 'age'; SET search_path = ag_catalog, \"$user\", public;").await?;
+    conn.batch_execute("LOAD 'age'; SET search_path = ag_catalog, \"$user\", public;")
+        .await?;
 
-    let count_query = format!("SELECT count(*) FROM (SELECT * FROM cypher('{}', $$MATCH (n) RETURN n$$) AS (n agtype)) t", graph_name);
+    let count_query = format!(
+        "SELECT count(*) FROM (SELECT * FROM cypher('{}', $$MATCH (n) RETURN n$$) AS (n agtype)) t",
+        graph_name
+    );
     let rows = conn.query(&count_query, &[]).await?;
 
     let count: i64 = if rows.is_empty() {
@@ -70,7 +79,11 @@ async fn test_idempotency_fixtures_present() {
 
     for file in required_files {
         let path = fixture_path.join(file);
-        assert!(path.exists(), "required fixture file missing: {}", path.display());
+        assert!(
+            path.exists(),
+            "required fixture file missing: {}",
+            path.display()
+        );
     }
 }
 
@@ -99,8 +112,13 @@ async fn test_idempotency_double_ingest() {
     // Teardown: drop graph if exists (best-effort, may not exist)
     let teardown_conn = pool.get().await;
     if let Ok(conn) = teardown_conn {
-        let drop_query = format!("SELECT * FROM ag_catalog.drop_graph('{}', true)", graph_name);
-        let _ = conn.batch_execute("LOAD 'age'; SET search_path = ag_catalog, \"$user\", public;").await;
+        let drop_query = format!(
+            "SELECT * FROM ag_catalog.drop_graph('{}', true)",
+            graph_name
+        );
+        let _ = conn
+            .batch_execute("LOAD 'age'; SET search_path = ag_catalog, \"$user\", public;")
+            .await;
         let _ = conn.query(&drop_query, &[]).await;
     }
 
@@ -113,7 +131,10 @@ async fn test_idempotency_double_ingest() {
         }
     };
 
-    if let Err(_) = setup_conn.batch_execute("LOAD 'age'; SET search_path = ag_catalog, \"$user\", public;").await {
+    if let Err(_) = setup_conn
+        .batch_execute("LOAD 'age'; SET search_path = ag_catalog, \"$user\", public;")
+        .await
+    {
         println!("Skipping: failed to load age");
         return;
     }
@@ -153,13 +174,21 @@ async fn test_idempotency_double_ingest() {
     };
 
     println!("First ingest: {} nodes", count1);
-    assert!(count1 > 0, "first ingest should have created at least one node");
+    assert!(
+        count1 > 0,
+        "first ingest should have created at least one node"
+    );
 
     // Cleanup
     let cleanup_conn = pool.get().await;
     if let Ok(conn) = cleanup_conn {
-        let _ = conn.batch_execute("LOAD 'age'; SET search_path = ag_catalog, \"$user\", public;").await;
-        let drop_query = format!("SELECT * FROM ag_catalog.drop_graph('{}', true)", graph_name);
+        let _ = conn
+            .batch_execute("LOAD 'age'; SET search_path = ag_catalog, \"$user\", public;")
+            .await;
+        let drop_query = format!(
+            "SELECT * FROM ag_catalog.drop_graph('{}', true)",
+            graph_name
+        );
         let _ = conn.query(&drop_query, &[]).await;
     }
 }

@@ -2,7 +2,7 @@
 //!
 //! Run with: AGE_TEST_URL="postgres://activable:password@localhost:5433/activable" cargo test --test graph_client_integration
 
-use activable_graph::{GraphClient, GraphPool, types::NodeId};
+use activable_graph::{types::NodeId, GraphClient, GraphPool};
 
 fn test_url_parts() -> Option<(String, u16, String, String, String)> {
     let url = std::env::var("AGE_TEST_URL").ok()?;
@@ -10,9 +10,17 @@ fn test_url_parts() -> Option<(String, u16, String, String, String)> {
     let (auth, rest) = url.split_once('@')?;
     let (user, password) = auth.split_once(':')?;
     let (host_port, dbname) = rest.split_once('/')?;
-    let (host, port_str) = host_port.split_once(':').or_else(|| Some((host_port, "5432")))?;
+    let (host, port_str) = host_port
+        .split_once(':')
+        .or_else(|| Some((host_port, "5432")))?;
     let port: u16 = port_str.parse().ok()?;
-    Some((host.to_string(), port, user.to_string(), password.to_string(), dbname.to_string()))
+    Some((
+        host.to_string(),
+        port,
+        user.to_string(),
+        password.to_string(),
+        dbname.to_string(),
+    ))
 }
 
 async fn setup_test_graph(pool: &deadpool_postgres::Pool, graph_name: &str) -> bool {
@@ -21,11 +29,22 @@ async fn setup_test_graph(pool: &deadpool_postgres::Pool, graph_name: &str) -> b
         Err(_) => return false,
     };
 
-    if let Err(_) = conn.batch_execute("LOAD 'age'; SET search_path = ag_catalog, \"$user\", public;").await {
+    if let Err(_) = conn
+        .batch_execute("LOAD 'age'; SET search_path = ag_catalog, \"$user\", public;")
+        .await
+    {
         return false;
     }
 
-    let _ = conn.query(&format!("SELECT * FROM ag_catalog.drop_graph('{}', true)", graph_name), &[]).await;
+    let _ = conn
+        .query(
+            &format!(
+                "SELECT * FROM ag_catalog.drop_graph('{}', true)",
+                graph_name
+            ),
+            &[],
+        )
+        .await;
 
     let create_graph = format!("SELECT * FROM ag_catalog.create_graph('{}')", graph_name);
     if let Err(_) = conn.query(&create_graph, &[]).await {
@@ -86,8 +105,15 @@ async fn test_find_by_id_known() {
 
     let cleanup_conn = pool.get().await;
     if let Ok(conn) = cleanup_conn {
-        let _ = conn.batch_execute("LOAD 'age'; SET search_path = ag_catalog, \"$user\", public;").await;
-        let _ = conn.query("SELECT * FROM ag_catalog.drop_graph('test_find_graph', true)", &[]).await;
+        let _ = conn
+            .batch_execute("LOAD 'age'; SET search_path = ag_catalog, \"$user\", public;")
+            .await;
+        let _ = conn
+            .query(
+                "SELECT * FROM ag_catalog.drop_graph('test_find_graph', true)",
+                &[],
+            )
+            .await;
     }
 }
 
@@ -118,7 +144,10 @@ async fn test_find_by_id_unknown() {
 
     let node_id = NodeId::from("arn:aws:iam::123456789012:user/unknown");
     let result = client.find_by_id("Principal", &node_id).await;
-    assert!(result.is_ok(), "find_by_id should return Ok(None) for unknown node");
+    assert!(
+        result.is_ok(),
+        "find_by_id should return Ok(None) for unknown node"
+    );
 
     match result {
         Ok(None) => println!("✓ unknown node correctly returned None"),
@@ -128,7 +157,14 @@ async fn test_find_by_id_unknown() {
 
     let cleanup_conn = pool.get().await;
     if let Ok(conn) = cleanup_conn {
-        let _ = conn.batch_execute("LOAD 'age'; SET search_path = ag_catalog, \"$user\", public;").await;
-        let _ = conn.query("SELECT * FROM ag_catalog.drop_graph('test_find_unknown_graph', true)", &[]).await;
+        let _ = conn
+            .batch_execute("LOAD 'age'; SET search_path = ag_catalog, \"$user\", public;")
+            .await;
+        let _ = conn
+            .query(
+                "SELECT * FROM ag_catalog.drop_graph('test_find_unknown_graph', true)",
+                &[],
+            )
+            .await;
     }
 }

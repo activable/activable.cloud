@@ -14,12 +14,9 @@ pub fn query_find_node(label: String, id: String) -> Result<String, ActivableErr
 
     let node_id = NodeId::from(id.as_str());
 
-    let result = state.runtime.block_on(async {
-        state
-            .client
-            .find_by_id(&label, &node_id)
-            .await
-    })?;
+    let result = state
+        .runtime
+        .block_on(async { state.client.find_by_id(&label, &node_id).await })?;
 
     match result {
         Some(node_ref) => {
@@ -176,9 +173,9 @@ pub fn query_subgraph(center_id: String, radius: u32) -> Result<String, Activabl
     let center = NodeId::from(center_id.as_str());
 
     let radius_u8 = u8::try_from(radius).unwrap_or(u8::MAX);
-    let subgraph = state.runtime.block_on(async {
-        state.client.subgraph(&center, radius_u8).await
-    })?;
+    let subgraph = state
+        .runtime
+        .block_on(async { state.client.subgraph(&center, radius_u8).await })?;
 
     // Serialize Subgraph to JSON with center + nodes
     let json = serde_json::json!({

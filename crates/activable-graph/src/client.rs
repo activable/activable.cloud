@@ -2,7 +2,7 @@
 
 use crate::error::GraphError;
 use crate::query_builder::CypherBuilder;
-use crate::types::{Direction, Node, NodeId, NodeRef, Path, Subgraph, HydrationQuery};
+use crate::types::{Direction, HydrationQuery, Node, NodeId, NodeRef, Path, Subgraph};
 use deadpool_postgres::Pool;
 use futures::stream::{self, Stream};
 use std::sync::Arc;
@@ -26,7 +26,11 @@ impl GraphClient {
     }
 
     /// Find a node by label and ID.
-    pub async fn find_by_id(&self, label: &str, id: &NodeId) -> Result<Option<NodeRef>, GraphError> {
+    pub async fn find_by_id(
+        &self,
+        label: &str,
+        id: &NodeId,
+    ) -> Result<Option<NodeRef>, GraphError> {
         let conn = self
             .pool
             .get()
@@ -88,8 +92,12 @@ impl GraphClient {
         let refs: Vec<NodeRef> = rows
             .iter()
             .map(|row| {
-                let id: &str = row.try_get(0).map_err(|e| GraphError::Parse(e.to_string()))?;
-                let labels: &str = row.try_get(1).map_err(|e| GraphError::Parse(e.to_string()))?;
+                let id: &str = row
+                    .try_get(0)
+                    .map_err(|e| GraphError::Parse(e.to_string()))?;
+                let labels: &str = row
+                    .try_get(1)
+                    .map_err(|e| GraphError::Parse(e.to_string()))?;
                 // labels come as a JSON array string "[\"Label\"]"; extract the first.
                 let label = extract_first_label(labels).unwrap_or("Unknown".to_string());
                 Ok(NodeRef::new(id, label))
@@ -205,8 +213,12 @@ impl GraphClient {
         let refs: Vec<NodeRef> = rows
             .iter()
             .map(|row| {
-                let id: &str = row.try_get(0).map_err(|e| GraphError::Parse(e.to_string()))?;
-                let labels: &str = row.try_get(1).map_err(|e| GraphError::Parse(e.to_string()))?;
+                let id: &str = row
+                    .try_get(0)
+                    .map_err(|e| GraphError::Parse(e.to_string()))?;
+                let labels: &str = row
+                    .try_get(1)
+                    .map_err(|e| GraphError::Parse(e.to_string()))?;
                 let label = extract_first_label(labels).unwrap_or("Unknown".to_string());
                 Ok(NodeRef::new(id, label))
             })
@@ -238,8 +250,12 @@ impl GraphClient {
         let nodes: Vec<NodeRef> = rows
             .iter()
             .map(|row| {
-                let id: &str = row.try_get(0).map_err(|e| GraphError::Parse(e.to_string()))?;
-                let labels: &str = row.try_get(1).map_err(|e| GraphError::Parse(e.to_string()))?;
+                let id: &str = row
+                    .try_get(0)
+                    .map_err(|e| GraphError::Parse(e.to_string()))?;
+                let labels: &str = row
+                    .try_get(1)
+                    .map_err(|e| GraphError::Parse(e.to_string()))?;
                 let label = extract_first_label(labels).unwrap_or("Unknown".to_string());
                 Ok(NodeRef::new(id, label))
             })
@@ -341,11 +357,7 @@ fn extract_first_label(labels_str: &str) -> Option<String> {
     if trimmed.is_empty() {
         return None;
     }
-    let label = trimmed
-        .split(',')
-        .next()?
-        .trim_matches('"')
-        .to_string();
+    let label = trimmed.split(',').next()?.trim_matches('"').to_string();
     if label.is_empty() {
         None
     } else {

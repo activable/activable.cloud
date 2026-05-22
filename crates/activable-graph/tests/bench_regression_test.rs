@@ -8,9 +8,17 @@ fn test_url_parts() -> Option<(String, u16, String, String, String)> {
     let (auth, rest) = url.split_once('@')?;
     let (user, password) = auth.split_once(':')?;
     let (host_port, dbname) = rest.split_once('/')?;
-    let (host, port_str) = host_port.split_once(':').or_else(|| Some((host_port, "5432")))?;
+    let (host, port_str) = host_port
+        .split_once(':')
+        .or_else(|| Some((host_port, "5432")))?;
     let port: u16 = port_str.parse().ok()?;
-    Some((host.to_string(), port, user.to_string(), password.to_string(), dbname.to_string()))
+    Some((
+        host.to_string(),
+        port,
+        user.to_string(),
+        password.to_string(),
+        dbname.to_string(),
+    ))
 }
 
 #[tokio::test]
@@ -28,7 +36,7 @@ async fn test_bench_regression_latencies() {
     // This test documents that latency assertions use thresholds from Phase 2:
     // - 6-hop VLE p95 < 2,000,000 µs
     // - shortest-path p95 < 3,000,000 µs
-    
+
     println!("Benchmark regression test: latency thresholds locked per Phase 2 spike");
     println!("Test infrastructure ready for fixture loading (pending Phase 3)");
 }

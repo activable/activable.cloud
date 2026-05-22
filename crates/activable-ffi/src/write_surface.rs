@@ -17,7 +17,15 @@ pub fn graph_initialize(
     graph_name: String,
     max_connections: u32,
 ) -> Result<(), ActivableError> {
-    init_global(host, port, user, password, dbname, graph_name, max_connections)
+    init_global(
+        host,
+        port,
+        user,
+        password,
+        dbname,
+        graph_name,
+        max_connections,
+    )
 }
 
 /// Add a single node to the graph.
@@ -29,8 +37,8 @@ pub fn add_node(label: String, id: String, properties_json: String) -> Result<()
     let state = get_global()?;
 
     // Parse properties JSON
-    let properties: serde_json::Value = serde_json::from_str(&properties_json)
-        .map_err(|e| ActivableError::InvalidInput {
+    let properties: serde_json::Value =
+        serde_json::from_str(&properties_json).map_err(|e| ActivableError::InvalidInput {
             message: format!("invalid JSON properties: {}", e),
         })?;
 
@@ -70,8 +78,8 @@ pub fn add_nodes_batch(nodes_json: String) -> Result<u32, ActivableError> {
     let state = get_global()?;
 
     // Parse JSON array
-    let nodes_input: Vec<serde_json::Value> = serde_json::from_str(&nodes_json)
-        .map_err(|e| ActivableError::InvalidInput {
+    let nodes_input: Vec<serde_json::Value> =
+        serde_json::from_str(&nodes_json).map_err(|e| ActivableError::InvalidInput {
             message: format!("invalid JSON array: {}", e),
         })?;
 
@@ -110,9 +118,10 @@ pub fn add_nodes_batch(nodes_json: String) -> Result<u32, ActivableError> {
             .to_string();
 
         // Merge properties if present, or use empty object
-        let properties = obj.get("properties").cloned().unwrap_or_else(|| {
-            serde_json::Value::Object(serde_json::Map::new())
-        });
+        let properties = obj
+            .get("properties")
+            .cloned()
+            .unwrap_or_else(|| serde_json::Value::Object(serde_json::Map::new()));
 
         let mut node_obj = match properties {
             serde_json::Value::Object(o) => o,
@@ -158,8 +167,8 @@ pub fn add_edge(
     let state = get_global()?;
 
     // Validate properties JSON
-    let _properties: serde_json::Value = serde_json::from_str(&properties_json)
-        .map_err(|e| ActivableError::InvalidInput {
+    let _properties: serde_json::Value =
+        serde_json::from_str(&properties_json).map_err(|e| ActivableError::InvalidInput {
             message: format!("invalid JSON properties: {}", e),
         })?;
 
@@ -187,8 +196,8 @@ pub fn add_edges_batch(edges_json: String) -> Result<u32, ActivableError> {
     let state = get_global()?;
 
     // Parse JSON array
-    let edges_input: Vec<serde_json::Value> = serde_json::from_str(&edges_json)
-        .map_err(|e| ActivableError::InvalidInput {
+    let edges_input: Vec<serde_json::Value> =
+        serde_json::from_str(&edges_json).map_err(|e| ActivableError::InvalidInput {
             message: format!("invalid JSON array: {}", e),
         })?;
 
@@ -236,16 +245,14 @@ pub fn add_edges_batch(edges_json: String) -> Result<u32, ActivableError> {
 
         // Validate properties if present
         if let Some(props) = obj.get("properties") {
-            serde_json::from_str::<serde_json::Value>(&props.to_string())
-                .map_err(|e| ActivableError::InvalidInput {
+            serde_json::from_str::<serde_json::Value>(&props.to_string()).map_err(|e| {
+                ActivableError::InvalidInput {
                     message: format!("invalid properties JSON: {}", e),
-                })?;
+                }
+            })?;
         }
 
-        by_type
-            .entry(edge_type)
-            .or_default()
-            .push((from_id, to_id));
+        by_type.entry(edge_type).or_default().push((from_id, to_id));
     }
 
     // Insert each edge_type group

@@ -1,8 +1,8 @@
 //! GraphQL schema definition: Query and Mutation root types.
 
-use async_graphql::{Object, EmptySubscription, Schema, Context};
-use crate::types::*;
 use crate::resolvers;
+use crate::types::*;
+use async_graphql::{Context, EmptySubscription, Object, Schema};
 
 /// Type alias for the complete GraphQL schema.
 pub type AppSchema = Schema<QueryRoot, MutationRoot, EmptySubscription>;
@@ -67,10 +67,7 @@ impl QueryRoot {
     }
 
     /// Get the status of a previous ingest run (v1: placeholder).
-    async fn ingest_status(
-        &self,
-        run_id: String,
-    ) -> async_graphql::Result<Option<GqlIngestRun>> {
+    async fn ingest_status(&self, run_id: String) -> async_graphql::Result<Option<GqlIngestRun>> {
         resolvers::ingest::ingest_status(run_id).await
     }
 

@@ -46,8 +46,7 @@ pub struct GqlPath {
 
 impl From<activable_graph::types::Path> for GqlPath {
     fn from(p: activable_graph::types::Path) -> Self {
-        let node_refs: Vec<GqlNodeRef> =
-            p.nodes.into_iter().map(GqlNodeRef::from).collect();
+        let node_refs: Vec<GqlNodeRef> = p.nodes.into_iter().map(GqlNodeRef::from).collect();
 
         // Construct edges from consecutive node pairs and edge_labels
         let edges = p

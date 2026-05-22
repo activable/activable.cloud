@@ -125,6 +125,8 @@ impl<'a> HydrationQuery<'a> {
 
     /// Execute and return the fully hydrated Node.
     pub async fn execute(self) -> Result<Node, crate::error::GraphError> {
-        self.client.hydrate_internal(self.node_ref, self.fields).await
+        self.client
+            .hydrate_internal(self.node_ref, self.fields)
+            .await
     }
 }

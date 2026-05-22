@@ -2,10 +2,10 @@
 
 use crate::error::ActivableError;
 use activable_graph::{GraphClient, GraphPool};
+use deadpool_postgres::Pool;
 use std::sync::Arc;
 use std::sync::OnceLock;
 use tokio::runtime::Runtime;
-use deadpool_postgres::Pool;
 
 pub struct GlobalRuntime {
     pub runtime: Runtime,

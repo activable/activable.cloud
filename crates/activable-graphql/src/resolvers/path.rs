@@ -1,10 +1,10 @@
 //! Resolver for finding paths between nodes.
 
-use async_graphql::Context;
-use activable_graph::GraphClient;
-use activable_graph::types::NodeId;
-use crate::types::GqlPath;
 use crate::error::map_graph_error;
+use crate::types::GqlPath;
+use activable_graph::types::NodeId;
+use activable_graph::GraphClient;
+use async_graphql::Context;
 
 /// Find paths between two nodes.
 pub async fn path_finder(
@@ -14,9 +14,9 @@ pub async fn path_finder(
     edge_pattern: Vec<String>,
     max_hops: i32,
 ) -> async_graphql::Result<Vec<GqlPath>> {
-    let client = ctx.data::<GraphClient>().map_err(|_| {
-        async_graphql::Error::new("GraphClient not available")
-    })?;
+    let client = ctx
+        .data::<GraphClient>()
+        .map_err(|_| async_graphql::Error::new("GraphClient not available"))?;
 
     let pattern_refs: Vec<&str> = edge_pattern.iter().map(|s| s.as_str()).collect();
 

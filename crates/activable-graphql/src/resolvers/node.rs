@@ -1,10 +1,10 @@
 //! Resolver for finding nodes by label and ID.
 
-use async_graphql::Context;
-use activable_graph::GraphClient;
-use activable_graph::types::NodeId;
-use crate::types::GqlNode;
 use crate::error::map_graph_error;
+use crate::types::GqlNode;
+use activable_graph::types::NodeId;
+use activable_graph::GraphClient;
+use async_graphql::Context;
 
 /// Find a node by its label and ID.
 pub async fn find_node(
@@ -12,9 +12,9 @@ pub async fn find_node(
     label: String,
     id: String,
 ) -> async_graphql::Result<Option<GqlNode>> {
-    let client = ctx.data::<GraphClient>().map_err(|_| {
-        async_graphql::Error::new("GraphClient not available")
-    })?;
+    let client = ctx
+        .data::<GraphClient>()
+        .map_err(|_| async_graphql::Error::new("GraphClient not available"))?;
 
     let result = client
         .find_by_id(&label, &NodeId::from(id.as_str()))

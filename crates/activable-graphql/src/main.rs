@@ -1,23 +1,18 @@
 //! Activable GraphQL API server using async-graphql and axum.
 
-use std::net::SocketAddr;
-use axum::{
-    extract::DefaultBodyLimit,
-    routing::get,
-    Router,
-    Json,
-};
-use async_graphql::Schema;
-use activable_graph::GraphClient;
 use activable_graph::pool::GraphPool;
+use activable_graph::GraphClient;
+use async_graphql::Schema;
+use axum::{extract::DefaultBodyLimit, routing::get, Json, Router};
+use std::net::SocketAddr;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-mod schema;
-mod types;
 mod error;
 mod resolvers;
+mod schema;
+mod types;
 
-use schema::{AppSchema, QueryRoot, MutationRoot};
+use schema::{AppSchema, MutationRoot, QueryRoot};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -44,8 +39,7 @@ async fn main() -> anyhow::Result<()> {
     let db_password =
         std::env::var("ACTIVABLE_DB_PASSWORD").unwrap_or_else(|_| "activable".to_string());
     let db_name = std::env::var("ACTIVABLE_DB_NAME").unwrap_or_else(|_| "activable".to_string());
-    let graph_name =
-        std::env::var("ACTIVABLE_GRAPH_NAME").unwrap_or_else(|_| "cloud".to_string());
+    let graph_name = std::env::var("ACTIVABLE_GRAPH_NAME").unwrap_or_else(|_| "cloud".to_string());
     let server_port: u16 = std::env::var("PORT")
         .unwrap_or_else(|_| "8080".to_string())
         .parse()?;
@@ -62,8 +56,18 @@ async fn main() -> anyhow::Result<()> {
     );
 
     // Build the connection pool
-    let pool = GraphPool::build(&db_host, db_port, &db_user, &db_password, &db_name, max_connections)?;
-    tracing::info!("Database pool initialized with max {} connections", max_connections);
+    let pool = GraphPool::build(
+        &db_host,
+        db_port,
+        &db_user,
+        &db_password,
+        &db_name,
+        max_connections,
+    )?;
+    tracing::info!(
+        "Database pool initialized with max {} connections",
+        max_connections
+    );
 
     // Verify connectivity to the database
     let _conn = pool
@@ -77,12 +81,13 @@ async fn main() -> anyhow::Result<()> {
     tracing::info!(graph_name = %graph_name, "GraphClient initialized");
 
     // Build the async-graphql schema
-    let schema: AppSchema = Schema::build(QueryRoot, MutationRoot, async_graphql::EmptySubscription)
-        .data(client)
-        .data(pool.clone())
-        .limit_complexity(500)
-        .limit_depth(10)
-        .finish();
+    let schema: AppSchema =
+        Schema::build(QueryRoot, MutationRoot, async_graphql::EmptySubscription)
+            .data(client)
+            .data(pool.clone())
+            .limit_complexity(500)
+            .limit_depth(10)
+            .finish();
 
     tracing::info!("GraphQL schema built with complexity limit 500, depth limit 10");
 
@@ -123,9 +128,9 @@ async fn main() -> anyhow::Result<()> {
             }
 
             let response = app_state.schema.execute(request).await;
-            Json(serde_json::to_value(&response).unwrap_or_else(|_| {
-                serde_json::json!({"errors": [{"message": "Failed to serialize response"}]})
-            }))
+            Json(serde_json::to_value(&response).unwrap_or_else(
+                |_| serde_json::json!({"errors": [{"message": "Failed to serialize response"}]}),
+            ))
         } else {
             Json(serde_json::json!({"errors": [{"message": "Invalid GraphQL request"}]}))
         }
@@ -143,10 +148,7 @@ async fn main() -> anyhow::Result<()> {
 
     let app = Router::new()
         // GraphQL endpoint
-        .route(
-            "/graphql",
-            axum::routing::post(graphql_handler),
-        )
+        .route("/graphql", axum::routing::post(graphql_handler))
         // Health check endpoint
         .route("/healthz", get(health_with_pool))
         .with_state(app_state)
@@ -154,8 +156,9 @@ async fn main() -> anyhow::Result<()> {
         .layer(DefaultBodyLimit::max(1024 * 1024))
         // Add request tracing
         .layer(
-            tower_http::trace::TraceLayer::new_for_http()
-                .make_span_with(tower_http::trace::DefaultMakeSpan::new().level(tracing::Level::INFO)),
+            tower_http::trace::TraceLayer::new_for_http().make_span_with(
+                tower_http::trace::DefaultMakeSpan::new().level(tracing::Level::INFO),
+            ),
         );
 
     let addr = SocketAddr::from(([0, 0, 0, 0], server_port));

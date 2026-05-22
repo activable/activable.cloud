@@ -19,7 +19,10 @@ pub async fn load_nodes(
         return Ok(0);
     }
 
-    let conn = pool.get().await.map_err(|e| GraphError::Pool(e.to_string()))?;
+    let conn = pool
+        .get()
+        .await
+        .map_err(|e| GraphError::Pool(e.to_string()))?;
 
     // Initialize AGE on this connection
     conn.batch_execute("LOAD 'age'; SET search_path = ag_catalog, \"$user\", public;")
@@ -96,7 +99,10 @@ pub async fn load_edges(
         return Ok(0);
     }
 
-    let conn = pool.get().await.map_err(|e| GraphError::Pool(e.to_string()))?;
+    let conn = pool
+        .get()
+        .await
+        .map_err(|e| GraphError::Pool(e.to_string()))?;
 
     // Initialize AGE on this connection
     conn.batch_execute("LOAD 'age'; SET search_path = ag_catalog, \"$user\", public;")
