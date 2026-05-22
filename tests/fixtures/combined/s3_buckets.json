@@ -1,0 +1,12 @@
+[
+  {
+    "arn": "arn:aws:s3:::bucket-sensitive-data",
+    "id": "s3-bucket-1",
+    "name": "bucket-sensitive-data"
+  },
+  {
+    "arn": "arn:aws:s3:::bucket-public-assets",
+    "id": "s3-bucket-2",
+    "name": "bucket-public-assets"
+  }
+]

@@ -1,0 +1,93 @@
+//! GraphQL schema definition: Query and Mutation root types.
+
+use crate::resolvers;
+use crate::types::*;
+use async_graphql::{Context, EmptySubscription, Object, Schema};
+
+/// Type alias for the complete GraphQL schema.
+pub type AppSchema = Schema<QueryRoot, MutationRoot, EmptySubscription>;
+
+/// Root query type.
+pub struct QueryRoot;
+
+#[Object]
+impl QueryRoot {
+    /// Find a node by its label and ID.
+    async fn find_node(
+        &self,
+        ctx: &Context<'_>,
+        label: String,
+        id: String,
+    ) -> async_graphql::Result<Option<GqlNode>> {
+        resolvers::node::find_node(ctx, label, id).await
+    }
+
+    /// Walk edges from a starting node.
+    async fn walk_edges(
+        &self,
+        ctx: &Context<'_>,
+        start: String,
+        edge_types: Vec<String>,
+        direction: String,
+        depth: i32,
+    ) -> async_graphql::Result<Vec<GqlNodeRef>> {
+        resolvers::traversal::walk_edges(ctx, start, edge_types, direction, depth).await
+    }
+
+    /// Find paths between two nodes.
+    async fn path_finder(
+        &self,
+        ctx: &Context<'_>,
+        start: String,
+        end: String,
+        edge_pattern: Vec<String>,
+        max_hops: i32,
+    ) -> async_graphql::Result<Vec<GqlPath>> {
+        resolvers::path::path_finder(ctx, start, end, edge_pattern, max_hops).await
+    }
+
+    /// Find all nodes within a given depth from a starting node.
+    async fn blast_radius(
+        &self,
+        ctx: &Context<'_>,
+        node: String,
+        depth: i32,
+    ) -> async_graphql::Result<Vec<GqlNodeRef>> {
+        resolvers::traversal::blast_radius(ctx, node, depth).await
+    }
+
+    /// Get a subgraph around a center node.
+    async fn subgraph(
+        &self,
+        ctx: &Context<'_>,
+        center: String,
+        radius: i32,
+    ) -> async_graphql::Result<GqlSubgraph> {
+        resolvers::subgraph::subgraph(ctx, center, radius).await
+    }
+
+    /// Get the status of a previous ingest run (v1: placeholder).
+    async fn ingest_status(&self, run_id: String) -> async_graphql::Result<Option<GqlIngestRun>> {
+        resolvers::ingest::ingest_status(run_id).await
+    }
+
+    /// Check the health of the GraphQL server and database.
+    async fn healthz(&self, ctx: &Context<'_>) -> async_graphql::Result<String> {
+        resolvers::health::healthz(ctx).await
+    }
+}
+
+/// Root mutation type.
+pub struct MutationRoot;
+
+#[Object]
+impl MutationRoot {
+    /// Trigger a new ingestion run (v1: placeholder).
+    async fn trigger_ingest(
+        &self,
+        provider: String,
+        regions: Vec<String>,
+    ) -> async_graphql::Result<GqlIngestRun> {
+        resolvers::ingest::trigger_ingest(provider, regions).await
+    }
+}

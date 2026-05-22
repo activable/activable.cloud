@@ -1,0 +1,8 @@
+{
+  "alice_to_admin": {
+    "from_arn": "arn:aws:iam::123456789012:user/alice",
+    "to_arn": "arn:aws:iam::123456789012:role/AdminRole",
+    "expected_path_length_min": 1,
+    "expected_path_length_max": 2
+  }
+}

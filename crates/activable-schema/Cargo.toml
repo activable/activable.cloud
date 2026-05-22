@@ -9,10 +9,6 @@ description = "Node and edge types for the activable cloud attack graph."
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-tokio = { version = "1", features = ["full"] }
-regex = "1.10"
-uuid = { version = "1.6", features = ["v4", "serde"] }
-time = { version = "0.3", features = ["serde"] }
 
 [dev-dependencies]
 tokio-postgres = "0.7"

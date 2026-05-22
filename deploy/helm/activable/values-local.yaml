@@ -1,0 +1,78 @@
+# Local Kubernetes development values — ALL services run in K8s
+# Use with: helm install activable deploy/helm/activable -f deploy/helm/activable/values-local.yaml
+#
+# Deploys: Postgres+AGE (StatefulSet) + Floci (Deployment) + Activable GraphQL API
+# Zero Docker Compose. Everything on Docker Desktop Kubernetes.
+
+replicaCount: 1
+
+image:
+  repository: activable-server
+  pullPolicy: Never  # Use locally built image (docker build -t activable-server:dev)
+  tag: "dev"
+
+service:
+  type: NodePort
+  port: 8080
+  targetPort: 8080
+  nodePort: 30080
+
+# Database points to K8s-internal Postgres service
+database:
+  host: "activable-postgres"
+  port: 5432
+  name: "activable"
+  user: "activable"
+  sslMode: "disable"
+
+graphql:
+  port: 8080
+  maxConnections: 10
+  logLevel: "debug"
+  graphName: "cloud"
+
+# Enable Postgres+AGE in K8s (StatefulSet)
+postgres:
+  enabled: true
+  image: "apache/age:release_PG16_1.6.0"
+  user: "activable"
+  database: "activable"
+  storageSize: "2Gi"
+
+# Enable Floci AWS emulator in K8s (Deployment)
+floci:
+  enabled: true
+  image: "floci/floci:latest"
+  region: "us-east-1"
+  accountId: "000000000000"
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "250m"
+    limits:
+      memory: "1Gi"
+      cpu: "1"
+
+# Environment variables injected into the Activable server pod
+environment:
+  ACTIVABLE_DB_URL: "postgresql://activable:activable_dev@activable-postgres:5432/activable?sslmode=disable"
+  ACTIVABLE_GRAPH_NAME: "cloud"
+  ACTIVABLE_POOL_SIZE: "10"
+  ACTIVABLE_BATCH_SIZE: "500"
+  ACTIVABLE_REGIONS: "us-east-1"
+  AWS_ENDPOINT_URL: "http://activable-floci:4566"
+  AWS_ACCESS_KEY_ID: "test"
+  AWS_SECRET_ACCESS_KEY: "test"
+  AWS_DEFAULT_REGION: "us-east-1"
+
+# Disable security context for local dev (AGE image runs as root)
+securityContext: {}
+podSecurityContext: {}
+
+resources:
+  requests:
+    memory: "128Mi"
+    cpu: "100m"
+  limits:
+    memory: "512Mi"
+    cpu: "500m"

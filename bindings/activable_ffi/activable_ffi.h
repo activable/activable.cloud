@@ -373,7 +373,7 @@ static void call_UniffiForeignFutureCompleteVoid(
 #ifndef UNIFFI_FFIDEF_UNIFFI_ACTIVABLE_FFI_FN_FUNC_VERSION
 #define UNIFFI_FFIDEF_UNIFFI_ACTIVABLE_FFI_FN_FUNC_VERSION
 RustBuffer uniffi_activable_ffi_fn_func_version(RustCallStatus *out_status
-    
+
 );
 #endif
 #ifndef UNIFFI_FFIDEF_FFI_ACTIVABLE_FFI_RUSTBUFFER_ALLOC
@@ -639,13 +639,12 @@ void ffi_activable_ffi_rust_future_complete_void(uint64_t handle, RustCallStatus
 #ifndef UNIFFI_FFIDEF_UNIFFI_ACTIVABLE_FFI_CHECKSUM_FUNC_VERSION
 #define UNIFFI_FFIDEF_UNIFFI_ACTIVABLE_FFI_CHECKSUM_FUNC_VERSION
 uint16_t uniffi_activable_ffi_checksum_func_version(void
-    
+
 );
 #endif
 #ifndef UNIFFI_FFIDEF_FFI_ACTIVABLE_FFI_UNIFFI_CONTRACT_VERSION
 #define UNIFFI_FFIDEF_FFI_ACTIVABLE_FFI_UNIFFI_CONTRACT_VERSION
 uint32_t ffi_activable_ffi_uniffi_contract_version(void
-    
+
 );
 #endif
-

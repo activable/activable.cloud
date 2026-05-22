@@ -109,3 +109,4 @@ external/
 
 # Git worktrees (local development only)
 worktrees/
+seed

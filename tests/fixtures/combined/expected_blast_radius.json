@@ -1,0 +1,7 @@
+{
+  "admin_role_2hops": {
+    "center_arn": "arn:aws:iam::123456789012:role/AdminRole",
+    "max_hops": 2,
+    "expected_minimum_node_count": 2
+  }
+}

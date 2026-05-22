@@ -163,7 +163,7 @@ When running `go test -race ./...` against FFI bindings, race detector may repor
 func TestFfiConcurrent(t *testing.T) {
     const numGoroutines = 100
     const callsPerGoroutine = 1000
-    
+
     errors := make(chan error, numGoroutines)
     for i := 0; i < numGoroutines; i++ {
         go func() {
@@ -177,7 +177,7 @@ func TestFfiConcurrent(t *testing.T) {
             errors <- nil
         }()
     }
-    
+
     for i := 0; i < numGoroutines; i++ {
         if err := <-errors; err != nil {
             t.Fatalf("goroutine failed: %v", err)

@@ -4,6 +4,15 @@
 //! edges (`AssumeRole`, `CanAccess`, etc.). Includes ARN canonicalization and serialization.
 
 pub mod arn;
+pub mod edge_constraint;
+pub mod labels;
+pub mod properties;
+pub mod serde_agtype;
+
+pub use arn::{is_valid_node_id, Arn};
+pub use edge_constraint::{is_valid_edge, CommonEdgeProperties};
+pub use labels::{EdgeType, NodeLabel};
+pub use properties::*;
 
 /// Returns the schema version string.
 #[must_use]

@@ -1,0 +1,17 @@
+[
+  {
+    "from": "arn:aws:iam::123456789012:user/alice",
+    "to": "arn:aws:iam::123456789012:role/AdminRole",
+    "edge_type": "CanAssume"
+  },
+  {
+    "from": "arn:aws:iam::123456789012:role/AdminRole",
+    "to": "arn:aws:iam::123456789012:policy/AdministratorAccess",
+    "edge_type": "HasPermission"
+  },
+  {
+    "from": "arn:aws:iam::123456789012:user/bob",
+    "to": "arn:aws:iam::123456789012:role/S3ReadRole",
+    "edge_type": "CanAssume"
+  }
+]

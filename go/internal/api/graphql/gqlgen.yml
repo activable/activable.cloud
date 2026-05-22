@@ -1,0 +1,35 @@
+schema:
+  - schema.graphql
+
+exec:
+  filename: generated.go
+  package: graphql
+
+model:
+  filename: models_generated.go
+  package: graphql
+
+resolver:
+  layout: follow-schema
+  dir: .
+  package: graphql
+  filename_template: "{name}.resolvers.go"
+
+autobind:
+  - github.com/activable-cloud/activable.cloud/go/internal/api/graphql
+
+models:
+  Node:
+    model: github.com/activable-cloud/activable.cloud/go/internal/api/graphql.Node
+  NodeRef:
+    model: github.com/activable-cloud/activable.cloud/go/internal/api/graphql.NodeRef
+  Edge:
+    model: github.com/activable-cloud/activable.cloud/go/internal/api/graphql.Edge
+  Path:
+    model: github.com/activable-cloud/activable.cloud/go/internal/api/graphql.Path
+  Subgraph:
+    model: github.com/activable-cloud/activable.cloud/go/internal/api/graphql.Subgraph
+  IngestRun:
+    model: github.com/activable-cloud/activable.cloud/go/internal/api/graphql.IngestRun
+  IngestService:
+    model: github.com/activable-cloud/activable.cloud/go/internal/api/graphql.IngestService

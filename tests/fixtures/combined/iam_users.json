@@ -1,0 +1,32 @@
+[
+  {
+    "arn": "arn:aws:iam::123456789012:user/alice",
+    "id": "AIDAI1111111111AAAA",
+    "name": "alice",
+    "principal_type": "IAMUser"
+  },
+  {
+    "arn": "arn:aws:iam::123456789012:user/bob",
+    "id": "AIDAI2222222222BBBB",
+    "name": "bob",
+    "principal_type": "IAMUser"
+  },
+  {
+    "arn": "arn:aws:iam::123456789012:user/charlie",
+    "id": "AIDAI3333333333CCCC",
+    "name": "charlie",
+    "principal_type": "IAMUser"
+  },
+  {
+    "arn": "arn:aws:iam::123456789012:user/diana",
+    "id": "AIDAI4444444444DDDD",
+    "name": "diana",
+    "principal_type": "IAMUser"
+  },
+  {
+    "arn": "arn:aws:iam::123456789012:user/eve",
+    "id": "AIDAI5555555555EEEE",
+    "name": "eve",
+    "principal_type": "IAMUser"
+  }
+]
