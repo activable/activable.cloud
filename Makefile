@@ -73,7 +73,8 @@ verify-rust:
 verify-go:
 	@echo "Verifying Go (lint + test)..."
 	cd go && golangci-lint run --timeout=2m ./...
-	cd go && go test -race ./...
+	DYLD_LIBRARY_PATH=$(PWD)/target/release LD_LIBRARY_PATH=$(PWD)/target/release CGO_LDFLAGS="-L$(PWD)/target/release" \
+	  go test -race ./go/...
 
 smoke:
 	@echo "Running smoke test..."
@@ -84,9 +85,7 @@ smoke:
 test-ffi-stability:
 	@echo "Running FFI stability test (concurrent goroutines)..."
 	@if [ ! -f target/release/libactivable_ffi$(RUST_DYLIB_EXT) ]; then echo "Rust library not found; run 'make build' first"; exit 1; fi
-	@echo "Running 100+ concurrent goroutine FFI calls via TestConcurrentFFI..."
-	@go test -race -count=10 -timeout=60s -run TestConcurrentFFI ./go/cmd/activable
-	@echo "FFI stability test passed"
+	bash scripts/test-ffi-stability.sh
 
 size-check:
 	@echo "Checking binary size..."
@@ -94,10 +93,10 @@ size-check:
 
 spike-bench:
 	@echo "Starting Postgres+AGE (idempotent)..."
-	docker-compose -f infra/compose/docker-compose.yml up -d db
+	docker compose -f infra/compose/docker-compose.yml up -d db
 	@echo "Waiting for Postgres healthcheck..."
 	@for i in 1 2 3 4 5; do \
-		if docker-compose -f infra/compose/docker-compose.yml ps db | grep -q healthy; then \
+		if docker compose -f infra/compose/docker-compose.yml ps db | grep -q healthy; then \
 			echo "Postgres ready"; \
 			break; \
 		fi; \

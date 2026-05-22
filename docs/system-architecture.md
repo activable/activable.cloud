@@ -112,7 +112,7 @@ The Cypher `UNWIND $batch AS row MATCH ... CREATE` approach is **unusable at 100
 - Expression indexes on `agtype_access_operator(properties, '"id"'::agtype)` for vertex-ID lookup by JOIN.
 - Vertex inserts still use Cypher `UNWIND` (acceptable because each row is independent; no MATCH lookup needed).
 
-Implementation: [`spike/graph-backend/src/load_pg_age.rs`](../spike/graph-backend/src/load_pg_age.rs). Code review: [`plans/reports/code-review-260521-load-pg-age-sql-fastpath.md`](../plans/reports/code-review-260521-load-pg-age-sql-fastpath.md) — **APPROVED_WITH_CAVEATS**, 0 P0 (security/correctness), 8 P1 (production-readiness).
+Implementation: [`spike/graph-backend/src/load_pg_age.rs`](../spike/graph-backend/src/load_pg_age.rs). Code review of the SQL fast-path loader: APPROVED_WITH_CAVEATS — 0 priority-0 (security/correctness), 8 priority-1 (production-readiness) items recorded below. (Full report in `plans/reports/` — local artifact, not in repository.)
 
 #### Carry-over for production loader
 
@@ -125,7 +125,7 @@ Implementation: [`spike/graph-backend/src/load_pg_age.rs`](../spike/graph-backen
 | 5 | Document `nextval()` sequence-ID gaps under concurrent load as expected behavior. | Docs |
 | 6 | Add inline comment for `'"{}"'::agtype` literal syntax at `load_pg_age.rs:393`. | production loader impl |
 | 7 | Parameterize Cypher UNWIND batches (~50 KB per 500-row batch) if statement-size becomes a hotspot. | Defer until benchmarked at production scale |
-| 8 | Add `ON CONFLICT` or pre-flight deduplication if crash-resumability is required. | production loader impl |
+| 8 | Add checkpoint/resume logic OR `ON CONFLICT` / pre-flight dedup if crash-resumability is required (application-level checkpointing tracks last committed batch; SQL-level idempotency uses `ON CONFLICT`). | production loader impl |
 
 ### What this benchmark did NOT cover (revisit later)
 

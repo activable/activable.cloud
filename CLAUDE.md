@@ -150,7 +150,7 @@ This wires hooks into `.git/hooks/`. From then on:
 - **pre-push stage** (every `git push`): adds `cargo clippy -D warnings`.
 - **commit-msg stage**: `gitlint` validates the commit message structure.
 
-The pre-push hook runs the local `verify` target (CI parity) — see Makefile. Bypass
+The pre-push hook runs `cargo clippy -D warnings`. For full CI parity before pushing, run `make verify` manually. Bypass
 with `git push --no-verify` for emergencies only; never bypass on `main`.
 
 Sub-agents inherit the hook automatically via shared git config in worktrees.

@@ -127,7 +127,15 @@ pub async fn run_benchmarks(
     let mut all_gates_pass = true;
 
     for (query_name, query_template) in QUERIES {
-        // Substitute the sampled principal ID into the query template
+        // PRODUCTION CAVEAT: sample_principal is substituted verbatim into a
+        // PostgreSQL dollar-quoted string. PG dollar-quotes are NOT escapable
+        // (no backslash escape); the only terminator is the literal `$$`. For
+        // this spike, principal IDs come from a deterministic synthetic
+        // generator (`principal_<N>`) — never contain `$$` — so this is safe.
+        // Promotion to production (real AWS principal ARNs) MUST escape the
+        // value via escape_cypher() AND validate against a strict ID regex
+        // like ^[a-zA-Z0-9_:/-]+$ before substitution. Filed as production
+        // carryover in docs/system-architecture.md.
         let cypher = query_template.replace("$PRINCIPAL", &sample_principal);
 
         // Wrap in AGE's cypher() call — no third arg (AGE 1.6 does not require it)

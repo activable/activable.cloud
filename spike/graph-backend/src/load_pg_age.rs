@@ -384,32 +384,21 @@ async fn flush_has_permission_sql(
         return Ok(());
     }
 
-    // Build VALUES list: each row is (from_id_str, to_id_str)
-    // Then INSERT by joining Principal and Policy tables on the expression index.
-    // AGE edge id is allocated from the label's sequence.
-    let values: Vec<String> = batch
-        .iter()
-        .map(|(from, to)| {
-            format!(
-                "('\"{}\"'::agtype, '\"{}\"'::agtype)",
-                escape_sql_literal(from),
-                escape_sql_literal(to)
-            )
-        })
-        .collect();
-
+    // Build VALUES list via shared helper (also used in unit tests to verify the SQL pattern).
     // _graphid(label_id, sequence_next) is how AGE constructs edge graphid values.
     // The label_id for HasPermission is retrieved via _label_id('cloud', 'HasPermission').
+    let values_list = build_edge_values_list(batch)
+        .expect("batch non-empty guard above ensures Some(_) here");
+
     let sql = format!(
         "INSERT INTO cloud.\"HasPermission\" (id, start_id, end_id, properties)
          SELECT ag_catalog._graphid(
                     ag_catalog._label_id('cloud', 'HasPermission')::integer,
                     nextval('cloud.\"HasPermission_id_seq\"')),
                 p.id, pol.id, ag_catalog.agtype_build_map()
-         FROM (VALUES {values}) AS v(from_id, to_id)
+         FROM (VALUES {values_list}) AS v(from_id, to_id)
          JOIN cloud.\"Principal\" p ON ag_catalog.agtype_access_operator(p.properties, '\"id\"'::agtype) = v.from_id
          JOIN cloud.\"Policy\" pol ON ag_catalog.agtype_access_operator(pol.properties, '\"id\"'::agtype) = v.to_id",
-        values = values.join(", ")
     );
 
     client
@@ -428,16 +417,9 @@ async fn flush_can_assume_sql(
         return Ok(());
     }
 
-    let values: Vec<String> = batch
-        .iter()
-        .map(|(from, to)| {
-            format!(
-                "('\"{}\"'::agtype, '\"{}\"'::agtype)",
-                escape_sql_literal(from),
-                escape_sql_literal(to)
-            )
-        })
-        .collect();
+    // Build VALUES list via shared helper (also used in unit tests to verify the SQL pattern).
+    let values_list = build_edge_values_list(batch)
+        .expect("batch non-empty guard above ensures Some(_) here");
 
     let sql = format!(
         "INSERT INTO cloud.\"CanAssume\" (id, start_id, end_id, properties)
@@ -445,10 +427,9 @@ async fn flush_can_assume_sql(
                     ag_catalog._label_id('cloud', 'CanAssume')::integer,
                     nextval('cloud.\"CanAssume_id_seq\"')),
                 a.id, b.id, ag_catalog.agtype_build_map()
-         FROM (VALUES {values}) AS v(from_id, to_id)
+         FROM (VALUES {values_list}) AS v(from_id, to_id)
          JOIN cloud.\"Principal\" a ON ag_catalog.agtype_access_operator(a.properties, '\"id\"'::agtype) = v.from_id
          JOIN cloud.\"Principal\" b ON ag_catalog.agtype_access_operator(b.properties, '\"id\"'::agtype) = v.to_id",
-        values = values.join(", ")
     );
 
     client
@@ -518,6 +499,9 @@ pub(crate) fn escape_sql_literal(s: &str) -> String {
 
 /// Build the agtype string literal fragment for a single ID value.
 /// Produces the fragment `'"<escaped_value>"'::agtype` used in SQL VALUES lists.
+/// Helper extracted for adversarial testing of the SQL literal pattern; production
+/// code uses `build_edge_values_list` which calls `escape_sql_literal` directly.
+#[cfg(test)]
 pub(crate) fn build_agtype_id_literal(id: &str) -> String {
     format!("'\"{}\"'::agtype", escape_sql_literal(id))
 }

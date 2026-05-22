@@ -30,12 +30,12 @@ This spike validates **Postgres + Apache AGE** as the graph backend for Activabl
 ## Prerequisites
 
 ```bash
-# Rust toolchain (1.87+)
+# Rust toolchain (1.95 pinned — see rust-toolchain.toml at repo root)
 rustup update
 
 # Docker + Docker Compose (for Postgres+AGE)
 docker --version
-docker-compose --version
+docker compose --version
 
 # Optional: Vela-Kuzu Rust bindings (if testing Kuzu)
 # cargo add kuzu --features kuzu
@@ -47,10 +47,10 @@ docker-compose --version
 
 ```bash
 cd infra/compose
-docker-compose -f docker-compose.yml up -d db
+docker compose -f docker compose.yml up -d db
 
 # Verify healthcheck
-docker-compose -f docker-compose.yml ps
+docker compose -f docker compose.yml ps
 # Should show "healthy" for db service
 ```
 
@@ -191,7 +191,7 @@ If results are borderline or NO-GO, check:
    ```bash
    psql -h localhost -p 5433 -U activable -d activable \
      -c "ALTER SYSTEM SET work_mem = '512MB';"
-   # Restart: docker-compose restart db
+   # Restart: docker compose restart db
    ```
 
 2. **AGE Query Plan:**
@@ -233,7 +233,7 @@ If verdict is NO-GO and the user chooses Vela-Kuzu:
 
 ```bash
 # Stop Postgres+AGE
-docker-compose -f infra/compose/docker-compose.yml down
+docker compose -f infra/compose/docker compose.yml down
 
 # Remove benchmark artifacts
 rm -rf /tmp/spike-graphs
@@ -248,8 +248,8 @@ cargo clean --manifest-path spike/graph-backend/Cargo.toml
 
 ```bash
 # AGE extension not installed in Postgres image
-# Check docker-compose uses apache/age:PG16_latest
-docker-compose -f infra/compose/docker-compose.yml ps
+# Check docker compose uses apache/age:PG16_latest
+docker compose -f infra/compose/docker compose.yml ps
 docker exec activable-postgres psql -U activable -d activable -c "SELECT extname FROM pg_extension;"
 ```
 
@@ -269,15 +269,13 @@ docker exec activable-postgres psql -U activable -d activable -c "SELECT extname
 
 ## Hardware / Environment Notes (From Production Run)
 
-**This section populated after `make spike-bench` completes:**
-
-- **OS:** Darwin 25.5.0
-- **Rust:** 1.87.0
-- **Postgres:** 16.x (from apache/age:PG16_latest)
-- **AGE:** 1.7.0
-- **CPU:** [Captured at runtime]
-- **Memory:** [Captured at runtime]
-- **Date:** [Captured at runtime]
+- **Host OS:** macOS 26.5 (Darwin 25.5.0)
+- **Rust:** 1.95.0 (Homebrew)
+- **Postgres:** 16.10 (via `apache/age:release_PG16_1.6.0` Docker image)
+- **AGE:** 1.6.0
+- **CPU:** Apple M2
+- **Memory:** 16 GiB
+- **Date:** 2026-05-21
 
 ## Branch Coverage (Optional, Nightly Required)
 
