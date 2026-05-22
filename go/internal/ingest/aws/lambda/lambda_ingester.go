@@ -84,7 +84,7 @@ func (i *LambdaIngester) enumerateFunctions(ctx context.Context, resourcesChan c
 			return fmt.Errorf("ListFunctions pagination error: %w", err)
 		}
 
-		if page.Functions == nil || len(page.Functions) == 0 {
+		if len(page.Functions) == 0 {
 			continue
 		}
 

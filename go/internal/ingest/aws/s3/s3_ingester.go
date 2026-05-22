@@ -75,7 +75,7 @@ func (i *S3Ingester) enumerateBuckets(ctx context.Context, resourcesChan chan<- 
 		return fmt.Errorf("ListBuckets failed: %w", err)
 	}
 
-	if output.Buckets == nil || len(output.Buckets) == 0 {
+	if len(output.Buckets) == 0 {
 		return nil
 	}
 

@@ -48,8 +48,6 @@ repos:
         language: system
         types: [rust]
         pass_filenames: false
-        # Slow — run only on push, not every commit
-        stages: [pre-push]
 
   # Go — golangci-lint via system binary
   - repo: local
