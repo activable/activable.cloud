@@ -117,7 +117,7 @@ func (s *Server) executeQuery(ctx context.Context, query string, variables map[s
 	}
 
 	// Parse the query against the schema
-	doc, parseErrs := gqlparser.LoadQuery(schema, query)
+	doc, parseErrs := gqlparser.LoadQueryWithRules(schema, query, nil)
 	if parseErrs != nil {
 		return gqlError(fmt.Sprintf("query parse error: %v", parseErrs))
 	}

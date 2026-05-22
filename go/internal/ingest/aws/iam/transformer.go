@@ -244,15 +244,6 @@ func constructARN(accountID string, service string, region string, resourceType 
 	return fmt.Sprintf("arn:aws:%s:%s:%s:%s/%s", service, region, accountID, resourceType, resourceName)
 }
 
-// flattenStringList converts a slice of strings to a flat string for storage.
-// Preserves the list as a single property value (can be parsed back if needed).
-func flattenStringList(items []string) interface{} {
-	if len(items) == 0 {
-		return []string{}
-	}
-	return items
-}
-
 // UnixTimeOrZero safely converts a *time.Time to Unix timestamp.
 func UnixTimeOrZero(t *time.Time) int64 {
 	if t == nil {

@@ -29,7 +29,15 @@ fn test_graph_pool_api_exists() {
     // Real integration tests are in tests/integration/rust/*.rs
 
     // Verify GraphPool::build exists (compile-time check)
-    type BuildFn = fn(&str, u16, &str, &str, &str, usize)
-        -> Result<std::sync::Arc<deadpool_postgres::Pool>, activable_graph::error::GraphError>;
+    type BuildFn =
+        fn(
+            &str,
+            u16,
+            &str,
+            &str,
+            &str,
+            usize,
+        )
+            -> Result<std::sync::Arc<deadpool_postgres::Pool>, activable_graph::error::GraphError>;
     let _: BuildFn = activable_graph::pool::GraphPool::build;
 }

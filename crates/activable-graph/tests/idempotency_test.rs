@@ -11,9 +11,7 @@ fn test_url_parts() -> Option<(String, u16, String, String, String)> {
     let (auth, rest) = url.split_once('@')?;
     let (user, password) = auth.split_once(':')?;
     let (host_port, dbname) = rest.split_once('/')?;
-    let (host, port_str) = host_port
-        .split_once(':')
-        .unwrap_or((host_port, "5432"));
+    let (host, port_str) = host_port.split_once(':').unwrap_or((host_port, "5432"));
     let port: u16 = port_str.parse().ok()?;
 
     Some((

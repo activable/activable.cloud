@@ -21,11 +21,10 @@ type Runtime struct {
 	config          Config
 	db              *sql.DB
 	ingesters       map[string]Ingester
-	ingestorsLock   sync.RWMutex
-	ffiWriter       FFIWriter
-	graphInit       GraphInitializer
-	enabledRegions  []string
-	enabledRegionMu sync.Once
+	ingestorsLock  sync.RWMutex
+	ffiWriter      FFIWriter
+	graphInit      GraphInitializer
+	enabledRegions []string
 }
 
 // NewRuntime creates a new ingestion runtime with the given configuration and database.

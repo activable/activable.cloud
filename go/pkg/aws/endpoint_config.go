@@ -20,6 +20,7 @@ func LocalDevEndpointResolver(baseURL string) config.LoadOptionsFunc {
 		}
 
 		// Set endpoint resolver for all AWS services
+		//nolint:staticcheck // AWS SDK v2 migration to service-specific endpoint resolvers is deferred
 		o.EndpointResolverWithOptions = awssdk.EndpointResolverWithOptionsFunc(
 			func(service, region string, options ...interface{}) (awssdk.Endpoint, error) {
 				// If no base URL configured, use default AWS endpoints (production path)

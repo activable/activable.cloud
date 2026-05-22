@@ -95,7 +95,7 @@ func (i *EC2Ingester) enumerateInstances(ctx context.Context, resourcesChan chan
 			return fmt.Errorf("DescribeInstances pagination error: %w", err)
 		}
 
-		if page.Reservations == nil || len(page.Reservations) == 0 {
+		if len(page.Reservations) == 0 {
 			continue
 		}
 
@@ -135,7 +135,7 @@ func (i *EC2Ingester) enumerateSecurityGroups(ctx context.Context, resourcesChan
 			return fmt.Errorf("DescribeSecurityGroups pagination error: %w", err)
 		}
 
-		if page.SecurityGroups == nil || len(page.SecurityGroups) == 0 {
+		if len(page.SecurityGroups) == 0 {
 			continue
 		}
 
@@ -173,7 +173,7 @@ func (i *EC2Ingester) enumerateVpcs(ctx context.Context, resourcesChan chan<- in
 			return fmt.Errorf("DescribeVpcs pagination error: %w", err)
 		}
 
-		if page.Vpcs == nil || len(page.Vpcs) == 0 {
+		if len(page.Vpcs) == 0 {
 			continue
 		}
 
