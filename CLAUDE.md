@@ -367,6 +367,121 @@ a `## Token Cost` section so cost-per-plan is visible.
 See [`.claude/rules/orchestration-protocol.md`](./.claude/rules/orchestration-protocol.md)
 for delegation context, status protocol, and context-isolation rules.
 
+### §1.5 Sub-agents MUST use `/ck:cook` end-to-end — NO raw implementation (HARD)
+
+> **HARD POLICY. Same severity as §0.1 (no stub code). Added 2026-05-22
+> after Opus audit found 5 critical stub implementations that would
+> silently fail in production. Sub-agents shipped code that compiled,
+> passed mock-based tests, and reported "DONE" — but the production
+> code paths returned hardcoded empty values, never connected to the
+> database, and never called the Rust FFI.**
+
+**Every sub-agent dispatched for implementation work MUST invoke
+`/ck:cook` (not raw Write/Edit tools) to handle the full pipeline:**
+
+```
+/ck:cook <phase-file-path> --auto
+```
+
+`/ck:cook` enforces: plan review → implement → test → code-review →
+finalize. Raw implementation (Edit/Write without the skill pipeline)
+is **FORBIDDEN** for sub-agents doing implementation work.
+
+#### Why this exists
+
+The 2026-05-22 failure pattern:
+1. Sub-agent receives implementation brief with clear spec.
+2. Sub-agent writes syntactically valid Rust/Go that compiles.
+3. Sub-agent writes unit tests using mock objects → tests pass.
+4. Sub-agent reports "DONE — N tests pass, clippy clean."
+5. **Production code paths are stubs** — `return Ok(())`, `return ""`,
+   `return serde_json::json!([])` — because no live system was ever
+   exercised.
+6. Orchestrator trusts the report, commits, moves to next phase.
+7. **Result: 13,500 lines of skeleton code that silently loses data.**
+
+#### Mandatory verification gate for sub-agents
+
+Before a sub-agent can report "DONE", it MUST demonstrate that the
+code **actually works against a live system** (not just compiles +
+passes mock tests):
+
+| Layer | Verification command | What it proves |
+|---|---|---|
+| Rust crate | `cargo test -p <crate>` + at least one test that uses a **real** `tokio_postgres::Client` or a real `deadpool::Pool` (gated on `AGE_TEST_URL`) | The Rust code actually talks to Postgres+AGE |
+| Go service | `go test ./go/internal/<pkg>/...` + at least one test that calls **real FFI functions** (gated on compiled Rust dylib) OR `make test-integration` | The Go code actually crosses the FFI boundary |
+| GraphQL | A test that sends a real HTTP request to the running server and parses the response | The server actually starts and serves |
+| Ingester | A test that enumerates at least 1 resource from a **mock AWS endpoint** (not a hardcoded fixture) and writes it to a real graph | The ingester actually calls AWS APIs and writes data |
+
+**If the sub-agent cannot run the live-system verification** (e.g.,
+Docker not running, dylib not compiled), it MUST report
+`status=BLOCKED reason="live verification not possible"` — NOT
+`status=DONE`. The orchestrator then runs the verification before
+committing.
+
+#### Rationalisation trip-wires
+
+If a sub-agent's reasoning includes any of these phrases, the
+implementation is likely a stub:
+
+- "In a real implementation, this would..."
+- "Placeholder for future integration"
+- "Returns empty for now"
+- "Will be connected when..."
+- "Mock implementation sufficient for v1"
+- "Stub — phase N will implement the real logic"
+- "Deferred to integration testing"
+
+These phrases in code comments are **§0.1 violations** (no stub code).
+Remove the comment AND implement the real logic, or report BLOCKED.
+
+#### Orchestrator's verification duty
+
+The orchestrator (the conversation the user is in) MUST NOT commit
+sub-agent output without **personally reading the critical functions**.
+For each phase:
+
+1. Read the 2-3 most important functions (pool creation, DB write,
+   FFI call-through, query execution).
+2. Verify they contain **real logic** (actual SQL execution, actual
+   FFI function calls, actual HTTP handlers) — not `return Ok(())`.
+3. If any function is a stub, reject the sub-agent's work and
+   re-dispatch with explicit "this function was a stub — implement
+   the real logic" in the prompt.
+
+**"Sub-agent reports DONE + tests pass" is NOT sufficient evidence
+that the code works.** The orchestrator must verify the production
+code path, not just the test path.
+
+### §1.6 Commit message convention (HARD)
+
+Every commit message MUST include the component scope in parentheses:
+
+```
+<type>(<component>): <subject>
+```
+
+**Examples:**
+- `feat(activable-schema): production ARN canonicalizer`
+- `feat(activable-graph): typed query API with deadpool connection pool`
+- `feat(activable-ffi): UniFFI read + write surface (13 exports)`
+- `feat(ingest): Go ingestion framework with worker pool`
+- `feat(ingest-iam): AWS IAM ingester`
+- `feat(graphql): GraphQL API server with gqlgen`
+- `fix(activable-graph): resolve clippy expect_fun_call warning`
+- `docs(developer): add-service and add-query guides`
+- `ci(workflow): cheap-fail-first dependency graph`
+- `test(integration): E2E + idempotency gate`
+
+**NEVER** use bare `feat:`, `fix:`, `docs:`, `test:`, `ci:`, `chore:`
+without a `(<component>)` scope. The component tells the reader WHAT
+changed without opening the diff.
+
+**Component naming:** use the crate name for Rust (`activable-schema`,
+`activable-graph`, `activable-ffi`), the package path for Go
+(`ingest`, `ingest-iam`, `graphql`, `api`), or the infrastructure
+concern for CI/docs (`workflow`, `helm`, `docker`, `developer`).
+
 ---
 
 ## §2 Mission & scope
