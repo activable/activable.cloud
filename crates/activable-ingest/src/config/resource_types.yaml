@@ -1,0 +1,72 @@
+resource_types:
+  # Account-level (global) resources
+  - type_name: "AWS::IAM::User"
+    label: "Principal"
+    regional: false
+    fallback:
+      sdk: "iam"
+      operation: "ListUsers"
+
+  - type_name: "AWS::IAM::Role"
+    label: "Principal"
+    regional: false
+    fallback:
+      sdk: "iam"
+      operation: "ListRoles"
+
+  - type_name: "AWS::IAM::Group"
+    label: "IamGroup"
+    regional: false
+    fallback:
+      sdk: "iam"
+      operation: "ListGroups"
+
+  - type_name: "AWS::IAM::Policy"
+    label: "Permission"
+    regional: false
+    fallback:
+      sdk: "iam"
+      operation: "ListPolicies"
+
+  - type_name: "AWS::S3::Bucket"
+    label: "Resource"
+    regional: false
+    fallback:
+      sdk: "s3"
+      operation: "ListBuckets"
+
+  - type_name: "AWS::STS::CallerIdentity"
+    label: "Account"
+    regional: false
+    fallback:
+      sdk: "sts"
+      operation: "GetCallerIdentity"
+
+  # Regional resources
+  - type_name: "AWS::EC2::Instance"
+    label: "Resource"
+    regional: true
+    fallback:
+      sdk: "ec2"
+      operation: "DescribeInstances"
+
+  - type_name: "AWS::EC2::SecurityGroup"
+    label: "SecurityGroup"
+    regional: true
+    fallback:
+      sdk: "ec2"
+      operation: "DescribeSecurityGroups"
+
+  - type_name: "AWS::EC2::VPC"
+    label: "Vpc"
+    regional: true
+    fallback:
+      sdk: "ec2"
+      operation: "DescribeVpcs"
+
+  - type_name: "AWS::Lambda::Function"
+    label: "Resource"
+    regional: true
+    fallback:
+      sdk: "lambda"
+      operation: "ListFunctions"

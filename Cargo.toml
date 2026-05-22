@@ -6,6 +6,7 @@ members = [
     "crates/activable-iam-eval",
     "crates/activable-ffi",
     "crates/activable-graphql",
+    "crates/activable-ingest",
 ]
 exclude = [
     "spike/graph-backend",
