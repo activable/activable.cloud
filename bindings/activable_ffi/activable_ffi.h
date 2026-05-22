@@ -376,6 +376,68 @@ RustBuffer uniffi_activable_ffi_fn_func_version(RustCallStatus *out_status
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_ACTIVABLE_FFI_FN_FUNC_ADD_EDGE
+#define UNIFFI_FFIDEF_UNIFFI_ACTIVABLE_FFI_FN_FUNC_ADD_EDGE
+uint64_t uniffi_activable_ffi_fn_func_add_edge(RustBuffer from_id, RustBuffer to_id, RustBuffer _edge_type, RustBuffer properties_json
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_ACTIVABLE_FFI_FN_FUNC_ADD_EDGES_BATCH
+#define UNIFFI_FFIDEF_UNIFFI_ACTIVABLE_FFI_FN_FUNC_ADD_EDGES_BATCH
+uint64_t uniffi_activable_ffi_fn_func_add_edges_batch(RustBuffer edges_json
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_ACTIVABLE_FFI_FN_FUNC_ADD_NODE
+#define UNIFFI_FFIDEF_UNIFFI_ACTIVABLE_FFI_FN_FUNC_ADD_NODE
+uint64_t uniffi_activable_ffi_fn_func_add_node(RustBuffer _label, RustBuffer id, RustBuffer properties_json
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_ACTIVABLE_FFI_FN_FUNC_ADD_NODES_BATCH
+#define UNIFFI_FFIDEF_UNIFFI_ACTIVABLE_FFI_FN_FUNC_ADD_NODES_BATCH
+uint64_t uniffi_activable_ffi_fn_func_add_nodes_batch(RustBuffer _label, RustBuffer nodes_json
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_ACTIVABLE_FFI_FN_FUNC_FLUSH
+#define UNIFFI_FFIDEF_UNIFFI_ACTIVABLE_FFI_FN_FUNC_FLUSH
+RustBuffer uniffi_activable_ffi_fn_func_flush(RustCallStatus *out_status
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_ACTIVABLE_FFI_FN_FUNC_GRAPH_INITIALIZE
+#define UNIFFI_FFIDEF_UNIFFI_ACTIVABLE_FFI_FN_FUNC_GRAPH_INITIALIZE
+RustBuffer uniffi_activable_ffi_fn_func_graph_initialize(RustBuffer db_host, uint16_t db_port, RustBuffer db_user, RustBuffer db_password, RustBuffer db_name, uint32_t max_connections, RustBuffer graph_name, RustCallStatus *out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_ACTIVABLE_FFI_FN_FUNC_HEALTH_CHECK
+#define UNIFFI_FFIDEF_UNIFFI_ACTIVABLE_FFI_FN_FUNC_HEALTH_CHECK
+uint64_t uniffi_activable_ffi_fn_func_health_check(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_ACTIVABLE_FFI_FN_FUNC_QUERY_BLAST_RADIUS
+#define UNIFFI_FFIDEF_UNIFFI_ACTIVABLE_FFI_FN_FUNC_QUERY_BLAST_RADIUS
+uint64_t uniffi_activable_ffi_fn_func_query_blast_radius(RustBuffer _graph_name, RustBuffer node_id, RustBuffer edge_types, uint32_t _max_hops
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_ACTIVABLE_FFI_FN_FUNC_QUERY_FIND_NODE
+#define UNIFFI_FFIDEF_UNIFFI_ACTIVABLE_FFI_FN_FUNC_QUERY_FIND_NODE
+uint64_t uniffi_activable_ffi_fn_func_query_find_node(RustBuffer _graph_name, RustBuffer _label, RustBuffer id
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_ACTIVABLE_FFI_FN_FUNC_QUERY_PATH_FINDER
+#define UNIFFI_FFIDEF_UNIFFI_ACTIVABLE_FFI_FN_FUNC_QUERY_PATH_FINDER
+uint64_t uniffi_activable_ffi_fn_func_query_path_finder(RustBuffer _graph_name, RustBuffer start_id, RustBuffer end_id, RustBuffer edge_types, uint32_t _max_hops
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_ACTIVABLE_FFI_FN_FUNC_QUERY_SUBGRAPH
+#define UNIFFI_FFIDEF_UNIFFI_ACTIVABLE_FFI_FN_FUNC_QUERY_SUBGRAPH
+uint64_t uniffi_activable_ffi_fn_func_query_subgraph(RustBuffer _graph_name, RustBuffer center_id, uint32_t _radius
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_ACTIVABLE_FFI_FN_FUNC_QUERY_WALK_EDGES
+#define UNIFFI_FFIDEF_UNIFFI_ACTIVABLE_FFI_FN_FUNC_QUERY_WALK_EDGES
+uint64_t uniffi_activable_ffi_fn_func_query_walk_edges(RustBuffer _graph_name, RustBuffer start_id, RustBuffer edge_types, RustBuffer direction, uint32_t _depth
+);
+#endif
 #ifndef UNIFFI_FFIDEF_FFI_ACTIVABLE_FFI_RUSTBUFFER_ALLOC
 #define UNIFFI_FFIDEF_FFI_ACTIVABLE_FFI_RUSTBUFFER_ALLOC
 RustBuffer ffi_activable_ffi_rustbuffer_alloc(uint64_t size, RustCallStatus *out_status
@@ -642,6 +704,78 @@ uint16_t uniffi_activable_ffi_checksum_func_version(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_ACTIVABLE_FFI_CHECKSUM_FUNC_ADD_EDGE
+#define UNIFFI_FFIDEF_UNIFFI_ACTIVABLE_FFI_CHECKSUM_FUNC_ADD_EDGE
+uint16_t uniffi_activable_ffi_checksum_func_add_edge(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_ACTIVABLE_FFI_CHECKSUM_FUNC_ADD_EDGES_BATCH
+#define UNIFFI_FFIDEF_UNIFFI_ACTIVABLE_FFI_CHECKSUM_FUNC_ADD_EDGES_BATCH
+uint16_t uniffi_activable_ffi_checksum_func_add_edges_batch(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_ACTIVABLE_FFI_CHECKSUM_FUNC_ADD_NODE
+#define UNIFFI_FFIDEF_UNIFFI_ACTIVABLE_FFI_CHECKSUM_FUNC_ADD_NODE
+uint16_t uniffi_activable_ffi_checksum_func_add_node(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_ACTIVABLE_FFI_CHECKSUM_FUNC_ADD_NODES_BATCH
+#define UNIFFI_FFIDEF_UNIFFI_ACTIVABLE_FFI_CHECKSUM_FUNC_ADD_NODES_BATCH
+uint16_t uniffi_activable_ffi_checksum_func_add_nodes_batch(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_ACTIVABLE_FFI_CHECKSUM_FUNC_FLUSH
+#define UNIFFI_FFIDEF_UNIFFI_ACTIVABLE_FFI_CHECKSUM_FUNC_FLUSH
+uint16_t uniffi_activable_ffi_checksum_func_flush(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_ACTIVABLE_FFI_CHECKSUM_FUNC_GRAPH_INITIALIZE
+#define UNIFFI_FFIDEF_UNIFFI_ACTIVABLE_FFI_CHECKSUM_FUNC_GRAPH_INITIALIZE
+uint16_t uniffi_activable_ffi_checksum_func_graph_initialize(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_ACTIVABLE_FFI_CHECKSUM_FUNC_HEALTH_CHECK
+#define UNIFFI_FFIDEF_UNIFFI_ACTIVABLE_FFI_CHECKSUM_FUNC_HEALTH_CHECK
+uint16_t uniffi_activable_ffi_checksum_func_health_check(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_ACTIVABLE_FFI_CHECKSUM_FUNC_QUERY_BLAST_RADIUS
+#define UNIFFI_FFIDEF_UNIFFI_ACTIVABLE_FFI_CHECKSUM_FUNC_QUERY_BLAST_RADIUS
+uint16_t uniffi_activable_ffi_checksum_func_query_blast_radius(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_ACTIVABLE_FFI_CHECKSUM_FUNC_QUERY_FIND_NODE
+#define UNIFFI_FFIDEF_UNIFFI_ACTIVABLE_FFI_CHECKSUM_FUNC_QUERY_FIND_NODE
+uint16_t uniffi_activable_ffi_checksum_func_query_find_node(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_ACTIVABLE_FFI_CHECKSUM_FUNC_QUERY_PATH_FINDER
+#define UNIFFI_FFIDEF_UNIFFI_ACTIVABLE_FFI_CHECKSUM_FUNC_QUERY_PATH_FINDER
+uint16_t uniffi_activable_ffi_checksum_func_query_path_finder(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_ACTIVABLE_FFI_CHECKSUM_FUNC_QUERY_SUBGRAPH
+#define UNIFFI_FFIDEF_UNIFFI_ACTIVABLE_FFI_CHECKSUM_FUNC_QUERY_SUBGRAPH
+uint16_t uniffi_activable_ffi_checksum_func_query_subgraph(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_ACTIVABLE_FFI_CHECKSUM_FUNC_QUERY_WALK_EDGES
+#define UNIFFI_FFIDEF_UNIFFI_ACTIVABLE_FFI_CHECKSUM_FUNC_QUERY_WALK_EDGES
+uint16_t uniffi_activable_ffi_checksum_func_query_walk_edges(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_FFI_ACTIVABLE_FFI_UNIFFI_CONTRACT_VERSION
 #define UNIFFI_FFIDEF_FFI_ACTIVABLE_FFI_UNIFFI_CONTRACT_VERSION
 uint32_t ffi_activable_ffi_uniffi_contract_version(void
@@ -649,3 +783,6 @@ uint32_t ffi_activable_ffi_uniffi_contract_version(void
 );
 #endif
 
+
+void activable_ffi_uniffiFutureContinuationCallback(uint64_t, int8_t);
+void activable_ffi_uniffiFreeGorutine(uint64_t);

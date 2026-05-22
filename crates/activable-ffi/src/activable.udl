@@ -1,3 +1,80 @@
 namespace activable {
+    // Read-only version query
     string version();
+
+    // Initialization and health
+    void graph_initialize(
+        string db_host,
+        u16 db_port,
+        string db_user,
+        string db_password,
+        string db_name,
+        u32 max_connections,
+        string graph_name
+    );
+
+    string health_check();
+
+    // Single node/edge operations
+    void add_node(
+        string label,
+        string id,
+        string properties_json
+    );
+
+    void add_edge(
+        string from_id,
+        string to_id,
+        string edge_type,
+        string properties_json
+    );
+
+    // Batch operations
+    u64 add_nodes_batch(
+        string label,
+        string nodes_json
+    );
+
+    u64 add_edges_batch(
+        string edges_json
+    );
+
+    // Flush (placeholder for future buffering)
+    void flush();
+
+    // Query operations
+    string? query_find_node(
+        string graph_name,
+        string label,
+        string id
+    );
+
+    string query_walk_edges(
+        string graph_name,
+        string start_id,
+        sequence<string> edge_types,
+        string direction,
+        u32 depth
+    );
+
+    string query_path_finder(
+        string graph_name,
+        string start_id,
+        string end_id,
+        sequence<string> edge_types,
+        u32 max_hops
+    );
+
+    string query_blast_radius(
+        string graph_name,
+        string node_id,
+        sequence<string> edge_types,
+        u32 max_hops
+    );
+
+    string query_subgraph(
+        string graph_name,
+        string center_id,
+        u32 radius
+    );
 };

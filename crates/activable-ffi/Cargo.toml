@@ -15,6 +15,9 @@ activable-schema = { path = "../activable-schema" }
 activable-graph = { path = "../activable-graph" }
 activable-iam-eval = { path = "../activable-iam-eval" }
 tokio = { version = "1", features = ["full"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+tokio-postgres = "0.7"
+thiserror = "1"
 
 [build-dependencies]
 uniffi = { version = "0.31.0", features = ["build"] }
