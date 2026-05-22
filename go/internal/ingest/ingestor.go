@@ -1,8 +1,4 @@
 package ingest
 
-// Ingestor defines the interface for cloud provider ingestors.
-// Pending implementation: AWS, GCP, Azure provider adapters.
-type Ingestor interface {
-	// Ingest fetches and returns resources from the cloud provider.
-	Ingest(ctx interface{}) error
-}
+// This file is intentionally minimal. The Ingester interface is defined in types.go.
+// See types.go for the full Ingester interface definition.
