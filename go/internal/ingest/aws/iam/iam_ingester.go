@@ -68,7 +68,7 @@ func (i *IAMIngester) RequiredIAMActions() []string {
 // Enumerate enumerates all IAM resources and returns them via a channel.
 func (i *IAMIngester) Enumerate(ctx context.Context) (<-chan ingest.ResourceSpec, <-chan error) {
 	resourcesChan := make(chan ingest.ResourceSpec, 100)
-	errorsChan := make(chan error, 10)
+	errorsChan := make(chan error, 20)
 
 	go func() {
 		defer close(resourcesChan)

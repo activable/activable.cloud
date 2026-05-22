@@ -57,6 +57,8 @@ func (s *Server) graphqlHandler(w http.ResponseWriter, r *http.Request) {
 		Variables     map[string]interface{} `json:"variables"`
 	}
 
+	// Limit request body to 1MB to prevent OOM attacks
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		s.logger.Error("failed to read request body", "error", err)

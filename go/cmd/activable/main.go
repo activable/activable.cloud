@@ -35,6 +35,7 @@ var serveCmd = &cobra.Command{
 	Long:  "Starts the GraphQL API server. Ingestion is triggered via the triggerIngest mutation, not a CLI command.",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		port, _ := cmd.Flags().GetInt("port")
+		dbPort, _ := cmd.Flags().GetInt("db-port")
 		dbHost, _ := cmd.Flags().GetString("db-host")
 		dbUser, _ := cmd.Flags().GetString("db-user")
 		dbPassword, _ := cmd.Flags().GetString("db-password")
@@ -66,7 +67,7 @@ var serveCmd = &cobra.Command{
 		)
 
 		ffiClient := graphql.NewRealFFIClient()
-		err := ffiClient.GraphInitialize(dbHost, dbUser, dbPassword, dbName, graphName, uint32(maxConnections))
+		err := ffiClient.GraphInitialize(dbHost, dbUser, dbPassword, dbName, graphName, uint16(dbPort), uint32(maxConnections))
 		if err != nil {
 			logger.Error("Failed to initialize graph", "error", err)
 			return err
@@ -83,6 +84,7 @@ func init() {
 	// NOTE: No ingest subcommand. Ingestion is triggered via GraphQL mutation triggerIngest.
 
 	serveCmd.Flags().IntP("port", "p", 8080, "Server port")
+	serveCmd.Flags().Int("db-port", 5432, "Database port")
 	serveCmd.Flags().String("db-host", os.Getenv("ACTIVABLE_DB_HOST"), "Database host")
 	serveCmd.Flags().String("db-user", os.Getenv("ACTIVABLE_DB_USER"), "Database user")
 	serveCmd.Flags().String("db-password", os.Getenv("ACTIVABLE_DB_PASSWORD"), "Database password")

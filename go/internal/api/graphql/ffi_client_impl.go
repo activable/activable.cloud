@@ -3,11 +3,16 @@
 package graphql
 
 import (
+	"sync"
+
 	"github.com/activable-cloud/activable.cloud/bindings/activable"
 )
 
 // RealFFIClient wraps activable_ffi bindings with error handling.
-type RealFFIClient struct{}
+type RealFFIClient struct {
+	initOnce sync.Once
+	initErr  error
+}
 
 // NewRealFFIClient creates a new RealFFIClient.
 func NewRealFFIClient() *RealFFIClient {
@@ -15,8 +20,11 @@ func NewRealFFIClient() *RealFFIClient {
 }
 
 // GraphInitialize initializes the graph runtime.
-func (r *RealFFIClient) GraphInitialize(host, user, password, dbname, graphName string, maxConnections uint32) error {
-	return activable.GraphInitialize(host, uint16(5432), user, password, dbname, graphName, maxConnections)
+func (r *RealFFIClient) GraphInitialize(host, user, password, dbname, graphName string, port uint16, maxConnections uint32) error {
+	r.initOnce.Do(func() {
+		r.initErr = activable.GraphInitialize(host, port, user, password, dbname, graphName, maxConnections)
+	})
+	return r.initErr
 }
 
 // QueryFindNode calls the Rust query_find_node function.

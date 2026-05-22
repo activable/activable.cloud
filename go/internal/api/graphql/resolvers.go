@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"strings"
 	"time"
 
 	"github.com/activable-cloud/activable.cloud/go/internal/ingest"
@@ -217,7 +216,9 @@ func (r *Resolver) TriggerIngest(provider string, regions []string) (*IngestRun,
 
 	// Spawn real ingestion in background goroutine
 	go func() {
-		ctx := context.Background()
+		// 30-minute timeout prevents orphaned goroutines on long-running ingestion
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+		defer cancel()
 
 		// Load AWS config with endpoint override (for floci in dev)
 		awsCfg, err := awspkg.LoadConfig(ctx)
@@ -275,27 +276,4 @@ func (r *Resolver) Healthz() (string, error) {
 	return result, nil
 }
 
-// Helper functions
-
-// Unused stubs removed — real implementations inline in TriggerIngest.
-
-// parseErrorResponse attempts to extract an error message from FFI JSON response.
-func parseErrorResponse(jsonStr string) error {
-	var errObj map[string]interface{}
-	if err := json.Unmarshal([]byte(jsonStr), &errObj); err != nil {
-		return fmt.Errorf("unparseable FFI response: %s", jsonStr)
-	}
-
-	if errMsg, exists := errObj["error"]; exists {
-		if msg, ok := errMsg.(string); ok {
-			return fmt.Errorf("FFI error: %s", msg)
-		}
-	}
-
-	return fmt.Errorf("unknown FFI error")
-}
-
-// isErrorResponse checks if a JSON response is an error.
-func isErrorResponse(jsonStr string) bool {
-	return strings.HasPrefix(jsonStr, "{\"error\"")
-}
+// Helper functions removed — real implementations inline in TriggerIngest.

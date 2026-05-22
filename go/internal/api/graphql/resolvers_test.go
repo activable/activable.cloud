@@ -24,12 +24,14 @@ type MockFFIClient struct {
 	GraphInitializeErr         error
 	GraphInitializeHost        string
 	GraphInitializeUser        string
+	GraphInitializePort        uint16
 	GraphInitializeDBName      string
 }
 
-func (m *MockFFIClient) GraphInitialize(host, user, password, dbname, graphName string, maxConnections uint32) error {
+func (m *MockFFIClient) GraphInitialize(host, user, password, dbname, graphName string, port uint16, maxConnections uint32) error {
 	m.GraphInitializeHost = host
 	m.GraphInitializeUser = user
+	m.GraphInitializePort = port
 	m.GraphInitializeDBName = dbname
 	return m.GraphInitializeErr
 }
