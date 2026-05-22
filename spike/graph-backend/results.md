@@ -1,7 +1,7 @@
 # Graph Backend Spike — PG+AGE Benchmark Results
 
-**Date:** 2026-05-21  
-**Branch:** `feat/graph-backend-spike`  
+**Date:** 2026-05-21
+**Branch:** `feat/graph-backend-spike`
 **Status:** COMPLETE — Verdict: **GO**
 
 ---
@@ -53,7 +53,7 @@
 | 6-hop var-len concurrent p95 | < 2,500,000 µs (2.5s) | **697 µs** ✓ |
 | Shortest-path single-thread p95 | < 3,000,000 µs (3s) | **367 µs** ✓ |
 
-**BORDERLINE zone (±20%):** 1,600,000–2,400,000 µs for 6-hop single; 2,000,000–3,000,000 µs for concurrent.  
+**BORDERLINE zone (±20%):** 1,600,000–2,400,000 µs for 6-hop single; 2,000,000–3,000,000 µs for concurrent.
 Results are **3–4 orders of magnitude below thresholds** — no borderline arbitration needed.
 
 ---

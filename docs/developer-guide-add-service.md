@@ -104,7 +104,7 @@ import (
 func BucketToResourceSpec(bucket types.Bucket, accountID string) ingest.ResourceSpec {
     bucketName := *bucket.Name
     arnStr := fmt.Sprintf("arn:aws:s3:::%s", bucketName)
-    
+
     return ingest.ResourceSpec{
         Label: "Resource",
         ID:    arnStr,
@@ -147,9 +147,9 @@ func TestBucketToResourceSpec(t *testing.T) {
         Name: aws.String("my-bucket"),
         CreationDate: aws.Time(time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)),
     }
-    
+
     spec := BucketToResourceSpec(bucket, "123456789012")
-    
+
     if spec.Label != "Resource" {
         t.Errorf("expected Label=Resource, got %q", spec.Label)
     }
@@ -320,10 +320,10 @@ func TestS3Ingester_Enumerate(t *testing.T) {
                 {Name: aws.String("test-bucket")},
             },
         }, nil)
-    
+
     ingester := NewS3Ingester(mockClient, "123456789012")
     resources, errors := ingester.Enumerate(context.Background())
-    
+
     for resource := range resources {
         assert.Equal(t, "Resource", resource.Label)
     }

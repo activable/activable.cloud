@@ -6,7 +6,7 @@ This spike validates **Postgres + Apache AGE** as the graph backend for Activabl
 
 **Purpose:** Measure AGE variable-length path performance (6-hop traversals) in both single-threaded and tokio-concurrent scenarios. AGE has documented performance cliffs on deep queries; this spike captures real numbers before committing the schema.
 
-**Decision Gate:** 
+**Decision Gate:**
 - **GO PG+AGE** if 6-hop single-thread p95 < 2s AND concurrent p95 < 2.5s on 100k-node graph, AND shortest-path p95 < 3s.
 - **NO-GO** → escalate to Vela-Kuzu fork (escape hatch if AGE fails performance gates).
 - **BORDERLINE** (±20% of threshold) → user arbitrates.

@@ -46,8 +46,8 @@ Open `crates/activable-graph/src/query_builder.rs`. This is where you write the 
 ```rust
 impl CypherBuilder {
     /// Count the number of principals reachable via CanAssume edges from a given principal.
-    /// 
-    /// Returns a Cypher query that counts distinct Principal nodes reachable via 
+    ///
+    /// Returns a Cypher query that counts distinct Principal nodes reachable via
     /// one or more CanAssume edges from `start`, up to `max_hops` steps.
     pub fn count_reachable_principals(
         &self,
@@ -55,12 +55,12 @@ impl CypherBuilder {
         max_hops: u8,
     ) -> Result<String, GraphError> {
         let escaped_start = escape_cypher(start.as_str());
-        
+
         let cypher = format!(
             "MATCH (s {{id: '{}'}}) -[:CanAssume*1..{}]-> (t:Principal) RETURN COUNT(DISTINCT t.id)",
             escaped_start, max_hops
         );
-        
+
         Ok(format!(
             "SELECT * FROM ag_catalog.cypher('{}', $${}$$) AS (count agtype)",
             self.graph_name, cypher
@@ -95,9 +95,9 @@ mod tests {
     fn test_count_reachable_principals() {
         let builder = CypherBuilder::new("test_graph");
         let start = NodeId::new("arn:aws:iam::123456789012:role/MyRole").unwrap();
-        
+
         let query = builder.count_reachable_principals(&start, 5).unwrap();
-        
+
         // Verify the Cypher structure
         assert!(query.contains("MATCH (s {id: 'arn:aws:iam::123456789012:role/MyRole'})"));
         assert!(query.contains("[:CanAssume*1..5]"));
@@ -108,9 +108,9 @@ mod tests {
     fn test_count_reachable_principals_escapes_quotes() {
         let builder = CypherBuilder::new("test_graph");
         let start = NodeId::new("arn:aws:iam::123456789012:role/Role'With'Quotes").unwrap();
-        
+
         let query = builder.count_reachable_principals(&start, 5).unwrap();
-        
+
         // Verify escaping
         assert!(query.contains("Role\\'With\\'Quotes"));
     }
@@ -146,17 +146,17 @@ impl GraphClient {
         }
 
         let query = self.builder.count_reachable_principals(start, max_hops)?;
-        
+
         let rows = self.pool.get_connection().await?
             .query(&query, &[])
             .await?;
-        
+
         if rows.is_empty() {
             return Ok(0);
         }
 
         let agtype_value: String = rows[0].get(0);
-        
+
         // Parse agtype JSON ({"int": 42} format)
         let count: u64 = parse_agtype_count(&agtype_value)?;
         Ok(count)
@@ -167,7 +167,7 @@ impl GraphClient {
 **Streaming vs. Collected Decision:**
 
 - **Collected** (like `count_reachable_principals` above): Use when the result set is small (< 1000 rows) or you need to post-process all results. Return a `Vec<T>` or single value.
-  
+
   ```rust
   pub async fn query_name(&self, ...) -> Result<Vec<QueryResult>, GraphError> {
       let rows = self.pool.get_connection().await?
@@ -178,7 +178,7 @@ impl GraphClient {
   ```
 
 - **Streaming** (like `walk_edges`): Use when the result set is large (> 10k rows) or you want to process results incrementally. Return an async stream or channel.
-  
+
   ```rust
   pub async fn walk_edges(
       &self,
@@ -190,7 +190,7 @@ impl GraphClient {
       let query = self.builder.walk_edges(start, edge_types, direction, depth_limit)?;
       let conn = self.pool.get_connection().await?;
       let rows = conn.query(&query, &[]).await?;
-      
+
       Ok(futures::stream::iter(rows).map(|row| {
           parse_node_from_row(&row)
       }))
@@ -217,14 +217,14 @@ mod tests {
     fn test_count_reachable_principals_validates_max_hops() {
         // Set up a mock pool or use a test double
         let client = GraphClient::new_for_test();
-        
+
         let start = NodeId::new("arn:aws:iam::123456789012:role/MyRole").unwrap();
-        
+
         // max_hops = 0 should error
         let result = tokio::runtime::Runtime::new().unwrap().block_on(
             client.count_reachable_principals(&start, 0)
         );
-        
+
         assert!(result.is_err());
     }
 }
@@ -251,18 +251,18 @@ async fn test_count_reachable_principals_integration() {
     };
 
     let client = GraphClient::connect(&test_url).await.expect("connect");
-    
+
     // Set up test data
     client.create_test_graph().await.expect("setup");
-    
+
     // Test the query
     let start = NodeId::new("arn:aws:iam::123456789012:role/RoleA").unwrap();
     let count = client.count_reachable_principals(&start, 3)
         .await
         .expect("count_reachable_principals");
-    
+
     assert_eq!(count, 2); // RoleA can assume RoleB and RoleC
-    
+
     // Cleanup
     client.drop_test_graph().await.expect("cleanup");
 }
@@ -297,10 +297,10 @@ pub async fn count_reachable_principals(
     let client = GraphClient::connect(&connection_string)
         .await
         .map_err(|e| e.to_string())?;
-    
+
     let start_node = NodeId::new(&start)
         .map_err(|e| e.to_string())?;
-    
+
     client.count_reachable_principals(&start_node, max_hops)
         .await
         .map_err(|e| e.to_string())
@@ -313,7 +313,7 @@ Also update `crates/activable-ffi/activable.udl` (the UniFFI interface definitio
 [Async]
 interface QuerySurface {
     // ... existing methods ...
-    
+
     /// Count principals reachable via CanAssume edges.
     u64 count_reachable_principals(
         string connection_string,
@@ -350,9 +350,9 @@ var queryCountReachableCmd = &cobra.Command{
     RunE: func(cmd *cobra.Command, args []string) error {
         principalArn := args[0]
         maxHops := parseUint8(args[1])
-        
+
         ctx := context.Background()
-        
+
         // Call the FFI-exposed function
         count, err := ffi.CountReachablePrincipals(
             ctx,
@@ -363,7 +363,7 @@ var queryCountReachableCmd = &cobra.Command{
         if err != nil {
             return fmt.Errorf("count_reachable_principals: %w", err)
         }
-        
+
         fmt.Printf("Reachable principals: %d\n", count)
         return nil
     },
