@@ -1,6 +1,12 @@
 # System Architecture
 
-High-level design of Activable's polyglot architecture: Rust core, Go CLI/ingestion, Postgres+AGE backend, UniFFI boundary.
+Activable is a SaaS knowledge graph platform for cloud infrastructure. This document
+describes the v1 substrate: Postgres + Apache AGE graph engine, Rust query primitives,
+Go GraphQL API server, AWS ingestion, deployed on Kubernetes. See
+[`docs/platform.md`](./platform.md) for the full platform thesis and enablement roadmap.
+
+The v1 polyglot stack: Rust core (schema, graph driver, query primitives), Go (GraphQL
+API server, ingestion), Postgres + Apache AGE storage, UniFFI boundary.
 
 ## Component Diagram
 
