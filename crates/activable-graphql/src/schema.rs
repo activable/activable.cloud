@@ -66,9 +66,13 @@ impl QueryRoot {
         resolvers::subgraph::subgraph(ctx, center, radius).await
     }
 
-    /// Get the status of a previous ingest run (v1: placeholder).
-    async fn ingest_status(&self, run_id: String) -> async_graphql::Result<Option<GqlIngestRun>> {
-        resolvers::ingest::ingest_status(run_id).await
+    /// Get the status of a previous ingest run.
+    async fn ingest_status(
+        &self,
+        ctx: &Context<'_>,
+        run_id: String,
+    ) -> async_graphql::Result<Option<GqlIngestRun>> {
+        resolvers::ingest::ingest_status(ctx, run_id).await
     }
 
     /// Check the health of the GraphQL server and database.
@@ -82,12 +86,13 @@ pub struct MutationRoot;
 
 #[Object]
 impl MutationRoot {
-    /// Trigger a new ingestion run (v1: placeholder).
+    /// Trigger a new ingestion run.
     async fn trigger_ingest(
         &self,
+        ctx: &Context<'_>,
         provider: String,
         regions: Vec<String>,
     ) -> async_graphql::Result<GqlIngestRun> {
-        resolvers::ingest::trigger_ingest(provider, regions).await
+        resolvers::ingest::trigger_ingest(ctx, provider, regions).await
     }
 }

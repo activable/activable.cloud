@@ -13,6 +13,7 @@ path = "src/main.rs"
 [dependencies]
 activable-schema = { path = "../activable-schema" }
 activable-graph = { path = "../activable-graph" }
+activable-ingest = { path = "../activable-ingest" }
 async-graphql = "=8.0.0-rc.5"
 async-graphql-axum = "=8.0.0-rc.5"
 axum = "0.8"

@@ -5,6 +5,8 @@ use activable_graph::GraphClient;
 use async_graphql::Schema;
 use axum::{extract::DefaultBodyLimit, routing::get, Json, Router};
 use std::net::SocketAddr;
+use std::sync::atomic::AtomicBool;
+use std::sync::Arc;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 mod error;
@@ -76,15 +78,46 @@ async fn main() -> anyhow::Result<()> {
         .map_err(|e| anyhow::anyhow!("Database connectivity check failed: {}", e))?;
     tracing::info!("Database connectivity verified");
 
+    // Initialize ingest_runs table
+    {
+        let conn = pool.get().await.map_err(|e| {
+            anyhow::anyhow!("Failed to get connection for table initialization: {}", e)
+        })?;
+        conn.batch_execute(
+            "CREATE TABLE IF NOT EXISTS ingest_runs (
+                run_id TEXT PRIMARY KEY,
+                started_at TEXT NOT NULL,
+                completed_at TEXT,
+                status TEXT NOT NULL DEFAULT 'running',
+                error_message TEXT,
+                stats JSONB
+            )",
+        )
+        .await
+        .map_err(|e| anyhow::anyhow!("Failed to create ingest_runs table: {}", e))?;
+        tracing::info!("ingest_runs table initialized");
+    }
+
     // Create the GraphClient
     let client = GraphClient::new(pool.clone(), &graph_name);
     tracing::info!(graph_name = %graph_name, "GraphClient initialized");
+
+    // Create the IngestRuntime
+    let ingest_runtime =
+        activable_ingest::IngestRuntime::new(pool.clone(), graph_name.clone()).await?;
+    let ingest_runtime = Arc::new(ingest_runtime);
+    tracing::info!("IngestRuntime initialized");
+
+    // Create atomic flag for concurrent run prevention
+    let ingest_active = Arc::new(AtomicBool::new(false));
 
     // Build the async-graphql schema
     let schema: AppSchema =
         Schema::build(QueryRoot, MutationRoot, async_graphql::EmptySubscription)
             .data(client)
             .data(pool.clone())
+            .data(ingest_runtime)
+            .data(ingest_active.clone())
             .limit_complexity(500)
             .limit_depth(10)
             .finish();
