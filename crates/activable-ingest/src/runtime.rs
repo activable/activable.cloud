@@ -1,5 +1,6 @@
 use crate::cloud_control::{fetch_via_ccapi, IngestStats};
 use crate::error::IngestError;
+use crate::native::NativeEnricher;
 use crate::native_fallback::fetch_via_native_sdk;
 use crate::resource_registry::{load_registry, ResourceRegistry};
 use aws_config::SdkConfig;
@@ -11,6 +12,8 @@ use tracing::{debug, error, info, warn};
 pub struct IngestResult {
     pub stats: Vec<IngestStats>,
     pub errors: Vec<(String, IngestError)>,
+    pub enrichment_stats: Vec<crate::native::EnrichmentStats>,
+    pub enrichment_errors: Vec<(String, IngestError)>,
     pub duration: std::time::Duration,
 }
 
@@ -153,12 +156,49 @@ impl IngestRuntime {
             }
         }
 
+        // Phase 2: Run native enrichers
+        let mut enrichment_stats = Vec::new();
+        let mut enrichment_errors = Vec::new();
+
+        let enrichers: Vec<Box<dyn NativeEnricher>> = vec![
+            Box::new(crate::native::iam::IamEnricher::new(
+                self.aws_config.clone(),
+            )),
+            Box::new(crate::native::ec2::Ec2Enricher::new(
+                self.aws_config.clone(),
+            )),
+            Box::new(crate::native::s3::S3Enricher::new(self.aws_config.clone())),
+        ];
+
+        for enricher in &enrichers {
+            match enricher.enrich(&self.pool, &self.graph_name).await {
+                Ok(stats_item) => {
+                    info!(
+                        service = %stats_item.service,
+                        edges = stats_item.edges_created,
+                        "Enrichment completed"
+                    );
+                    enrichment_stats.push(stats_item);
+                }
+                Err(e) => {
+                    warn!(
+                        service = %enricher.service(),
+                        error = %e,
+                        "Enrichment failed (continuing with other enrichers)"
+                    );
+                    enrichment_errors.push((enricher.service().to_string(), e));
+                }
+            }
+        }
+
         let duration = start.elapsed();
 
         info!(
             total_types = stats.len() + errors.len(),
             successful = stats.len(),
             failed = errors.len(),
+            enrichers_completed = enrichment_stats.len(),
+            enrichers_failed = enrichment_errors.len(),
             duration_secs = duration.as_secs(),
             "Ingestion run complete"
         );
@@ -166,6 +206,8 @@ impl IngestRuntime {
         IngestResult {
             stats,
             errors,
+            enrichment_stats,
+            enrichment_errors,
             duration,
         }
     }
@@ -200,11 +242,14 @@ mod tests {
         let result = IngestResult {
             stats: stats.clone(),
             errors: vec![],
+            enrichment_stats: vec![],
+            enrichment_errors: vec![],
             duration: std::time::Duration::from_secs(10),
         };
 
         assert_eq!(result.stats.len(), 2);
         assert_eq!(result.errors.len(), 0);
+        assert_eq!(result.enrichment_stats.len(), 0);
         assert_eq!(result.duration.as_secs(), 10);
 
         let total_nodes: u32 = result.stats.iter().map(|s| s.nodes_ingested).sum();
@@ -227,11 +272,14 @@ mod tests {
         let result = IngestResult {
             stats: stats.clone(),
             errors: errors.clone(),
+            enrichment_stats: vec![],
+            enrichment_errors: vec![],
             duration: std::time::Duration::from_secs(5),
         };
 
         assert_eq!(result.stats.len(), 1);
         assert_eq!(result.errors.len(), 1);
         assert_eq!(result.errors[0].0, "AWS::EC2::Instance");
+        assert_eq!(result.enrichment_stats.len(), 0);
     }
 }

@@ -37,6 +37,7 @@
 pub mod cloud_control;
 pub mod config;
 pub mod error;
+pub mod native;
 pub mod native_fallback;
 pub mod resource_registry;
 pub mod runtime;
