@@ -1,4 +1,4 @@
-.PHONY: setup lint test test-integration bindgen build ingest verify test-ffi-stability size-check spike-bench clean
+.PHONY: setup lint test test-integration bindgen build ingest smoke verify verify-rust verify-go test-ffi-stability size-check spike-bench clean
 
 # Platform detection for Rust dylib
 UNAME_S := $(shell uname -s)
@@ -60,7 +60,22 @@ ingest:
 	@echo "Error: ingest not yet implemented"
 	@exit 1
 
-verify:
+verify: verify-rust verify-go
+	@echo "verify: all checks passed"
+
+verify-rust:
+	@echo "Verifying Rust (fmt + clippy + test + build)..."
+	cargo fmt --all -- --check
+	cargo clippy --workspace --all-targets -- -D warnings
+	cargo test --workspace
+	cargo build --workspace --release
+
+verify-go:
+	@echo "Verifying Go (lint + test)..."
+	cd go && golangci-lint run --timeout=2m ./...
+	cd go && go test -race ./...
+
+smoke:
 	@echo "Running smoke test..."
 	@if [ ! -f go/bin/activable ]; then echo "Binary not found; run 'make build' first"; exit 1; fi
 	DYLD_LIBRARY_PATH=$(PWD)/target/release LD_LIBRARY_PATH=$(PWD)/target/release go/bin/activable verify

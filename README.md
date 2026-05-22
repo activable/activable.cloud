@@ -30,7 +30,7 @@ make build
 docker compose -f infra/compose/docker-compose.yml up -d db
 
 # Smoke test
-make verify
+make smoke
 ```
 
 ### Pre-commit hooks
@@ -117,7 +117,10 @@ make lint              # Check code formatting and linting
 make test              # Run tests
 make build             # Build all (Rust + Go)
 make bindgen           # Regenerate UniFFI bindings
-make verify            # Smoke test
+make verify            # CI-parity check (lint + test + build)
+make verify-rust       # Verify Rust only (fmt + clippy + test + build)
+make verify-go         # Verify Go only (lint + test)
+make smoke             # Smoke test (CLI version check)
 make test-ffi-stability # Concurrent FFI stress test (MUST PASS on every PR)
 make size-check        # Verify binary < 50MB
 make clean             # Clean build artifacts

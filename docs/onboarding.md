@@ -59,7 +59,7 @@ go test -race ./go/...
 make lint
 
 # Smoke test
-make verify
+make smoke
 ```
 
 ## 25 Min: Start Postgres+AGE
