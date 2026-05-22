@@ -34,7 +34,9 @@ COPY --from=rust-builder /workspace/target/release/libactivable_ffi.so /usr/loca
 ENV CGO_ENABLED=1 \
     CGO_LDFLAGS="-L/usr/local/lib" \
     LD_LIBRARY_PATH=/usr/local/lib
-RUN go build -o /workspace/activable-server ./go/cmd/activable
+# -p 1 limits compiler parallelism to reduce peak memory usage
+# (the ec2 SDK package is large and OOMs with default parallelism)
+RUN go build -p 1 -o /workspace/activable-server ./go/cmd/activable
 
 # Stage 3: Slim runtime
 FROM debian:bookworm-slim

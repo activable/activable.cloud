@@ -111,25 +111,12 @@ func NewDefaultGraphInitializer() *DefaultGraphInitializer {
 	return &DefaultGraphInitializer{}
 }
 
-// Initialize validates the graph configuration and logs that initialization
-// is handled by the server process at startup.
-// The actual FFI pool initialization happens once in the server's main(),
-// not in each ingestion runtime.
+// Initialize is a no-op when running inside the GraphQL server process.
+// The actual FFI pool initialization happens once in the server's main()
+// via activable.GraphInitialize(). The ingestion goroutine runs in-process
+// and uses the already-initialized pool. This method exists to satisfy the
+// GraphInitializer interface for standalone usage or testing.
 func (g *DefaultGraphInitializer) Initialize(databaseURL string, poolSize int, graphName string) error {
-	// Validate inputs
-	if databaseURL == "" {
-		return fmt.Errorf("database URL cannot be empty")
-	}
-	if poolSize <= 0 {
-		return fmt.Errorf("pool size must be positive")
-	}
-	if graphName == "" {
-		return fmt.Errorf("graph name cannot be empty")
-	}
-
-	// Graph initialization is already handled by the server process.
-	// Log this for operational clarity.
-	log.Printf("[ingest] graph initialization validated (pool already initialized by server)")
-
+	log.Printf("[ingest] graph pool already initialized by server process (skipping)")
 	return nil
 }

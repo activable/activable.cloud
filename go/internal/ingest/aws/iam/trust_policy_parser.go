@@ -112,6 +112,7 @@ func extractAWSPrincipals(roleARN string, awsPrincipals interface{}) ([]ingest.E
 	// Create CanAssume edges for each principal
 	for _, principal := range principals {
 		edge := ingest.EdgeSpec{
+			FromID:     roleARN,
 			TargetID:   principal,
 			EdgeType:   "CanAssume",
 			Properties: map[string]interface{}{},
@@ -155,6 +156,7 @@ func extractServicePrincipals(roleARN string, servicePrincipals interface{}) ([]
 
 		// Create edge from role to service principal
 		edge := ingest.EdgeSpec{
+			FromID:     roleARN,
 			TargetID:   service,
 			EdgeType:   "TrustedBy",
 			Properties: map[string]interface{}{},

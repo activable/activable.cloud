@@ -136,6 +136,7 @@ func AccessKeyToResourceSpec(accessKey types.AccessKeyMetadata, userARN string) 
 	}
 
 	edgeSpec := ingest.EdgeSpec{
+		FromID:     accessKeyID,
 		TargetID:   userARN,
 		EdgeType:   "SignedBy",
 		Properties: map[string]interface{}{},
@@ -147,6 +148,7 @@ func AccessKeyToResourceSpec(accessKey types.AccessKeyMetadata, userARN string) 
 // GroupMemberEdgeSpec creates an edge from a user to a group.
 func GroupMemberEdgeSpec(userARN string, groupARN string) ingest.EdgeSpec {
 	return ingest.EdgeSpec{
+		FromID:     userARN,
 		TargetID:   groupARN,
 		EdgeType:   "MemberOf",
 		Properties: map[string]interface{}{},
@@ -155,11 +157,8 @@ func GroupMemberEdgeSpec(userARN string, groupARN string) ingest.EdgeSpec {
 
 // AttachedPolicyEdgeSpec creates an edge from a principal to an attached policy.
 func AttachedPolicyEdgeSpec(principalARN string, policyARN string) ingest.EdgeSpec {
-	// Generate the same permission ID that would be created for this policy
-	// For attached policies, we use the policy ARN directly as the target
-	// since we enumerate attached policies without the statements.
-	// In a full implementation, this would link to a Permission node.
 	return ingest.EdgeSpec{
+		FromID:     principalARN,
 		TargetID:   policyARN,
 		EdgeType:   "HasPermission",
 		Properties: map[string]interface{}{},
@@ -177,6 +176,7 @@ func InlinePolicyEdgeSpec(principalARN string, policyName string, sids []string)
 		permissionID := fmt.Sprintf("permission:%s:%s:%x", principalARN, policyName, hash.Sum(nil))
 
 		edge := ingest.EdgeSpec{
+			FromID:     principalARN,
 			TargetID:   permissionID,
 			EdgeType:   "HasPermission",
 			Properties: map[string]interface{}{},
@@ -199,6 +199,7 @@ func ContainsEdgeSpecs(permissionID string, resourceARNs []string) []ingest.Edge
 		}
 
 		edge := ingest.EdgeSpec{
+			FromID:     permissionID,
 			TargetID:   arn,
 			EdgeType:   "Contains",
 			Properties: map[string]interface{}{},

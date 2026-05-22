@@ -228,8 +228,9 @@ func TestTriggerIngest_Success(t *testing.T) {
 		t.Errorf("expected status RUNNING, got %s", run.Status)
 	}
 
-	if len(run.Services) != 1 {
-		t.Errorf("expected 1 service, got %d", len(run.Services))
+	// TriggerIngest creates all 5 AWS service ingesters: iam, sts, s3, ec2, lambda
+	if len(run.Services) != 5 {
+		t.Errorf("expected 5 services (iam, sts, s3, ec2, lambda), got %d", len(run.Services))
 	}
 }
 
