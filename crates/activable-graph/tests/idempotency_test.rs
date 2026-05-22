@@ -43,7 +43,12 @@ async fn count_nodes(pool: &deadpool_postgres::Pool, graph_name: &str) -> Result
 #[tokio::test]
 async fn test_idempotency_fixtures_present() {
     // Verify fixture directory structure exists (always pass, no DB required)
-    let fixture_path = std::path::Path::new("tests/fixtures/combined");
+    let manifest_dir = env!("CARGO_MANIFEST_DIR");
+    let fixture_path = std::path::Path::new(manifest_dir)
+        .parent()
+        .and_then(|p| p.parent())
+        .unwrap()
+        .join("tests/fixtures/combined");
     assert!(
         fixture_path.exists(),
         "fixture directory not found: {}",

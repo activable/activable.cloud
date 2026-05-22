@@ -166,10 +166,14 @@ clean:
 
 COMPOSE_DEV := infra/compose/docker-compose.dev.yml
 
-dev-up:
+dev-up: build
 	@echo "Starting local dev environment (Docker Compose infra + Docker Desktop K8s app)..."
 	@echo ""
-	@echo "Step 1: Starting infrastructure (Postgres+AGE + Floci)..."
+	@echo "Step 1: Building Rust dylib for CGo..."
+	cargo build --release -p activable-ffi
+	@echo "✓ Rust dylib built"
+	@echo ""
+	@echo "Step 2: Starting infrastructure (Postgres+AGE + Floci)..."
 	docker compose -f $(COMPOSE_DEV) up -d
 	@echo "Step 2: Waiting for services to be healthy (timeout 60s)..."
 	@timeout=60; \
@@ -242,9 +246,13 @@ dev-seed:
 		echo "  Run 'make dev-up' first"; \
 		exit 1; \
 	fi
-	@bash infra/scripts/seed-floci.sh
+	AWS_ENDPOINT_URL=http://localhost:4566 \
+	AWS_ACCESS_KEY_ID=test \
+	AWS_SECRET_ACCESS_KEY=test \
+	AWS_DEFAULT_REGION=us-east-1 \
+	  go run ./go/cmd/seed
 
-dev-ingest: build
+dev-ingest:
 	@echo "Running ingestion against Floci..."
 	@if ! curl -s http://localhost:4566/ > /dev/null 2>&1; then \
 		echo "✗ Floci not responding"; \
@@ -254,7 +262,11 @@ dev-ingest: build
 		echo "✗ Postgres not responding"; \
 		exit 1; \
 	fi
-	@echo "Step 1: Running ingesters (IAM, STS, S3, EC2, Lambda)..."
+	@echo "Step 1: Building Rust dylib for CGo..."
+	cargo build --release -p activable-ffi
+	@echo "✓ Rust dylib built"
+	@echo ""
+	@echo "Step 2: Running ingesters (IAM, STS, S3, EC2, Lambda)..."
 	ACTIVABLE_LOCAL_DEV=1 \
 	AWS_ENDPOINT_URL=http://localhost:4566 \
 	AWS_ACCESS_KEY_ID=test \
@@ -266,6 +278,8 @@ dev-ingest: build
 	ACTIVABLE_REGIONS=us-east-1 \
 	DYLD_LIBRARY_PATH=$(PWD)/target/release \
 	LD_LIBRARY_PATH=$(PWD)/target/release \
+	CGO_LDFLAGS="-L$(PWD)/target/release" \
+	CGO_ENABLED=1 \
 	  go run ./go/cmd/activable ingest
 	@echo "✓ Ingestion complete"
 
