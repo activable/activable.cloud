@@ -33,6 +33,7 @@ jobs:
   build-rust:
     name: Build Rust
     runs-on: ${{ matrix.os }}
+    needs: [lint-rust, lint-go, test-rust]
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest]

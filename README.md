@@ -5,23 +5,23 @@
 
 Activable is an open-source platform for discovering, modeling, and analyzing cloud attack paths. Built on **Apache AGE** (PostgreSQL graph extension) with a **Rust core** (schema, graph, IAM evaluator) and **Go CLI/ingestion** layer connected via **UniFFI**.
 
-## Quick Start (60 seconds)
+## Developer setup
 
 ### Prerequisites
 
-- **Rust 1.75+**: `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`
+- **Rust 1.95** (via `rustup`; matches `rust-toolchain.toml`): `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`
 - **Go 1.23+**: https://go.dev/dl
 - **Docker** (for Postgres+AGE): https://www.docker.com
+- **pre-commit**: `brew install pre-commit` (macOS) or `pipx install pre-commit`
 
-### Setup
+### First-time setup
 
 ```bash
-# Clone and navigate
 git clone https://github.com/activable-cloud/activable.cloud
 cd activable.cloud
 
-# Install dev tooling
-make setup
+# Install pre-commit hooks (one-time per clone)
+pre-commit install --install-hooks
 
 # Build
 make build
@@ -32,6 +32,30 @@ docker compose -f infra/compose/docker-compose.yml up -d db
 # Smoke test
 make verify
 ```
+
+### Pre-commit hooks
+
+The repo enforces basic quality locally via [pre-commit](https://pre-commit.com):
+
+| Stage | Hooks |
+|---|---|
+| `pre-commit` | trailing whitespace, EOF newline, YAML/JSON parse, large-file guard, `cargo fmt --check`, `golangci-lint`, plan-taxonomy guard, shellcheck |
+| `pre-push` | `cargo clippy -D warnings` (slower; gated to push) |
+| `commit-msg` | `gitlint` |
+
+To run all hooks manually against the whole tree:
+
+```bash
+pre-commit run --all-files
+```
+
+To bypass in an emergency (rare): `git commit --no-verify` / `git push --no-verify`. Never bypass on `main`.
+
+### CI mirrors the local checks
+
+The CI pipeline (`.github/workflows/ci.yml`) runs the same lints and tests, so contributors who skip `pre-commit install` still get caught at PR time. Locally is faster than waiting on CI.
+
+## Language-specific development
 
 ### Rust Development
 

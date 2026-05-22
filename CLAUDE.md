@@ -135,19 +135,25 @@ The only operations allowed on `main` are `git pull` / `git fetch`.
 Sub-agents get worktree isolation automatically. The orchestrator must
 ALSO be on a branch.
 
-### §0.7 Pre-commit hooks (when configured)
+### §0.7 Pre-commit hooks
 
-When `.pre-commit-config.yaml` lands in the repo, install once before
-your first commit:
+`.pre-commit-config.yaml` is checked into the repo. Install once on a fresh clone:
 
 ```bash
 brew install pre-commit          # macOS; or pipx / uv / pip
 pre-commit install --install-hooks
 ```
 
-The pre-push hook runs the local `verify` target (CI parity). Bypass
-with `git push --no-verify` for emergencies only. Sub-agents inherit the
-hook automatically via shared git config in worktrees.
+This wires hooks into `.git/hooks/`. From then on:
+
+- **pre-commit stage** (every `git commit`): file hygiene + `cargo fmt --check` + `golangci-lint` + plan-taxonomy guard + shellcheck.
+- **pre-push stage** (every `git push`): adds `cargo clippy -D warnings`.
+- **commit-msg stage**: `gitlint` validates the commit message structure.
+
+The pre-push hook runs the local `verify` target (CI parity) — see Makefile. Bypass
+with `git push --no-verify` for emergencies only; never bypass on `main`.
+
+Sub-agents inherit the hook automatically via shared git config in worktrees.
 
 ### §0.8 Draft-PR policy + local verify
 
