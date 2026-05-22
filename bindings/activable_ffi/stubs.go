@@ -1,43 +1,46 @@
-package activable
+package activable_ffi
 
-import "github.com/activable-cloud/activable.cloud/bindings/activable_ffi"
-
-// Version returns the activable schema version string from the Rust FFI.
-func Version() string {
-	return activable_ffi.Version()
-}
+// Stub FFI functions until proper uniffi bindings are generated from Rust.
+// These will be replaced with actual C FFI calls once `cargo build` generates them.
 
 // GraphInitialize initializes the graph runtime.
 func GraphInitialize(host string, port uint16, user, password, dbname, graphName string, maxConnections uint32) error {
-	return activable_ffi.GraphInitialize(host, port, user, password, dbname, graphName, maxConnections)
+	// Stub: placeholder until FFI bindings are generated
+	return nil
 }
 
 // QueryFindNode finds a node by label and ID.
 func QueryFindNode(label, id string) (string, error) {
-	return activable_ffi.QueryFindNode(label, id)
+	// Stub: placeholder until FFI bindings are generated
+	return "{\"id\":\"" + id + "\",\"label\":\"" + label + "\"}", nil
 }
 
 // QueryWalkEdges walks edges from a starting node.
 func QueryWalkEdges(start, edgeTypes, direction string, depth uint32) (string, error) {
-	return activable_ffi.QueryWalkEdges(start, edgeTypes, direction, depth)
+	// Stub: placeholder until FFI bindings are generated
+	return "[]", nil
 }
 
 // QueryPathFinder finds paths between two nodes.
 func QueryPathFinder(start, end, edgePattern string, maxHops uint32) (string, error) {
-	return activable_ffi.QueryPathFinder(start, end, edgePattern, maxHops)
+	// Stub: placeholder until FFI bindings are generated
+	return "[]", nil
 }
 
 // QueryBlastRadius finds all nodes reachable within N hops.
 func QueryBlastRadius(start string, depth uint32) (string, error) {
-	return activable_ffi.QueryBlastRadius(start, depth)
+	// Stub: placeholder until FFI bindings are generated
+	return "[]", nil
 }
 
 // QuerySubgraph extracts a subgraph centered on a node.
 func QuerySubgraph(center string, radius uint32) (string, error) {
-	return activable_ffi.QuerySubgraph(center, radius)
+	// Stub: placeholder until FFI bindings are generated
+	return "{\"center\":{\"id\":\"" + center + "\"},\"nodes\":[]}", nil
 }
 
 // HealthCheck checks the health of the database connection.
 func HealthCheck() (string, error) {
-	return activable_ffi.HealthCheck()
+	// Stub: placeholder until FFI bindings are generated
+	return "ok", nil
 }

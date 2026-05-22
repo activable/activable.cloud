@@ -1,0 +1,69 @@
+replicaCount: 1
+
+image:
+  repository: activable/activable-server
+  pullPolicy: Never
+  tag: "latest"
+
+service:
+  type: NodePort
+  port: 8080
+  targetPort: 8080
+  nodePort: 30080
+
+ingress:
+  enabled: false
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 256Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+autoscaling:
+  enabled: false
+
+# Local database uses PostgreSQL subchart
+database:
+  host: "activable-postgresql"
+  port: 5432
+  name: "activable"
+  sslMode: "disable"
+  username: "activable"
+  password: "activable-local-password"
+
+graphql:
+  port: 8080
+  maxConnections: 10
+  logLevel: "debug"
+  graphName: "activable"
+
+# PostgreSQL subchart configuration
+postgresql:
+  enabled: true
+  auth:
+    username: activable
+    password: activable-local-password
+    database: activable
+  primary:
+    persistence:
+      enabled: false
+    resources:
+      limits:
+        cpu: 500m
+        memory: 256Mi
+      requests:
+        cpu: 100m
+        memory: 128Mi
+
+securityContext:
+  runAsNonRoot: false
+  runAsUser: 0
+  allowPrivilegeEscalation: false
+
+podSecurityContext:
+  runAsNonRoot: false
+  runAsUser: 0
+  fsGroup: 0

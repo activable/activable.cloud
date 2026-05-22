@@ -1,0 +1,112 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "activable.fullname" . }}
+  labels:
+    {{- include "activable.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "activable.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+      labels:
+        {{- include "activable.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+      - name: {{ .Chart.Name }}
+        securityContext:
+          {{- toYaml .Values.securityContext | nindent 12 }}
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        ports:
+        - name: http
+          containerPort: {{ .Values.graphql.port }}
+          protocol: TCP
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: http
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 3
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /healthz
+            port: http
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        env:
+        - name: ACTIVABLE_DB_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: {{ include "activable.fullname" . }}
+              key: db.host
+        - name: ACTIVABLE_DB_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: {{ include "activable.fullname" . }}
+              key: db.port
+        - name: ACTIVABLE_DB_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: {{ include "activable.fullname" . }}
+              key: db.name
+        - name: ACTIVABLE_DB_USER
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "activable.fullname" . }}-secret
+              key: db.user
+        - name: ACTIVABLE_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "activable.fullname" . }}-secret
+              key: db.password
+        - name: ACTIVABLE_GRAPH_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: {{ include "activable.fullname" . }}
+              key: graph.name
+        - name: ACTIVABLE_LOG_LEVEL
+          valueFrom:
+            configMapKeyRef:
+              name: {{ include "activable.fullname" . }}
+              key: log.level
+        - name: ACTIVABLE_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: {{ include "activable.fullname" . }}
+              key: server.port
+        - name: ACTIVABLE_MAX_CONNECTIONS
+          valueFrom:
+            configMapKeyRef:
+              name: {{ include "activable.fullname" . }}
+              key: db.max_connections
+        resources:
+          {{- toYaml .Values.resources | nindent 12 }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

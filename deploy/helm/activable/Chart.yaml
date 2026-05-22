@@ -1,0 +1,14 @@
+apiVersion: v2
+name: activable
+description: Activable GraphQL API server for cloud attack graph analysis
+type: application
+version: 0.1.0
+appVersion: "1.0"
+keywords:
+  - graphql
+  - api
+  - graph
+  - security
+maintainers:
+  - name: Activable Team
+    email: team@activable.cloud
