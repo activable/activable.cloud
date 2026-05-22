@@ -1,71 +1,61 @@
 # Multi-stage Dockerfile for activable GraphQL API server
 
 # Stage 1: Build Rust FFI library
-FROM rust:1.75 as rust-builder
+FROM rust:1.95 AS rust-builder
 
 WORKDIR /workspace
 
-# Copy Rust crate
+# Copy workspace Cargo files first (cache deps layer)
+COPY Cargo.toml Cargo.lock rust-toolchain.toml /workspace/
+
+# Copy all crate sources
 COPY crates /workspace/crates
-COPY Cargo.toml Cargo.lock /workspace/
 
-# Build FFI library (release mode)
-RUN cd /workspace && cargo build --release --lib -p activable-ffi
-
-# Output: /workspace/target/release/libactivable_ffi.so
+# Build FFI library (release mode — produces libactivable_ffi.so on Linux)
+RUN cargo build --release --lib -p activable-ffi
 
 # Stage 2: Build Go binary
-FROM golang:1.25 as go-builder
+FROM golang:1.25 AS go-builder
 
 WORKDIR /workspace
 
-# Copy Go module files
+# Copy Go module files first (cache deps layer)
 COPY go.mod go.sum /workspace/
+RUN go mod download
 
-# Copy Go source
+# Copy Go source + FFI bindings
 COPY go /workspace/go
 COPY bindings /workspace/bindings
 
-# Copy Rust library from stage 1
-COPY --from=rust-builder /workspace/target/release/libactivable_ffi.so /workspace/lib/
+# Copy Rust dylib from stage 1
+COPY --from=rust-builder /workspace/target/release/libactivable_ffi.so /usr/local/lib/
 
-# Set environment for CGo
+# Build Go binary with CGo linking to Rust dylib
 ENV CGO_ENABLED=1 \
-    CGO_LDFLAGS="-L/workspace/lib" \
-    LD_LIBRARY_PATH=/workspace/lib
-
-# Build Go binary
+    CGO_LDFLAGS="-L/usr/local/lib" \
+    LD_LIBRARY_PATH=/usr/local/lib
 RUN go build -o /workspace/activable-server ./go/cmd/activable
 
-# Stage 3: Runtime image
+# Stage 3: Slim runtime
 FROM debian:bookworm-slim
 
 WORKDIR /app
 
-# Install runtime dependencies
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy Go binary from stage 2
-COPY --from=go-builder /workspace/activable-server /app/
+# Copy Go binary + Rust dylib
+COPY --from=go-builder /workspace/activable-server /app/activable-server
+COPY --from=rust-builder /workspace/target/release/libactivable_ffi.so /usr/local/lib/
 
-# Copy Rust library from stage 1
-COPY --from=rust-builder /workspace/target/release/libactivable_ffi.so /app/lib/
+# Ensure dynamic linker finds the dylib
+RUN ldconfig
 
-# Create lib directory for runtime
-RUN mkdir -p /app/lib && chmod 755 /app/lib
-
-# Set library path
-ENV LD_LIBRARY_PATH=/app/lib
-
-# Health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
     CMD curl -f http://localhost:8080/healthz || exit 1
 
-# Expose GraphQL port
 EXPOSE 8080
 
-# Run the server
 CMD ["/app/activable-server", "serve"]
