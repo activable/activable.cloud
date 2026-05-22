@@ -1,0 +1,18 @@
+{{- if .Values.floci.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "activable.fullname" . }}-floci
+  labels:
+    {{- include "activable.labels" . | nindent 4 }}
+    app.kubernetes.io/component: aws-emulator
+spec:
+  ports:
+  - port: 4566
+    targetPort: floci
+    protocol: TCP
+    name: floci
+  selector:
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/component: aws-emulator
+{{- end }}

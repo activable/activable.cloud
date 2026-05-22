@@ -50,52 +50,12 @@ spec:
           periodSeconds: 5
           timeoutSeconds: 3
           failureThreshold: 3
+        envFrom:
+        - configMapRef:
+            name: {{ include "activable.fullname" . }}
+        - secretRef:
+            name: {{ include "activable.fullname" . }}-secret
         env:
-        - name: ACTIVABLE_DB_HOST
-          valueFrom:
-            configMapKeyRef:
-              name: {{ include "activable.fullname" . }}
-              key: db.host
-        - name: ACTIVABLE_DB_PORT
-          valueFrom:
-            configMapKeyRef:
-              name: {{ include "activable.fullname" . }}
-              key: db.port
-        - name: ACTIVABLE_DB_NAME
-          valueFrom:
-            configMapKeyRef:
-              name: {{ include "activable.fullname" . }}
-              key: db.name
-        - name: ACTIVABLE_DB_USER
-          valueFrom:
-            secretKeyRef:
-              name: {{ include "activable.fullname" . }}-secret
-              key: db.user
-        - name: ACTIVABLE_DB_PASSWORD
-          valueFrom:
-            secretKeyRef:
-              name: {{ include "activable.fullname" . }}-secret
-              key: db.password
-        - name: ACTIVABLE_GRAPH_NAME
-          valueFrom:
-            configMapKeyRef:
-              name: {{ include "activable.fullname" . }}
-              key: graph.name
-        - name: ACTIVABLE_LOG_LEVEL
-          valueFrom:
-            configMapKeyRef:
-              name: {{ include "activable.fullname" . }}
-              key: log.level
-        - name: ACTIVABLE_PORT
-          valueFrom:
-            configMapKeyRef:
-              name: {{ include "activable.fullname" . }}
-              key: server.port
-        - name: ACTIVABLE_MAX_CONNECTIONS
-          valueFrom:
-            configMapKeyRef:
-              name: {{ include "activable.fullname" . }}
-              key: db.max_connections
         {{- if .Values.environment }}
         {{- range $key, $val := .Values.environment }}
         - name: {{ $key }}

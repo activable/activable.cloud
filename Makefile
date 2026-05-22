@@ -162,155 +162,106 @@ clean:
 	find . -name "*.o" -delete
 	@echo "Clean complete"
 
-# ===== Local Development Environment (Docker Compose + Docker Desktop K8s) =====
+# ===== Local Development Environment (Pure Kubernetes — Docker Desktop K8s) =====
+# ALL services (Postgres+AGE, Floci, Activable GraphQL) run as K8s resources.
+# Zero Docker Compose. Ingestion triggered via GraphQL mutation, not CLI.
 
-COMPOSE_DEV := infra/compose/docker-compose.dev.yml
+.PHONY: dev-up dev-down dev-reset dev-seed dev-ingest dev-query dev-status dev-logs
 
-dev-up: build
-	@echo "Starting local dev environment (Docker Compose infra + Docker Desktop K8s app)..."
+dev-up:
+	@echo "=== Deploying to Docker Desktop Kubernetes ==="
+	@kubectl cluster-info > /dev/null 2>&1 || { echo "✗ Kubernetes not available. Enable: Docker Desktop > Settings > Kubernetes > Enable"; exit 1; }
 	@echo ""
-	@echo "Step 1: Building Rust dylib for CGo..."
-	cargo build --release -p activable-ffi
-	@echo "✓ Rust dylib built"
-	@echo ""
-	@echo "Step 2: Starting infrastructure (Postgres+AGE + Floci)..."
-	docker compose -f $(COMPOSE_DEV) up -d
-	@echo "Step 2: Waiting for services to be healthy (timeout 60s)..."
-	@timeout=60; \
-	while [ $$timeout -gt 0 ]; do \
-		healthy_count=0; \
-		if docker compose -f $(COMPOSE_DEV) ps db 2>/dev/null | grep -q "healthy"; then healthy_count=$$(($$healthy_count + 1)); fi; \
-		if docker compose -f $(COMPOSE_DEV) ps floci 2>/dev/null | grep -q "healthy"; then healthy_count=$$(($$healthy_count + 1)); fi; \
-		if [ $$healthy_count -ge 2 ]; then \
-			echo "✓ All services healthy"; \
-			break; \
-		fi; \
-		echo "  Waiting... ($$(expr 60 - $$timeout)s)"; \
-		sleep 3; \
-		timeout=$$(expr $$timeout - 3); \
-	done
-	@if [ $$timeout -le 0 ]; then echo "✗ Services failed to become healthy"; exit 1; fi
-	@echo ""
-	@echo "Step 3: Building Docker image for K8s..."
-	docker build -t activable/activable-server:latest -f deploy/docker/Dockerfile . > /dev/null 2>&1
+	@echo "Step 1: Building Docker image..."
+	docker build -t activable-server:dev -f deploy/docker/Dockerfile .
 	@echo "✓ Docker image built"
 	@echo ""
-	@echo "Step 4: Deploying to Docker Desktop Kubernetes..."
-	@if kubectl cluster-info > /dev/null 2>&1; then \
-		helm upgrade --install activable deploy/helm/activable -f deploy/helm/activable/values-local.yaml --wait --timeout 120s > /dev/null 2>&1 && echo "✓ Helm deployment successful" || echo "✗ Helm deployment failed"; \
-	else \
-		echo "⚠  Kubernetes not available. Infrastructure running (Postgres+AGE + Floci)."; \
-		echo "    Enable K8s: Docker Desktop > Settings > Kubernetes > Enable"; \
-	fi
+	@echo "Step 2: Deploying Helm chart (Postgres+AGE + Floci + GraphQL server)..."
+	helm upgrade --install activable deploy/helm/activable \
+		-f deploy/helm/activable/values-local.yaml \
+		--wait --timeout 300s
+	@echo "✓ Helm deployment successful"
 	@echo ""
-	@echo "=== Local Dev Environment Ready ==="
+	@echo "Step 3: Waiting for all pods ready..."
+	kubectl wait --for=condition=ready pod -l app.kubernetes.io/instance=activable --timeout=120s 2>/dev/null || true
 	@echo ""
-	@echo "Services:"
-	@echo "  Postgres+AGE:     localhost:5433"
-	@echo "  Floci (AWS):      localhost:4566"
-	@if kubectl cluster-info > /dev/null 2>&1; then \
-		echo "  GraphQL API:      http://localhost:30080"; \
-	fi
+	@echo "=== Local Dev Environment Ready (Pure K8s) ==="
+	@echo ""
+	@echo "  GraphQL API:      http://localhost:30080/graphql"
+	@echo "  GraphQL Playground: http://localhost:30080/"
+	@echo "  Healthcheck:      http://localhost:30080/healthz"
 	@echo ""
 	@echo "Next steps:"
 	@echo "  make dev-seed      # Seed Floci with test AWS resources"
-	@echo "  make dev-ingest    # Run the ingestion pipeline"
-	@echo "  make dev-query     # Test the GraphQL API"
+	@echo "  make dev-ingest    # Trigger ingestion via GraphQL mutation"
+	@echo "  make dev-query     # Query the graph via GraphQL"
 
 dev-down:
-	@echo "Stopping local dev environment..."
-	@if kubectl cluster-info > /dev/null 2>&1; then \
-		echo "Step 1: Removing Kubernetes deployment..."; \
-		helm uninstall activable 2>/dev/null || true; \
-	fi
-	@echo "Step 2: Stopping Docker Compose services..."
-	docker compose -f $(COMPOSE_DEV) down
-	@echo "✓ Dev environment stopped (volumes preserved)"
+	@echo "Stopping K8s deployment (preserves PVCs)..."
+	helm uninstall activable 2>/dev/null || echo "Nothing to uninstall"
+	@echo "✓ Stopped. PVCs preserved for next dev-up."
 
 dev-reset:
-	@echo "Resetting local dev environment (destroys all data)..."
-	@if kubectl cluster-info > /dev/null 2>&1; then \
-		helm uninstall activable 2>/dev/null || true; \
-	fi
-	docker compose -f $(COMPOSE_DEV) down -v
-	docker volume rm activable-db-data-dev 2>/dev/null || true
-	@echo "✓ Reset complete"
-	@echo ""
-	@echo "Starting fresh environment..."
-	make dev-up
+	@echo "Resetting all K8s resources + destroying data..."
+	helm uninstall activable 2>/dev/null || true
+	kubectl delete pvc -l app.kubernetes.io/instance=activable 2>/dev/null || true
+	@echo "✓ Reset complete. Run 'make dev-up' for a fresh environment."
 
 dev-seed:
-	@echo "Seeding Floci with test AWS resources..."
-	@if ! curl -s http://localhost:4566/ > /dev/null 2>&1; then \
-		echo "✗ Floci not responding at localhost:4566"; \
-		echo "  Run 'make dev-up' first"; \
-		exit 1; \
-	fi
+	@echo "Seeding Floci with test AWS resources via Go SDK..."
+	@FLOCI_POD=$$(kubectl get pod -l app.kubernetes.io/component=aws-emulator -o jsonpath='{.items[0].metadata.name}' 2>/dev/null); \
+	if [ -z "$$FLOCI_POD" ]; then echo "✗ Floci pod not found. Run 'make dev-up' first."; exit 1; fi
+	kubectl port-forward svc/activable-floci 4566:4566 &
+	@sleep 2
 	AWS_ENDPOINT_URL=http://localhost:4566 \
 	AWS_ACCESS_KEY_ID=test \
 	AWS_SECRET_ACCESS_KEY=test \
 	AWS_DEFAULT_REGION=us-east-1 \
 	  go run ./go/cmd/seed
+	@kill %1 2>/dev/null || true
+	@echo "✓ Seed complete"
 
 dev-ingest:
-	@echo "Running ingestion against Floci..."
-	@if ! curl -s http://localhost:4566/ > /dev/null 2>&1; then \
-		echo "✗ Floci not responding"; \
-		exit 1; \
-	fi
-	@if ! pg_isready -h localhost -p 5433 -U activable > /dev/null 2>&1; then \
-		echo "✗ Postgres not responding"; \
-		exit 1; \
-	fi
-	@echo "Step 1: Building Rust dylib for CGo..."
-	cargo build --release -p activable-ffi
-	@echo "✓ Rust dylib built"
+	@echo "Triggering ingestion via GraphQL mutation..."
+	@curl -sf http://localhost:30080/healthz > /dev/null 2>&1 || { echo "✗ GraphQL API not ready at localhost:30080. Run 'make dev-up' first."; exit 1; }
 	@echo ""
-	@echo "Step 2: Running ingesters (IAM, STS, S3, EC2, Lambda)..."
-	ACTIVABLE_LOCAL_DEV=1 \
-	AWS_ENDPOINT_URL=http://localhost:4566 \
-	AWS_ACCESS_KEY_ID=test \
-	AWS_SECRET_ACCESS_KEY=test \
-	AWS_DEFAULT_REGION=us-east-1 \
-	ACTIVABLE_DB_URL="postgres://activable:activable_dev@localhost:5433/activable?sslmode=disable" \
-	ACTIVABLE_GRAPH_NAME=cloud \
-	ACTIVABLE_BATCH_SIZE=500 \
-	ACTIVABLE_REGIONS=us-east-1 \
-	DYLD_LIBRARY_PATH=$(PWD)/target/release \
-	LD_LIBRARY_PATH=$(PWD)/target/release \
-	CGO_LDFLAGS="-L$(PWD)/target/release" \
-	CGO_ENABLED=1 \
-	  go run ./go/cmd/activable ingest
-	@echo "✓ Ingestion complete"
+	curl -s -X POST http://localhost:30080/graphql \
+		-H "Content-Type: application/json" \
+		-d '{"query":"mutation { triggerIngest(provider: \"aws\", regions: [\"us-east-1\"]) { id status startedAt } }"}' | \
+	if command -v jq > /dev/null 2>&1; then jq .; else cat; fi
+	@echo ""
+	@echo "Ingestion triggered. Check status with:"
+	@echo "  make dev-query"
 
 dev-query:
-	@echo "Testing GraphQL API..."
-	@if ! curl -s http://localhost:30080/ > /dev/null 2>&1; then \
-		echo "✗ GraphQL API not responding at localhost:30080"; \
-		echo "  Run 'make dev-up' and wait for K8s deployment"; \
-		exit 1; \
-	fi
-	@QUERY='{ nodes { id label } }'; \
-	curl -X POST http://localhost:30080/graphql \
+	@echo "Querying graph via GraphQL..."
+	@curl -sf http://localhost:30080/healthz > /dev/null 2>&1 || { echo "✗ GraphQL API not ready."; exit 1; }
+	@echo ""
+	@echo "--- findNode (alice) ---"
+	@curl -s -X POST http://localhost:30080/graphql \
 		-H "Content-Type: application/json" \
-		-d "{\"query\": \"$$QUERY\"}" 2>/dev/null | \
+		-d '{"query":"{ findNode(label: \"Principal\", id: \"arn:aws:iam::000000000000:user/alice\") { id label properties } }"}' | \
+	if command -v jq > /dev/null 2>&1; then jq .; else cat; fi
+	@echo ""
+	@echo "--- walkEdges (from alice) ---"
+	@curl -s -X POST http://localhost:30080/graphql \
+		-H "Content-Type: application/json" \
+		-d '{"query":"{ walkEdges(startId: \"arn:aws:iam::000000000000:user/alice\", edgeTypes: [\"HasPermission\",\"MemberOf\"], direction: \"OUTGOING\", depth: 2) { id label } }"}' | \
 	if command -v jq > /dev/null 2>&1; then jq .; else cat; fi
 
 dev-status:
-	@echo "=== Infrastructure (Docker Compose) ==="
-	docker compose -f $(COMPOSE_DEV) ps
+	@echo "=== Kubernetes Pods ==="
+	@kubectl get pods -l app.kubernetes.io/instance=activable -o wide 2>/dev/null || echo "No pods found"
 	@echo ""
-	@if kubectl cluster-info > /dev/null 2>&1; then \
-		echo "=== Application (Kubernetes) ==="; \
-		kubectl get pods -l app.kubernetes.io/name=activable 2>/dev/null || echo "No K8s pods running"; \
-	fi
+	@echo "=== Kubernetes Services ==="
+	@kubectl get svc -l app.kubernetes.io/instance=activable 2>/dev/null || echo "No services found"
 	@echo ""
 	@echo "=== Service Health ==="
-	@if curl -s http://localhost:4566/ > /dev/null 2>&1; then echo "✓ Floci (AWS): http://localhost:4566"; else echo "✗ Floci: not responding"; fi
-	@if pg_isready -h localhost -p 5433 -U activable > /dev/null 2>&1; then echo "✓ Postgres+AGE: localhost:5433"; else echo "✗ Postgres: not responding"; fi
-	@if [ -z "$(shell kubectl cluster-info 2>/dev/null)" ]; then \
-		if curl -s http://localhost:30080/ > /dev/null 2>&1; then echo "✓ GraphQL API: http://localhost:30080"; else echo "✗ GraphQL: not responding"; fi; \
-	fi
+	@curl -sf http://localhost:30080/healthz > /dev/null 2>&1 && echo "✓ GraphQL API: http://localhost:30080" || echo "✗ GraphQL API: not responding"
+
+dev-logs:
+	@echo "Streaming logs from Activable server pod..."
+	kubectl logs -f -l app.kubernetes.io/name=activable --tail=50
 
 dev-logs:
 	@echo "Tailing Docker Compose logs (Ctrl-C to stop)..."

@@ -1,0 +1,66 @@
+{{- if .Values.postgres.enabled }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "activable.fullname" . }}-postgres
+  labels:
+    {{- include "activable.labels" . | nindent 4 }}
+    app.kubernetes.io/component: database
+spec:
+  serviceName: {{ include "activable.fullname" . }}-postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: database
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/instance: {{ .Release.Name }}
+        app.kubernetes.io/component: database
+    spec:
+      containers:
+      - name: postgres-age
+        image: {{ .Values.postgres.image | default "apache/age:release_PG16_1.6.0" }}
+        ports:
+        - containerPort: 5432
+          name: postgres
+        env:
+        - name: POSTGRES_USER
+          value: {{ .Values.postgres.user | default "activable" }}
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "activable.fullname" . }}-secret
+              key: db.password
+        - name: POSTGRES_DB
+          value: {{ .Values.postgres.database | default "activable" }}
+        readinessProbe:
+          exec:
+            command: ["pg_isready", "-U", "activable"]
+          initialDelaySeconds: 10
+          periodSeconds: 5
+        livenessProbe:
+          exec:
+            command: ["pg_isready", "-U", "activable"]
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        volumeMounts:
+        - name: pgdata
+          mountPath: /var/lib/postgresql/data
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "1"
+  volumeClaimTemplates:
+  - metadata:
+      name: pgdata
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      resources:
+        requests:
+          storage: {{ .Values.postgres.storageSize | default "5Gi" }}
+{{- end }}

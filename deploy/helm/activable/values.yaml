@@ -74,3 +74,25 @@ podSecurityContext:
   runAsNonRoot: true
   runAsUser: 1000
   fsGroup: 1000
+
+# Postgres+AGE (disabled in production — use managed RDS)
+postgres:
+  enabled: false
+  image: "apache/age:release_PG16_1.6.0"
+  user: "activable"
+  database: "activable"
+  storageSize: "5Gi"
+
+# Floci AWS emulator (disabled in production — use real AWS)
+floci:
+  enabled: false
+  image: "floci/floci:latest"
+  region: "us-east-1"
+  accountId: "000000000000"
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "250m"
+    limits:
+      memory: "1Gi"
+      cpu: "1"

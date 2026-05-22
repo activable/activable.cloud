@@ -1,0 +1,19 @@
+{{- if .Values.postgres.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "activable.fullname" . }}-postgres
+  labels:
+    {{- include "activable.labels" . | nindent 4 }}
+    app.kubernetes.io/component: database
+spec:
+  ports:
+  - port: 5432
+    targetPort: postgres
+    protocol: TCP
+    name: postgres
+  selector:
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/component: database
+  clusterIP: None
+{{- end }}
