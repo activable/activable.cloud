@@ -3,7 +3,7 @@ resolver = "2"
 members = [
     "crates/activable-schema",
     "crates/activable-graph",
-    "crates/activable-iam-eval",
+    "crates/activable-ingest-iam",
     "crates/activable-graphql",
     "crates/activable-ingest",
 ]

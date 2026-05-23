@@ -45,14 +45,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "activable-iam-eval"
-version = "0.1.0"
-dependencies = [
- "serde",
- "serde_json",
-]
-
-[[package]]
 name = "activable-ingest"
 version = "0.1.0"
 dependencies = [
@@ -75,6 +67,14 @@ dependencies = [
  "tokio",
  "tracing",
  "urlencoding",
+]
+
+[[package]]
+name = "activable-ingest-iam"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

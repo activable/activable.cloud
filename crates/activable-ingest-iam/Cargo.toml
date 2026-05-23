@@ -1,10 +1,10 @@
 [package]
-name = "activable-iam-eval"
+name = "activable-ingest-iam"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
-description = "IAM policy evaluator (Parliament port — pending implementation)."
+description = "IAM policy evaluator — Parliament-equivalent. Deep policy parsing, Deny evaluation, permission boundaries."
 
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
