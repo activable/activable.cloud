@@ -88,9 +88,11 @@ version = "0.1.0"
 dependencies = [
  "activable-ingest-iam",
  "activable-schema",
+ "async-trait",
  "serde",
  "serde_json",
  "serde_yaml",
+ "tokio",
  "tracing",
 ]
 
