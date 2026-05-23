@@ -97,7 +97,7 @@ pub fn detect_dangerous_actions(
                 id: danger.id.clone(),
                 tier: danger.tier,
                 severity: danger.severity,
-                reason: format!("* (wildcard — all actions allowed)"),
+                reason: "* (wildcard — all actions allowed)".to_string(),
             });
         }
         return matches;

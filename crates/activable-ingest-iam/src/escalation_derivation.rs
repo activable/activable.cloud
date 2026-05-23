@@ -5,7 +5,7 @@
 //! - PassRole combos → lateral edge from principal to passable role (P → R)
 
 use crate::dangerous_actions::{
-    detect_dangerous_actions, load_dangerous_actions_registry, DangerousAction,
+    detect_dangerous_actions, DangerousAction,
     EffectivePermission, Severity,
 };
 
@@ -113,7 +113,7 @@ pub fn derive_escalation_edges(
                     from: principal.to_string(),
                     to: target,
                     edge_type: "CanEscalateTo".to_string(),
-                    reason: format!("iam:PassRole (lateral movement)"),
+                    reason: "iam:PassRole (lateral movement)".to_string(),
                     tier: danger.tier,
                     severity: danger.severity,
                 });
@@ -136,6 +136,7 @@ pub fn derive_escalation_edges(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::dangerous_actions::load_dangerous_actions_registry;
 
     fn eff(action: &str, resource: &str) -> EffectivePermission {
         EffectivePermission {
