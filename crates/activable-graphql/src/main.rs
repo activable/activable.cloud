@@ -12,6 +12,7 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 mod error;
 mod graph_adapter;
+mod graph_client_adapter;
 mod resolvers;
 mod schema;
 mod types;
@@ -120,11 +121,13 @@ async fn main() -> anyhow::Result<()> {
         "Risk configuration initialized"
     );
 
-    // Initialize in-memory graph service for risk scoring
-    // Phase 9 will replace this with GraphClientAdapter wrapping the real GraphClient
-    let graph_service: Box<dyn activable_risk::signals::GraphQueryService> =
-        Box::new(graph_adapter::InMemoryGraphService::new());
-    tracing::info!("Graph service initialized (in-memory; Phase 9 will use real GraphClient)");
+    // Initialize graph service for risk scoring
+    // Use GraphClientAdapter wrapping the real GraphClient (Phase 1)
+    // Fallback to InMemoryGraphService if needed for testing
+    let graph_service: Box<dyn activable_risk::signals::GraphQueryService> = Box::new(
+        graph_client_adapter::GraphClientAdapter::new(client.clone()),
+    );
+    tracing::info!("Graph service initialized (GraphClientAdapter wrapping GraphClient)");
 
     // Build the async-graphql schema
     let schema: AppSchema =
