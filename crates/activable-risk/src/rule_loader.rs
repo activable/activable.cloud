@@ -47,8 +47,8 @@ fn tier_to_boost(tier: u8) -> f64 {
 
 /// Parse a single YAML rule string
 pub fn parse_rule(yaml: &str) -> Result<EscalationRule, RuleError> {
-    let yaml_rule: YamlRule = serde_yaml::from_str(yaml)
-        .map_err(|e| RuleError::ParseError(e.to_string()))?;
+    let yaml_rule: YamlRule =
+        serde_yaml::from_str(yaml).map_err(|e| RuleError::ParseError(e.to_string()))?;
 
     let severity_tier = category_to_tier(&yaml_rule.category);
     let boost = tier_to_boost(severity_tier);
@@ -80,8 +80,7 @@ pub fn load_rules_from_dir(dir_path: &str) -> Result<Vec<EscalationRule>, RuleEr
     let mut rules = Vec::new();
 
     // Walk directory recursively
-    for entry in std::fs::read_dir(path).map_err(|e| RuleError::LoadError(e.to_string()))?
-    {
+    for entry in std::fs::read_dir(path).map_err(|e| RuleError::LoadError(e.to_string()))? {
         let entry = entry.map_err(|e| RuleError::LoadError(e.to_string()))?;
         let file_path = entry.path();
 
@@ -96,11 +95,7 @@ pub fn load_rules_from_dir(dir_path: &str) -> Result<Vec<EscalationRule>, RuleEr
             match parse_rule(&content) {
                 Ok(rule) => rules.push(rule),
                 Err(e) => {
-                    tracing::warn!(
-                        "Failed to parse rule {}: {}",
-                        file_path.display(),
-                        e
-                    );
+                    tracing::warn!("Failed to parse rule {}: {}", file_path.display(), e);
                 }
             }
         }

@@ -31,13 +31,16 @@ impl DangerousActionCountSignal {
         let registry = activable_ingest_iam::load_dangerous_actions_registry();
 
         // Convert from crate::EffectivePermission to activable_ingest_iam's DangerousActionEffectivePermission
-        let ingest_perms: Vec<activable_ingest_iam::DangerousActionEffectivePermission> = effective_perms
-            .iter()
-            .map(|p| activable_ingest_iam::DangerousActionEffectivePermission {
-                action: p.action.clone(),
-                resource: p.resource.clone(),
-            })
-            .collect();
+        let ingest_perms: Vec<activable_ingest_iam::DangerousActionEffectivePermission> =
+            effective_perms
+                .iter()
+                .map(
+                    |p| activable_ingest_iam::DangerousActionEffectivePermission {
+                        action: p.action.clone(),
+                        resource: p.resource.clone(),
+                    },
+                )
+                .collect();
 
         let matches = activable_ingest_iam::detect_dangerous_actions(&ingest_perms, &registry);
 
@@ -110,8 +113,8 @@ mod tests {
     fn mixed_tiers() {
         // Combination of dangerous actions
         let perms = vec![
-            eff("iam:CreatePolicyVersion", "*"), // tier 1 = 3+
-            eff("sts:AssumeRole", "*"),          // tier 2 = 2+
+            eff("iam:CreatePolicyVersion", "*"),   // tier 1 = 3+
+            eff("sts:AssumeRole", "*"),            // tier 2 = 2+
             eff("iam:CreateInstanceProfile", "*"), // tier 3 = 1+
         ];
         let signal = DangerousActionCountSignal;

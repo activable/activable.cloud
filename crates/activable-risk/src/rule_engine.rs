@@ -38,8 +38,7 @@ pub fn match_rule(
         for effective in effective_perms {
             // Check if effective permission matches required permission
             // Wildcard "*" effective action matches any required action
-            if effective.action == "*" || action_matches(&effective.action, &required.permission)
-            {
+            if effective.action == "*" || action_matches(&effective.action, &required.permission) {
                 matched_perms.push(required.permission.clone());
                 found = true;
                 break;
@@ -125,7 +124,10 @@ mod tests {
     #[test]
     fn match_single_permission_rule() {
         let rule = test_rule("iam-001", &["iam:CreatePolicyVersion"], 1);
-        let perms = vec![eff("iam:CreatePolicyVersion", "*"), eff("s3:GetObject", "*")];
+        let perms = vec![
+            eff("iam:CreatePolicyVersion", "*"),
+            eff("s3:GetObject", "*"),
+        ];
         let result = match_rule(&rule, &perms);
         assert!(result.is_some());
         assert_eq!(result.unwrap().rule_id, "iam-001");

@@ -36,7 +36,9 @@ impl PathToAdminSignal {
         principal_id: &str,
         graph: &dyn GraphQueryService,
     ) -> Result<SignalResult, SignalError> {
-        let maybe_distance = graph.shortest_path_to_admin(principal_id, self.max_depth).await?;
+        let maybe_distance = graph
+            .shortest_path_to_admin(principal_id, self.max_depth)
+            .await?;
 
         let (raw_value, normalized) = match maybe_distance {
             Some(distance) => {
@@ -68,7 +70,8 @@ mod tests {
     #[tokio::test]
     async fn path_to_admin_is_admin() {
         // Principal IS admin → distance 0 → highest risk
-        let graph = MockGraphQueryService::new().with_shortest_path("admin-role".to_string(), Some(0));
+        let graph =
+            MockGraphQueryService::new().with_shortest_path("admin-role".to_string(), Some(0));
         let signal = PathToAdminSignal::new(8);
         let result = signal.compute("admin-role", &graph).await.unwrap();
         assert_eq!(result.raw_value, 0.0);

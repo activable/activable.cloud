@@ -65,7 +65,11 @@ pub trait GraphQueryService: Send + Sync {
 
     /// Shortest path length from principal to any admin-equivalent node.
     /// Returns None if unreachable.
-    async fn shortest_path_to_admin(&self, principal_id: &str, max_depth: u8) -> Result<Option<u32>, SignalError>;
+    async fn shortest_path_to_admin(
+        &self,
+        principal_id: &str,
+        max_depth: u8,
+    ) -> Result<Option<u32>, SignalError>;
 
     /// Count cross-account hops (CanAssume edges crossing account boundaries)
     async fn cross_account_hop_count(&self, principal_id: &str) -> Result<u32, SignalError>;
@@ -152,16 +156,32 @@ pub mod test_fixtures {
 
     #[async_trait]
     impl GraphQueryService for MockGraphQueryService {
-        async fn reachable_count(&self, principal_id: &str, _max_hops: u8) -> Result<u64, SignalError> {
-            Ok(self.reachable_counts.get(principal_id).copied().unwrap_or(0))
+        async fn reachable_count(
+            &self,
+            principal_id: &str,
+            _max_hops: u8,
+        ) -> Result<u64, SignalError> {
+            Ok(self
+                .reachable_counts
+                .get(principal_id)
+                .copied()
+                .unwrap_or(0))
         }
 
-        async fn shortest_path_to_admin(&self, principal_id: &str, _max_depth: u8) -> Result<Option<u32>, SignalError> {
+        async fn shortest_path_to_admin(
+            &self,
+            principal_id: &str,
+            _max_depth: u8,
+        ) -> Result<Option<u32>, SignalError> {
             Ok(self.shortest_paths.get(principal_id).copied().flatten())
         }
 
         async fn cross_account_hop_count(&self, principal_id: &str) -> Result<u32, SignalError> {
-            Ok(self.cross_account_hops.get(principal_id).copied().unwrap_or(0))
+            Ok(self
+                .cross_account_hops
+                .get(principal_id)
+                .copied()
+                .unwrap_or(0))
         }
     }
 }

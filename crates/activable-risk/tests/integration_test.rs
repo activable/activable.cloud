@@ -5,8 +5,7 @@ fn load_bundled_rules_from_directory() {
     // Use the manifest dir to find the config directory
     let manifest_dir = env!("CARGO_MANIFEST_DIR");
     let rules_path = format!("{}/config/escalation-paths/bundled", manifest_dir);
-    let rules = load_rules_from_dir(&rules_path)
-        .expect("Failed to load rules");
+    let rules = load_rules_from_dir(&rules_path).expect("Failed to load rules");
 
     // Should have at least 5 rules
     assert!(
@@ -16,7 +15,9 @@ fn load_bundled_rules_from_directory() {
     );
 
     // All rules should have valid tier
-    assert!(rules.iter().all(|r| r.severity_tier >= 1 && r.severity_tier <= 5));
+    assert!(rules
+        .iter()
+        .all(|r| r.severity_tier >= 1 && r.severity_tier <= 5));
 
     // Check for specific rules
     assert!(rules.iter().any(|r| r.id == "iam-001"));

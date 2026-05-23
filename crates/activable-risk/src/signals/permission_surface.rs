@@ -1,3 +1,4 @@
+use super::{log_normalize, SignalResult};
 /// Permission Surface Signal: Total count of effective permissions
 ///
 /// Measures the attack surface — broader permissions = more paths to exploit.
@@ -7,7 +8,6 @@
 /// Normalized: log10(raw + 1) / log10(15000.0) — full AWS catalog = max
 /// Pure Rust — no graph queries, works on effective permissions directly.
 use crate::rule_engine::EffectivePermission;
-use super::{log_normalize, SignalResult};
 
 /// Approximate size of AWS IAM action catalog
 const AWS_CATALOG_SIZE: f64 = 15000.0;
@@ -116,9 +116,9 @@ mod tests {
         // Some specific actions + some wildcard services
         let perms = vec![
             eff("s3:GetObject", "*"),
-            eff("s3:*", "*"),     // s3 wildcard = 1 perm
-            eff("ec2:*", "*"),    // ec2 wildcard = 1 perm
-            eff("*", "*"),        // full wildcard = 15000 perms
+            eff("s3:*", "*"),  // s3 wildcard = 1 perm
+            eff("ec2:*", "*"), // ec2 wildcard = 1 perm
+            eff("*", "*"),     // full wildcard = 15000 perms
         ];
         let signal = PermissionSurfaceSignal;
         let result = signal.compute_sync(&perms);
