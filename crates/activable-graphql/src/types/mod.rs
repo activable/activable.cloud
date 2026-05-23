@@ -1,5 +1,7 @@
 //! GraphQL type wrappers over activable-graph types.
 
+pub mod risk;
+
 use async_graphql::SimpleObject;
 
 /// GraphQL representation of a node reference.
@@ -115,3 +117,7 @@ pub struct GqlIngestRun {
     pub started_at: String,
     pub services: Vec<GqlIngestService>,
 }
+
+// Re-export risk types for convenient access via `use crate::types::*;`
+#[allow(unused_imports)]
+pub use risk::{GqlMatchedRule, GqlRiskAssessment, GqlSeverity, GqlSignalContribution};

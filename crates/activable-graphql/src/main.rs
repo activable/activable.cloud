@@ -2,6 +2,7 @@
 
 use activable_graph::pool::GraphPool;
 use activable_graph::GraphClient;
+use activable_risk::RiskConfig;
 use async_graphql::Schema;
 use axum::{extract::DefaultBodyLimit, routing::get, Json, Router};
 use std::net::SocketAddr;
@@ -111,6 +112,13 @@ async fn main() -> anyhow::Result<()> {
     // Create atomic flag for concurrent run prevention
     let ingest_active = Arc::new(AtomicBool::new(false));
 
+    // Initialize risk configuration
+    let risk_config = RiskConfig::default();
+    tracing::info!(
+        signals = ?risk_config.signals,
+        "Risk configuration initialized"
+    );
+
     // Build the async-graphql schema
     let schema: AppSchema =
         Schema::build(QueryRoot, MutationRoot, async_graphql::EmptySubscription)
@@ -118,6 +126,7 @@ async fn main() -> anyhow::Result<()> {
             .data(pool.clone())
             .data(ingest_runtime)
             .data(ingest_active.clone())
+            .data(risk_config)
             .limit_complexity(500)
             .limit_depth(10)
             .finish();

@@ -79,6 +79,15 @@ impl QueryRoot {
     async fn healthz(&self, ctx: &Context<'_>) -> async_graphql::Result<String> {
         resolvers::health::healthz(ctx).await
     }
+
+    /// Get risk assessment for a principal.
+    async fn risk_score(
+        &self,
+        ctx: &Context<'_>,
+        principal_id: String,
+    ) -> async_graphql::Result<GqlRiskAssessment> {
+        resolvers::risk::risk_score(ctx, principal_id).await
+    }
 }
 
 /// Root mutation type.
@@ -94,5 +103,14 @@ impl MutationRoot {
         regions: Vec<String>,
     ) -> async_graphql::Result<GqlIngestRun> {
         resolvers::ingest::trigger_ingest(ctx, provider, regions).await
+    }
+
+    /// Refresh (re-score) a principal's risk assessment.
+    async fn refresh_risk_score(
+        &self,
+        ctx: &Context<'_>,
+        principal_id: String,
+    ) -> async_graphql::Result<GqlRiskAssessment> {
+        resolvers::risk::refresh_risk_score(ctx, principal_id).await
     }
 }
