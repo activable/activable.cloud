@@ -88,6 +88,16 @@ impl QueryRoot {
     ) -> async_graphql::Result<GqlRiskAssessment> {
         resolvers::risk::risk_score(ctx, principal_id).await
     }
+
+    /// List all risk findings above a minimum severity threshold.
+    async fn findings(
+        &self,
+        ctx: &Context<'_>,
+        min_severity: Option<GqlSeverity>,
+        limit: Option<i32>,
+    ) -> async_graphql::Result<Vec<GqlRiskAssessment>> {
+        resolvers::risk::findings(ctx, min_severity, limit).await
+    }
 }
 
 /// Root mutation type.

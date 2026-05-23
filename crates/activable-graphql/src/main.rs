@@ -11,6 +11,7 @@ use std::sync::Arc;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 mod error;
+mod graph_adapter;
 mod resolvers;
 mod schema;
 mod types;
@@ -119,6 +120,12 @@ async fn main() -> anyhow::Result<()> {
         "Risk configuration initialized"
     );
 
+    // Initialize in-memory graph service for risk scoring
+    // Phase 9 will replace this with GraphClientAdapter wrapping the real GraphClient
+    let graph_service: Box<dyn activable_risk::signals::GraphQueryService> =
+        Box::new(graph_adapter::InMemoryGraphService::new());
+    tracing::info!("Graph service initialized (in-memory; Phase 9 will use real GraphClient)");
+
     // Build the async-graphql schema
     let schema: AppSchema =
         Schema::build(QueryRoot, MutationRoot, async_graphql::EmptySubscription)
@@ -127,6 +134,7 @@ async fn main() -> anyhow::Result<()> {
             .data(ingest_runtime)
             .data(ingest_active.clone())
             .data(risk_config)
+            .data(graph_service)
             .limit_complexity(500)
             .limit_depth(10)
             .finish();

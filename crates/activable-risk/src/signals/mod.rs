@@ -73,6 +73,19 @@ pub trait GraphQueryService: Send + Sync {
 
     /// Count cross-account hops (CanAssume edges crossing account boundaries)
     async fn cross_account_hop_count(&self, principal_id: &str) -> Result<u32, SignalError>;
+
+    /// List all principal node IDs in the graph
+    async fn list_principal_ids(&self) -> Result<Vec<String>, SignalError>;
+
+    /// Get effective permissions for a principal (action + resource pairs)
+    async fn get_effective_permissions(&self, principal_id: &str) -> Result<Vec<(String, String)>, SignalError>;
+
+    /// Read a cached risk assessment from a graph node property.
+    /// Returns None if no cached assessment exists.
+    async fn read_risk_assessment(&self, principal_id: &str) -> Result<Option<String>, SignalError>;
+
+    /// Write a risk assessment JSON to a graph node property.
+    async fn write_risk_assessment(&self, principal_id: &str, assessment_json: &str) -> Result<(), SignalError>;
 }
 
 /// Normalization: log-scale capped by maximum
@@ -127,6 +140,9 @@ pub mod test_fixtures {
         pub reachable_counts: HashMap<String, u64>,
         pub shortest_paths: HashMap<String, Option<u32>>,
         pub cross_account_hops: HashMap<String, u32>,
+        pub principal_ids: Vec<String>,
+        pub effective_permissions: HashMap<String, Vec<(String, String)>>,
+        pub risk_assessments: std::sync::Mutex<HashMap<String, String>>,
     }
 
     impl MockGraphQueryService {
@@ -135,6 +151,9 @@ pub mod test_fixtures {
                 reachable_counts: HashMap::new(),
                 shortest_paths: HashMap::new(),
                 cross_account_hops: HashMap::new(),
+                principal_ids: Vec::new(),
+                effective_permissions: HashMap::new(),
+                risk_assessments: std::sync::Mutex::new(HashMap::new()),
             }
         }
 
@@ -150,6 +169,20 @@ pub mod test_fixtures {
 
         pub fn with_cross_account_hops(mut self, principal_id: String, hops: u32) -> Self {
             self.cross_account_hops.insert(principal_id, hops);
+            self
+        }
+
+        pub fn with_principal_ids(mut self, ids: Vec<String>) -> Self {
+            self.principal_ids = ids;
+            self
+        }
+
+        pub fn with_effective_permissions(
+            mut self,
+            principal_id: String,
+            perms: Vec<(String, String)>,
+        ) -> Self {
+            self.effective_permissions.insert(principal_id, perms);
             self
         }
     }
@@ -182,6 +215,38 @@ pub mod test_fixtures {
                 .get(principal_id)
                 .copied()
                 .unwrap_or(0))
+        }
+
+        async fn list_principal_ids(&self) -> Result<Vec<String>, SignalError> {
+            Ok(self.principal_ids.clone())
+        }
+
+        async fn get_effective_permissions(
+            &self,
+            principal_id: &str,
+        ) -> Result<Vec<(String, String)>, SignalError> {
+            Ok(self
+                .effective_permissions
+                .get(principal_id)
+                .cloned()
+                .unwrap_or_default())
+        }
+
+        async fn read_risk_assessment(&self, principal_id: &str) -> Result<Option<String>, SignalError> {
+            let assessments = self.risk_assessments.lock()
+                .map_err(|e| Box::new(GraphQueryError(format!("lock failed: {}", e))) as SignalError)?;
+            Ok(assessments.get(principal_id).cloned())
+        }
+
+        async fn write_risk_assessment(
+            &self,
+            principal_id: &str,
+            assessment_json: &str,
+        ) -> Result<(), SignalError> {
+            let mut assessments = self.risk_assessments.lock()
+                .map_err(|e| Box::new(GraphQueryError(format!("lock failed: {}", e))) as SignalError)?;
+            assessments.insert(principal_id.to_string(), assessment_json.to_string());
+            Ok(())
         }
     }
 }

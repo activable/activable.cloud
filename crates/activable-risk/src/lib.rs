@@ -8,7 +8,7 @@ pub mod signals;
 pub mod stale_checker;
 pub mod types;
 
-pub use batch_runner::{score_single_principal, BatchResult};
+pub use batch_runner::{batch_score_all, score_single_principal, BatchResult};
 pub use config::{load_risk_config, validate_signal_weights, RiskConfig, SeverityThresholds};
 pub use finding::{severity_from_score, RiskAssessment, Severity, SignalContribution};
 pub use rule_engine::{compute_rule_boost, match_all_rules, match_rule, EffectivePermission};

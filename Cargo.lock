@@ -25,10 +25,13 @@ version = "0.1.0"
 dependencies = [
  "activable-graph",
  "activable-ingest",
+ "activable-ingest-iam",
+ "activable-risk",
  "activable-schema",
  "anyhow",
  "async-graphql",
  "async-graphql-axum",
+ "async-trait",
  "axum",
  "deadpool-postgres",
  "futures",
