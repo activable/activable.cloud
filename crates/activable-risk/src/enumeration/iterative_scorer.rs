@@ -102,7 +102,7 @@ pub async fn run_iterative_scoring(
 
     // Only iterate if there are principals to score
     if total_principals > 0 {
-        for _iteration in 0..iteration_config.max_iterations {
+        for iteration in 0..iteration_config.max_iterations {
             let mut new_edges_this_iteration = 0;
 
             for principal in &principals {
@@ -138,8 +138,13 @@ pub async fn run_iterative_scoring(
                         // Store latest assessment per principal (not per iteration)
                         assessments_by_principal.insert(principal.principal_id.clone(), assessment);
                     }
-                    Err(_e) => {
-                        // Skip principals that fail to score (e.g., permission errors)
+                    Err(e) => {
+                        tracing::warn!(
+                            principal = %principal.principal_id,
+                            error = %e,
+                            iteration = iteration,
+                            "Failed to score principal — excluded from results"
+                        );
                         continue;
                     }
                 }
