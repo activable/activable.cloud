@@ -103,13 +103,46 @@ impl IngestRuntime {
                 let result = fetch_via_ccapi(&ccapi, &rt, pool.clone(), &graph_name).await;
 
                 match result {
-                    Ok(stats) => {
+                    Ok(stats) if stats.nodes_ingested > 0 => {
                         info!(
                             type_name = %type_name,
                             nodes = stats.nodes_ingested,
                             "CCAPI ingest succeeded"
                         );
                         Ok(stats)
+                    }
+                    Ok(stats) => {
+                        warn!(
+                            type_name = %type_name,
+                            nodes = stats.nodes_ingested,
+                            "CCAPI returned 0 resources, attempting native SDK fallback"
+                        );
+                        // CCAPI returned empty — try native SDK (e.g., Floci doesn't support CCAPI)
+                        match fetch_via_native_sdk(&config, &rt, pool, &graph_name).await {
+                            Ok(native_stats) if native_stats.nodes_ingested > 0 => {
+                                info!(
+                                    type_name = %type_name,
+                                    nodes = native_stats.nodes_ingested,
+                                    "Native SDK fallback succeeded (CCAPI was empty)"
+                                );
+                                Ok(native_stats)
+                            }
+                            Ok(_) => {
+                                debug!(
+                                    type_name = %type_name,
+                                    "Both CCAPI and native SDK returned 0 resources"
+                                );
+                                Ok(stats) // return original empty stats
+                            }
+                            Err(e) => {
+                                warn!(
+                                    type_name = %type_name,
+                                    error = %e,
+                                    "Native SDK fallback failed after CCAPI returned empty"
+                                );
+                                Ok(stats) // return original empty stats, don't fail
+                            }
+                        }
                     }
                     Err(e) => {
                         warn!(

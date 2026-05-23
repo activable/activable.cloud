@@ -130,28 +130,58 @@ async fn fetch_iam_roles(
     while let Some(page_result) = paginator.next().await {
         let page = page_result.map_err(|e| IngestError::AwsSdk(e.to_string()))?;
 
-        let nodes: Vec<Value> = page
-            .roles()
-            .iter()
-            .map(|role| {
-                json!({
-                    "id": role.arn(),
-                    "name": role.role_name(),
-                    "role_id": role.role_id(),
-                    "path": role.path(),
-                    "principal_type": "Role",
-                })
-            })
-            .collect();
+        for role in page.roles() {
+            // Decode trust policy (URL-encoded by AWS)
+            let trust_policy_raw = role.assume_role_policy_document().unwrap_or("");
+            let trust_policy = urlencoding::decode(trust_policy_raw)
+                .unwrap_or_else(|_| trust_policy_raw.into())
+                .to_string();
 
-        if !nodes.is_empty() {
+            // Fetch inline policies for this role
+            let mut inline_policies = Vec::new();
+            if let Ok(policy_list) = client
+                .list_role_policies()
+                .role_name(role.role_name())
+                .send()
+                .await
+            {
+                for policy_name in policy_list.policy_names() {
+                    if let Ok(policy_detail) = client
+                        .get_role_policy()
+                        .role_name(role.role_name())
+                        .policy_name(policy_name)
+                        .send()
+                        .await
+                    {
+                        let doc_raw = policy_detail.policy_document();
+                        let doc = urlencoding::decode(doc_raw)
+                            .unwrap_or_else(|_| doc_raw.into())
+                            .to_string();
+                        inline_policies.push(json!({
+                            "name": policy_name,
+                            "document": doc,
+                        }));
+                    }
+                }
+            }
+
+            let node = json!({
+                "id": role.arn(),
+                "name": role.role_name(),
+                "role_id": role.role_id(),
+                "path": role.path(),
+                "principal_type": "Role",
+                "assume_role_policy_document": trust_policy,
+                "inline_policies": inline_policies,
+            });
+
             let written =
-                loader::load_nodes(pool.clone(), graph_name, "Principal", &nodes, 100).await?;
+                loader::load_nodes(pool.clone(), graph_name, "Principal", &[node], 100).await?;
             count += written as u32;
         }
     }
 
-    info!(nodes_ingested = count, "IAM Roles ingest complete");
+    info!(nodes_ingested = count, "IAM Roles ingest complete (with policies)");
     Ok(IngestStats {
         type_name: "AWS::IAM::Role".to_string(),
         label: "Principal".to_string(),
