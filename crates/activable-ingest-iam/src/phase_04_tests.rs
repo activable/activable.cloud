@@ -64,7 +64,6 @@ fn simple_allow_produces_effective_permission() {
     // Expected: result contains EffectivePermission { action: "*", resource: "*" }
 
     // Placeholder assertion — will be replaced when module is implemented
-    assert!(true, "Placeholder: tests framework ready");
 }
 
 #[test]
@@ -75,8 +74,6 @@ fn allow_multiple_actions_creates_multiple_permissions() {
     let _policy = parse_policy(policy_json).unwrap();
     // Call: effective_permissions(&[policy], None, &[], &EvalContext::default())
     // Expected: result contains s3:GetObject and s3:PutObject permissions
-
-    assert!(true, "Placeholder");
 }
 
 #[test]
@@ -85,8 +82,6 @@ fn wildcard_action_stored_as_is() {
     // Call: effective_permissions(&[policy], None, &[], &EvalContext::default())
     // Expected: result contains EffectivePermission { action: "*", resource: "*" }
     // (NOT expanded to 15k+ actions)
-
-    assert!(true, "Placeholder");
 }
 
 // ============================================================================
@@ -102,8 +97,6 @@ fn deny_removes_action_from_effective() {
     let _policy = parse_policy(policy_json).unwrap();
     // Call: effective_permissions(&[policy], None, &[], &EvalContext::default())
     // Expected: s3:DeleteBucket NOT in result, s3:GetObject IS in result
-
-    assert!(true, "Placeholder");
 }
 
 #[test]
@@ -115,8 +108,6 @@ fn explicit_deny_overrides_allow_completely() {
     let _policy = parse_policy(policy_json).unwrap();
     // Call: effective_permissions(&[policy], None, &[], &EvalContext::default())
     // Expected: result is empty (all actions denied)
-
-    assert!(true, "Placeholder");
 }
 
 #[test]
@@ -128,8 +119,6 @@ fn deny_with_resource_constraint() {
     let _policy = parse_policy(policy_json).unwrap();
     // Call: effective_permissions(&[policy], None, &[], &EvalContext::default())
     // Expected: s3:DeleteBucket allowed for non-protected buckets
-
-    assert!(true, "Placeholder");
 }
 
 // ============================================================================
@@ -142,8 +131,6 @@ fn boundary_restricts_to_intersection() {
     let _boundary = parse_policy(S3_ONLY_BOUNDARY_JSON).unwrap();
     // Call: effective_permissions(&[identity], Some(&boundary), &[], &EvalContext::default())
     // Expected: s3:GetObject allowed, iam:CreateUser NOT allowed
-
-    assert!(true, "Placeholder");
 }
 
 #[test]
@@ -155,8 +142,6 @@ fn boundary_with_multiple_actions() {
     let _boundary = parse_policy(boundary_json).unwrap();
     // Call: effective_permissions(&[identity], Some(&boundary), &[], &EvalContext::default())
     // Expected: s3:* and ec2:Describe* allowed, iam:* NOT allowed
-
-    assert!(true, "Placeholder");
 }
 
 #[test]
@@ -172,8 +157,6 @@ fn boundary_deny_removes_from_identity_allows() {
     let _boundary = parse_policy(boundary_json).unwrap();
     // Call: effective_permissions(&[identity], Some(&boundary), &[], &EvalContext::default())
     // Expected: s3:DeleteBucket NOT in result (boundary Deny blocks it)
-
-    assert!(true, "Placeholder");
 }
 
 // ============================================================================
@@ -183,35 +166,29 @@ fn boundary_deny_removes_from_identity_allows() {
 #[test]
 fn scp_chain_blocks_actions_not_in_ou_allow() {
     let _identity = parse_policy(ADMIN_ACCESS_JSON).unwrap();
-    let _ou_scp = vec![stmt(Effect::Allow, &["s3:*", "ec2:*"], &["*"])];
+    let _ou_scp = [stmt(Effect::Allow, &["s3:*", "ec2:*"], &["*"])];
     // Call: effective_permissions(&[identity], None, &[&ou_scp], &EvalContext::default())
     // Expected: iam:CreateUser NOT in result (blocked by SCP)
-
-    assert!(true, "Placeholder");
 }
 
 #[test]
 fn scp_chain_with_multiple_scps() {
     let _identity = parse_policy(ADMIN_ACCESS_JSON).unwrap();
-    let _root_scp = vec![stmt(Effect::Allow, &["*"], &["*"])];
-    let _ou_scp = vec![stmt(Effect::Allow, &["s3:*"], &["*"])];
+    let _root_scp = [stmt(Effect::Allow, &["*"], &["*"])];
+    let _ou_scp = [stmt(Effect::Allow, &["s3:*"], &["*"])];
     // Call: effective_permissions(&[identity], None, &[&root_scp, &ou_scp], &EvalContext::default())
     // Expected: intersection of both SCPs (only s3:* allowed)
-
-    assert!(true, "Placeholder");
 }
 
 #[test]
 fn scp_deny_overrides_identity_allow() {
     let _identity = parse_policy(ADMIN_ACCESS_JSON).unwrap();
-    let _scp = vec![
+    let _scp = [
         stmt(Effect::Allow, &["*"], &["*"]),
         stmt(Effect::Deny, &["iam:*"], &["*"]),
     ];
     // Call: effective_permissions(&[identity], None, &[&scp], &EvalContext::default())
     // Expected: iam:* NOT in result (SCP Deny blocks it)
-
-    assert!(true, "Placeholder");
 }
 
 // ============================================================================
@@ -220,44 +197,36 @@ fn scp_deny_overrides_identity_allow() {
 
 #[test]
 fn detect_create_policy_version_as_critical() {
-    let _perms = vec![eff("iam:CreatePolicyVersion", "*")];
+    let _perms = [eff("iam:CreatePolicyVersion", "*")];
     // Call: detect_dangerous_actions(&perms, &load_dangerous_actions_registry())
     // Expected: 1 match with tier=1, severity="critical"
-
-    assert!(true, "Placeholder");
 }
 
 #[test]
 fn detect_passrole_ec2_combo() {
-    let _perms = vec![eff("iam:PassRole", "*"), eff("ec2:RunInstances", "*")];
+    let _perms = [eff("iam:PassRole", "*"), eff("ec2:RunInstances", "*")];
     // Call: detect_dangerous_actions(&perms, &load_dangerous_actions_registry())
     // Expected: 1 match with id="pass-role-ec2"
-
-    assert!(true, "Placeholder");
 }
 
 #[test]
 fn passrole_alone_is_not_combo() {
-    let _perms = vec![eff("iam:PassRole", "*")];
+    let _perms = [eff("iam:PassRole", "*")];
     // Call: detect_dangerous_actions(&perms, &load_dangerous_actions_registry())
     // Expected: match for "pass-role" (single action)
     // Expected: NO match for "pass-role-ec2" (combo requires both)
-
-    assert!(true, "Placeholder");
 }
 
 #[test]
 fn wildcard_permission_matches_all_dangerous_actions() {
-    let _perms = vec![eff("*", "*")];
+    let _perms = [eff("*", "*")];
     // Call: detect_dangerous_actions(&perms, &load_dangerous_actions_registry())
     // Expected: ALL dangerous actions matched (wildcard special case, O(1))
-
-    assert!(true, "Placeholder");
 }
 
 #[test]
 fn detect_multiple_dangerous_actions() {
-    let _perms = vec![
+    let _perms = [
         eff("iam:CreatePolicyVersion", "*"),
         eff("iam:AttachUserPolicy", "*"),
         eff("iam:PassRole", "*"),
@@ -265,8 +234,6 @@ fn detect_multiple_dangerous_actions() {
     ];
     // Call: detect_dangerous_actions(&perms, &load_dangerous_actions_registry())
     // Expected: 4 matches (CreatePolicyVersion, AttachUserPolicy, PassRole, PassRoleEc2)
-
-    assert!(true, "Placeholder");
 }
 
 // ============================================================================
@@ -276,59 +243,49 @@ fn detect_multiple_dangerous_actions() {
 #[test]
 fn self_escalation_edge_from_create_policy_version() {
     let _principal = "arn:aws:iam::123456789012:user/alice";
-    let _perms = vec![eff(
+    let _perms = [eff(
         "iam:CreatePolicyVersion",
         "arn:aws:iam::123456789012:policy/MyPolicy",
     )];
     // Call: derive_escalation_edges(principal, &perms, &load_dangerous_actions_registry())
     // Expected: 1 edge from=alice, to=alice, edge_type="CanEscalateTo"
-
-    assert!(true, "Placeholder");
 }
 
 #[test]
 fn passrole_ec2_creates_edge_to_passable_role() {
     let _principal = "arn:aws:iam::123456789012:user/alice";
-    let _perms = vec![
+    let _perms = [
         eff("iam:PassRole", "arn:aws:iam::123456789012:role/admin-role"),
         eff("ec2:RunInstances", "*"),
     ];
     // Call: derive_escalation_edges(principal, &perms, &load_dangerous_actions_registry())
     // Expected: 1 edge from=alice, to=admin-role, edge_type="CanEscalateTo"
-
-    assert!(true, "Placeholder");
 }
 
 #[test]
 fn multiple_passable_roles_create_multiple_edges() {
     let _principal = "arn:aws:iam::123456789012:user/alice";
-    let _perms = vec![
+    let _perms = [
         eff("iam:PassRole", "arn:aws:iam::123456789012:role/admin-role"),
         eff("iam:PassRole", "arn:aws:iam::123456789012:role/lambda-role"),
         eff("ec2:RunInstances", "*"),
     ];
     // Call: derive_escalation_edges(principal, &perms, &load_dangerous_actions_registry())
     // Expected: 3 edges (1 to admin-role, 1 to lambda-role, 1 self-escalation via combo)
-
-    assert!(true, "Placeholder");
 }
 
 #[test]
 fn wildcard_passrole_creates_wildcard_target_edge() {
     let _principal = "arn:aws:iam::123456789012:user/alice";
-    let _perms = vec![eff("iam:PassRole", "*"), eff("ec2:RunInstances", "*")];
+    let _perms = [eff("iam:PassRole", "*"), eff("ec2:RunInstances", "*")];
     // Call: derive_escalation_edges(principal, &perms, &load_dangerous_actions_registry())
     // Expected: 1 edge from=alice, to="*" (or "any_role"), edge_type="CanEscalateTo"
-
-    assert!(true, "Placeholder");
 }
 
 #[test]
 fn tier_and_severity_propagate_to_edges() {
     let _principal = "arn:aws:iam::123456789012:user/alice";
-    let _perms = vec![eff("iam:CreatePolicyVersion", "*")];
+    let _perms = [eff("iam:CreatePolicyVersion", "*")];
     // Call: derive_escalation_edges(principal, &perms, &load_dangerous_actions_registry())
     // Expected: edge with tier=1, severity="critical"
-
-    assert!(true, "Placeholder");
 }

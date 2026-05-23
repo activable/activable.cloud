@@ -396,13 +396,9 @@ async fn scoring_deterministic_golden_file_exact_match() {
     .collect();
 
     for assessment in &result.assessments {
-        let (expected_score, expected_sev) =
-            golden
-                .get(assessment.principal_id.as_str())
-                .expect(&format!(
-                    "Principal {} not in golden file",
-                    assessment.principal_id
-                ));
+        let (expected_score, expected_sev) = golden
+            .get(assessment.principal_id.as_str())
+            .unwrap_or_else(|| panic!("Principal {} not in golden file", assessment.principal_id));
 
         // Score should be within 0.05 (5%) of expected
         let score_diff = (assessment.score - expected_score).abs();
@@ -517,12 +513,12 @@ async fn scoring_deterministic_order_independent() {
             .assessments
             .iter()
             .find(|a| a.principal_id == principal_id)
-            .expect(&format!("Not found in result1: {}", principal_id));
+            .unwrap_or_else(|| panic!("Not found in result1: {}", principal_id));
         let a2 = result2
             .assessments
             .iter()
             .find(|a| a.principal_id == principal_id)
-            .expect(&format!("Not found in result2: {}", principal_id));
+            .unwrap_or_else(|| panic!("Not found in result2: {}", principal_id));
 
         let diff = (a1.score - a2.score).abs();
         assert!(

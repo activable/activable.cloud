@@ -195,6 +195,12 @@ pub mod test_fixtures {
         }
     }
 
+    impl Default for MockGraphQueryService {
+        fn default() -> Self {
+            Self::new()
+        }
+    }
+
     #[async_trait]
     impl GraphQueryService for MockGraphQueryService {
         async fn reachable_count(

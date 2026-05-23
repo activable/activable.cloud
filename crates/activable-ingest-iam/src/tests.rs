@@ -102,7 +102,7 @@ fn deny_with_not_action_allows_listed_actions() {
 fn deny_with_resource_pattern() {
     let stmt_deny = stmt(Effect::Deny, &["s3:*"], &["arn:aws:s3:::secret-*"]);
     let result1 = evaluate_deny(
-        &[stmt_deny.clone()],
+        std::slice::from_ref(&stmt_deny),
         "s3:GetObject",
         "arn:aws:s3:::secret-data",
     );

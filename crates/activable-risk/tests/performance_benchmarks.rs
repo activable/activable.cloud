@@ -432,7 +432,7 @@ fn benchmark_permission_matching_wildcard_expansion() {
     // (e.g., iam:* matches iam:CreatePolicyVersion, iam:AttachUserPolicy, etc.)
     let mut permission_sets = Vec::new();
 
-    let wildcard_perms = vec!["iam:*", "ec2:*", "s3:*", "lambda:*", "dynamodb:*", "kms:*"];
+    let wildcard_perms = ["iam:*", "ec2:*", "s3:*", "lambda:*", "dynamodb:*", "kms:*"];
 
     for i in 0..1_000 {
         let perm_idx = i % wildcard_perms.len();
