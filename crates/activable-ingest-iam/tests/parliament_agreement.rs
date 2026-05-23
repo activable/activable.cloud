@@ -10,9 +10,7 @@
 //! - Wildcard matching
 //! - Multiple policies combined
 
-use activable_ingest_iam::{
-    effective_permissions, parse_policy, EvalContext,
-};
+use activable_ingest_iam::{effective_permissions, parse_policy, EvalContext};
 
 /// Test: Simple Allow statement
 #[test]
@@ -463,10 +461,7 @@ fn parliament_empty_policy() {
     let perms = effective_permissions(&[policy], None, &[], &EvalContext::default());
 
     // Should be empty
-    assert!(
-        perms.is_empty(),
-        "Empty policy should grant no permissions"
-    );
+    assert!(perms.is_empty(), "Empty policy should grant no permissions");
 }
 
 /// Test: Explicit Deny with specific action (more restrictive than Allow *)
@@ -585,7 +580,12 @@ fn parliament_integration_comprehensive_principal() {
     let managed = parse_policy(managed_json).expect("Failed to parse managed");
     let boundary = parse_policy(boundary_json).expect("Failed to parse boundary");
 
-    let perms = effective_permissions(&[inline, managed], Some(&boundary), &[], &EvalContext::default());
+    let perms = effective_permissions(
+        &[inline, managed],
+        Some(&boundary),
+        &[],
+        &EvalContext::default(),
+    );
 
     // Should have: S3 read (from inline, allowed by boundary)
     assert!(

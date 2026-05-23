@@ -193,7 +193,10 @@ mod tests {
             Ok(Vec::new())
         }
 
-        async fn read_risk_assessment(&self, _principal_id: &str) -> Result<Option<String>, SignalError> {
+        async fn read_risk_assessment(
+            &self,
+            _principal_id: &str,
+        ) -> Result<Option<String>, SignalError> {
             Ok(None)
         }
 
@@ -302,13 +305,7 @@ mod tests {
 
         let rules = vec![];
 
-        let result = batch_score_all(
-            &rules,
-            &graph,
-            &config,
-            "2026-05-23T10:00:00Z",
-        )
-        .await;
+        let result = batch_score_all(&rules, &graph, &config, "2026-05-23T10:00:00Z").await;
 
         // Graph has no principals, so batch returns empty (graph not extended for this test)
         assert_eq!(result.total_principals, 0);

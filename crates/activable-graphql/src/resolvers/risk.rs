@@ -2,8 +2,8 @@
 
 use crate::types::{GqlRiskAssessment, GqlSeverity};
 use activable_risk::{
-    score_single_principal, GraphQueryService, EffectivePermission, RiskConfig, RiskAssessment,
-    load_rules_from_dir,
+    load_rules_from_dir, score_single_principal, EffectivePermission, GraphQueryService,
+    RiskAssessment, RiskConfig,
 };
 use async_graphql::Context;
 
@@ -16,9 +16,11 @@ pub async fn risk_score(
     ctx: &Context<'_>,
     principal_id: String,
 ) -> async_graphql::Result<GqlRiskAssessment> {
-    let config = ctx.data::<RiskConfig>()
+    let config = ctx
+        .data::<RiskConfig>()
         .map_err(|_| async_graphql::Error::new("RiskConfig not available"))?;
-    let graph = ctx.data::<Box<dyn GraphQueryService>>()
+    let graph = ctx
+        .data::<Box<dyn GraphQueryService>>()
         .map_err(|_| async_graphql::Error::new("GraphQueryService not available"))?;
 
     // 1. Try to read cached assessment
@@ -46,9 +48,11 @@ pub async fn refresh_risk_score(
     ctx: &Context<'_>,
     principal_id: String,
 ) -> async_graphql::Result<GqlRiskAssessment> {
-    let config = ctx.data::<RiskConfig>()
+    let config = ctx
+        .data::<RiskConfig>()
         .map_err(|_| async_graphql::Error::new("RiskConfig not available"))?;
-    let graph = ctx.data::<Box<dyn GraphQueryService>>()
+    let graph = ctx
+        .data::<Box<dyn GraphQueryService>>()
         .map_err(|_| async_graphql::Error::new("GraphQueryService not available"))?;
 
     tracing::info!(principal_id = %principal_id, "computing fresh risk assessment");
@@ -61,9 +65,11 @@ pub async fn findings(
     min_severity: Option<GqlSeverity>,
     limit: Option<i32>,
 ) -> async_graphql::Result<Vec<GqlRiskAssessment>> {
-    let graph = ctx.data::<Box<dyn GraphQueryService>>()
+    let graph = ctx
+        .data::<Box<dyn GraphQueryService>>()
         .map_err(|_| async_graphql::Error::new("GraphQueryService not available"))?;
-    let config = ctx.data::<RiskConfig>()
+    let config = ctx
+        .data::<RiskConfig>()
         .map_err(|_| async_graphql::Error::new("RiskConfig not available"))?;
 
     let limit = limit.unwrap_or(100).min(1000) as usize;
@@ -76,11 +82,10 @@ pub async fn findings(
     };
 
     // Get all principals
-    let principal_ids = graph.list_principal_ids().await
-        .map_err(|e| {
-            tracing::error!(error = %e, "failed to list principals");
-            async_graphql::Error::new("Failed to list principals")
-        })?;
+    let principal_ids = graph.list_principal_ids().await.map_err(|e| {
+        tracing::error!(error = %e, "failed to list principals");
+        async_graphql::Error::new("Failed to list principals")
+    })?;
 
     let mut results = Vec::new();
 
@@ -99,7 +104,9 @@ pub async fn findings(
 
     // Sort by score descending
     results.sort_by(|a, b| {
-        b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal)
+        b.score
+            .partial_cmp(&a.score)
+            .unwrap_or(std::cmp::Ordering::Equal)
     });
     Ok(results)
 }
@@ -111,7 +118,9 @@ async fn compute_and_return(
     principal_id: &str,
 ) -> async_graphql::Result<GqlRiskAssessment> {
     // Get effective permissions
-    let perm_pairs = graph.get_effective_permissions(principal_id).await
+    let perm_pairs = graph
+        .get_effective_permissions(principal_id)
+        .await
         .map_err(|e| {
             tracing::error!(principal_id = %principal_id, error = %e, "failed to get permissions");
             async_graphql::Error::new("Failed to retrieve principal permissions")
@@ -129,8 +138,7 @@ async fn compute_and_return(
     }
 
     // Load rules from the default bundled directory
-    let rules = load_rules_from_dir("config/escalation-paths/bundled")
-        .unwrap_or_default();
+    let rules = load_rules_from_dir("config/escalation-paths/bundled").unwrap_or_default();
 
     // Compute timestamp
     let now = std::time::SystemTime::now()
@@ -139,19 +147,13 @@ async fn compute_and_return(
         .unwrap_or_else(|_| "unknown".to_string());
 
     // Score the principal
-    let assessment = score_single_principal(
-        principal_id,
-        &effective_perms,
-        &rules,
-        graph,
-        config,
-        &now,
-    )
-    .await
-    .map_err(|e| {
-        tracing::error!(principal_id = %principal_id, error = %e, "scoring failed");
-        async_graphql::Error::new("Failed to compute risk score")
-    })?;
+    let assessment =
+        score_single_principal(principal_id, &effective_perms, &rules, graph, config, &now)
+            .await
+            .map_err(|e| {
+                tracing::error!(principal_id = %principal_id, error = %e, "scoring failed");
+                async_graphql::Error::new("Failed to compute risk score")
+            })?;
 
     // Persist to graph
     if let Ok(json) = serde_json::to_string(&assessment) {
@@ -212,20 +214,16 @@ mod tests {
             .unwrap();
 
         // Verify both are cached
-        assert!(
-            graph
-                .read_risk_assessment("principal-1")
-                .await
-                .unwrap()
-                .is_some()
-        );
-        assert!(
-            graph
-                .read_risk_assessment("principal-2")
-                .await
-                .unwrap()
-                .is_some()
-        );
+        assert!(graph
+            .read_risk_assessment("principal-1")
+            .await
+            .unwrap()
+            .is_some());
+        assert!(graph
+            .read_risk_assessment("principal-2")
+            .await
+            .unwrap()
+            .is_some());
     }
 
     #[tokio::test]

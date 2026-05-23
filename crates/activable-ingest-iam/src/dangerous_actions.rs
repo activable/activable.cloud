@@ -107,7 +107,9 @@ pub fn detect_dangerous_actions(
         if danger.combo {
             // Combo: ALL actions must be present
             let all_present = danger.actions.iter().all(|action| {
-                effective_perms.iter().any(|p| action_matches_pattern(&p.action, action))
+                effective_perms
+                    .iter()
+                    .any(|p| action_matches_pattern(&p.action, action))
             });
             if all_present {
                 matches.push(DangerousActionMatch {
@@ -120,7 +122,9 @@ pub fn detect_dangerous_actions(
         } else {
             // Non-combo: ANY action is sufficient
             let any_present = danger.actions.iter().any(|action| {
-                effective_perms.iter().any(|p| action_matches_pattern(&p.action, action))
+                effective_perms
+                    .iter()
+                    .any(|p| action_matches_pattern(&p.action, action))
             });
             if any_present {
                 let matched_action = danger
@@ -185,7 +189,11 @@ mod tests {
         let registry = load_dangerous_actions_registry();
         let perms = vec![eff("*", "*")];
         let matches = detect_dangerous_actions(&perms, &registry);
-        assert_eq!(matches.len(), registry.len(), "Wildcard should match all dangers");
+        assert_eq!(
+            matches.len(),
+            registry.len(),
+            "Wildcard should match all dangers"
+        );
     }
 
     #[test]
@@ -226,6 +234,9 @@ mod tests {
         assert!(action_matches_pattern("s3:*", "s3:DeleteBucket"));
         assert!(action_matches_pattern("*", "any:action"));
         assert!(!action_matches_pattern("s3:*", "iam:CreateUser"));
-        assert!(action_matches_pattern("iam:CreatePolicyVersion", "iam:CreatePolicyVersion"));
+        assert!(action_matches_pattern(
+            "iam:CreatePolicyVersion",
+            "iam:CreatePolicyVersion"
+        ));
     }
 }

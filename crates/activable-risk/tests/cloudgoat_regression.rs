@@ -4,8 +4,9 @@
 //! are correctly detected by the risk scoring pipeline.
 
 use activable_risk::{
-    batch_score_all, load_rules_from_dir, match_all_rules, EffectivePermission, RiskConfig,
-    signals::{GraphQueryService, SignalError, GraphQueryError},
+    batch_score_all, load_rules_from_dir, match_all_rules,
+    signals::{GraphQueryError, GraphQueryService, SignalError},
+    EffectivePermission, RiskConfig,
 };
 use async_trait::async_trait;
 use std::collections::HashMap;
@@ -45,16 +46,26 @@ impl TestGraphService {
         shortest_path: Option<u32>,
         cross_account_hops: u32,
     ) -> Result<(), SignalError> {
-        let mut store = self.principals.write()
+        let mut store = self
+            .principals
+            .write()
             .map_err(|e| Box::new(GraphQueryError(format!("lock failed: {}", e))) as SignalError)?;
 
         if !store.principal_ids.contains(&principal_id) {
             store.principal_ids.push(principal_id.clone());
         }
-        store.effective_permissions.insert(principal_id.clone(), permissions);
-        store.reachable_counts.insert(principal_id.clone(), reachable);
-        store.shortest_paths.insert(principal_id.clone(), shortest_path);
-        store.cross_account_hops.insert(principal_id, cross_account_hops);
+        store
+            .effective_permissions
+            .insert(principal_id.clone(), permissions);
+        store
+            .reachable_counts
+            .insert(principal_id.clone(), reachable);
+        store
+            .shortest_paths
+            .insert(principal_id.clone(), shortest_path);
+        store
+            .cross_account_hops
+            .insert(principal_id, cross_account_hops);
         Ok(())
     }
 }
@@ -62,9 +73,15 @@ impl TestGraphService {
 #[async_trait]
 impl GraphQueryService for TestGraphService {
     async fn reachable_count(&self, principal_id: &str, _max_hops: u8) -> Result<u64, SignalError> {
-        let store = self.principals.read()
+        let store = self
+            .principals
+            .read()
             .map_err(|e| Box::new(GraphQueryError(format!("lock failed: {}", e))) as SignalError)?;
-        Ok(store.reachable_counts.get(principal_id).copied().unwrap_or(0))
+        Ok(store
+            .reachable_counts
+            .get(principal_id)
+            .copied()
+            .unwrap_or(0))
     }
 
     async fn shortest_path_to_admin(
@@ -72,36 +89,64 @@ impl GraphQueryService for TestGraphService {
         principal_id: &str,
         _max_depth: u8,
     ) -> Result<Option<u32>, SignalError> {
-        let store = self.principals.read()
+        let store = self
+            .principals
+            .read()
             .map_err(|e| Box::new(GraphQueryError(format!("lock failed: {}", e))) as SignalError)?;
         Ok(store.shortest_paths.get(principal_id).copied().flatten())
     }
 
     async fn cross_account_hop_count(&self, principal_id: &str) -> Result<u32, SignalError> {
-        let store = self.principals.read()
+        let store = self
+            .principals
+            .read()
             .map_err(|e| Box::new(GraphQueryError(format!("lock failed: {}", e))) as SignalError)?;
-        Ok(store.cross_account_hops.get(principal_id).copied().unwrap_or(0))
+        Ok(store
+            .cross_account_hops
+            .get(principal_id)
+            .copied()
+            .unwrap_or(0))
     }
 
     async fn list_principal_ids(&self) -> Result<Vec<String>, SignalError> {
-        let store = self.principals.read()
+        let store = self
+            .principals
+            .read()
             .map_err(|e| Box::new(GraphQueryError(format!("lock failed: {}", e))) as SignalError)?;
         Ok(store.principal_ids.clone())
     }
 
-    async fn get_effective_permissions(&self, principal_id: &str) -> Result<Vec<(String, String)>, SignalError> {
-        let store = self.principals.read()
+    async fn get_effective_permissions(
+        &self,
+        principal_id: &str,
+    ) -> Result<Vec<(String, String)>, SignalError> {
+        let store = self
+            .principals
+            .read()
             .map_err(|e| Box::new(GraphQueryError(format!("lock failed: {}", e))) as SignalError)?;
-        Ok(store.effective_permissions.get(principal_id).cloned().unwrap_or_default())
+        Ok(store
+            .effective_permissions
+            .get(principal_id)
+            .cloned()
+            .unwrap_or_default())
     }
 
-    async fn read_risk_assessment(&self, _principal_id: &str) -> Result<Option<String>, SignalError> {
-        let _store = self.principals.read()
+    async fn read_risk_assessment(
+        &self,
+        _principal_id: &str,
+    ) -> Result<Option<String>, SignalError> {
+        let _store = self
+            .principals
+            .read()
             .map_err(|e| Box::new(GraphQueryError(format!("lock failed: {}", e))) as SignalError)?;
         Ok(None)
     }
 
-    async fn write_risk_assessment(&self, _principal_id: &str, _assessment_json: &str) -> Result<(), SignalError> {
+    async fn write_risk_assessment(
+        &self,
+        _principal_id: &str,
+        _assessment_json: &str,
+    ) -> Result<(), SignalError> {
         Ok(())
     }
 }
@@ -198,8 +243,14 @@ fn cloudgoat_scenario_5_passrole_lambda_create() {
 
     let perms = vec![
         EffectivePermission::new("iam:PassRole", "arn:aws:iam::123456789012:role/*"),
-        EffectivePermission::new("lambda:CreateFunction", "arn:aws:lambda:*:123456789012:function/*"),
-        EffectivePermission::new("lambda:InvokeFunction", "arn:aws:lambda:*:123456789012:function/*"),
+        EffectivePermission::new(
+            "lambda:CreateFunction",
+            "arn:aws:lambda:*:123456789012:function/*",
+        ),
+        EffectivePermission::new(
+            "lambda:InvokeFunction",
+            "arn:aws:lambda:*:123456789012:function/*",
+        ),
     ];
 
     let matched = match_all_rules(&rules, &perms);
@@ -277,9 +328,9 @@ async fn integration_admin_principal_full_pipeline() {
         .add_principal(
             "admin-principal".to_string(),
             vec![(String::from("*"), String::from("*"))],
-            5000,      // high reachability
-            Some(0),   // is admin
-            3,         // cross-account hops
+            5000,    // high reachability
+            Some(0), // is admin
+            3,       // cross-account hops
         )
         .expect("Failed to add principal");
 
@@ -326,12 +377,18 @@ async fn integration_readonly_principal_full_pipeline() {
         .add_principal(
             "readonly-principal".to_string(),
             vec![
-                (String::from("s3:GetObject"), String::from("arn:aws:s3:::bucket/*")),
-                (String::from("s3:ListBucket"), String::from("arn:aws:s3:::bucket")),
+                (
+                    String::from("s3:GetObject"),
+                    String::from("arn:aws:s3:::bucket/*"),
+                ),
+                (
+                    String::from("s3:ListBucket"),
+                    String::from("arn:aws:s3:::bucket"),
+                ),
             ],
-            5,      // low reachability
-            None,   // no path to admin
-            0,      // no cross-account access
+            5,    // low reachability
+            None, // no path to admin
+            0,    // no cross-account access
         )
         .expect("Failed to add principal");
 
@@ -377,14 +434,26 @@ async fn integration_moderate_developer_passrole() {
         .add_principal(
             "developer-principal".to_string(),
             vec![
-                (String::from("iam:PassRole"), String::from("arn:aws:iam::123456789012:role/*")),
-                (String::from("ec2:RunInstances"), String::from("arn:aws:ec2:*:123456789012:instance/*")),
-                (String::from("s3:GetObject"), String::from("arn:aws:s3:::bucket/*")),
-                (String::from("s3:PutObject"), String::from("arn:aws:s3:::bucket/*")),
+                (
+                    String::from("iam:PassRole"),
+                    String::from("arn:aws:iam::123456789012:role/*"),
+                ),
+                (
+                    String::from("ec2:RunInstances"),
+                    String::from("arn:aws:ec2:*:123456789012:instance/*"),
+                ),
+                (
+                    String::from("s3:GetObject"),
+                    String::from("arn:aws:s3:::bucket/*"),
+                ),
+                (
+                    String::from("s3:PutObject"),
+                    String::from("arn:aws:s3:::bucket/*"),
+                ),
             ],
-            50,     // moderate reachability
+            50,      // moderate reachability
             Some(3), // 3 hops to admin
-            1,      // 1 cross-account hop
+            1,       // 1 cross-account hop
         )
         .expect("Failed to add principal");
 
@@ -407,7 +476,10 @@ async fn integration_moderate_developer_passrole() {
 
     // Should match ec2-001 rule (PassRole + ec2:RunInstances)
     assert!(
-        assessment.matched_rules.iter().any(|r| r.rule_id == "ec2-001"),
+        assessment
+            .matched_rules
+            .iter()
+            .any(|r| r.rule_id == "ec2-001"),
         "Developer should match ec2-001 rule"
     );
 }

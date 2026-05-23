@@ -5,8 +5,9 @@
 //! - 10k principal scoring under 60 seconds
 
 use activable_risk::{
-    batch_score_all, load_rules_from_dir, match_all_rules, EffectivePermission, RiskConfig,
-    signals::{GraphQueryService, SignalError, GraphQueryError},
+    batch_score_all, load_rules_from_dir, match_all_rules,
+    signals::{GraphQueryError, GraphQueryService, SignalError},
+    EffectivePermission, RiskConfig,
 };
 use async_trait::async_trait;
 use std::collections::HashMap;
@@ -47,16 +48,26 @@ impl TestGraphService {
         shortest_path: Option<u32>,
         cross_account_hops: u32,
     ) -> Result<(), SignalError> {
-        let mut store = self.principals.write()
+        let mut store = self
+            .principals
+            .write()
             .map_err(|e| Box::new(GraphQueryError(format!("lock failed: {}", e))) as SignalError)?;
 
         if !store.principal_ids.contains(&principal_id) {
             store.principal_ids.push(principal_id.clone());
         }
-        store.effective_permissions.insert(principal_id.clone(), permissions);
-        store.reachable_counts.insert(principal_id.clone(), reachable);
-        store.shortest_paths.insert(principal_id.clone(), shortest_path);
-        store.cross_account_hops.insert(principal_id, cross_account_hops);
+        store
+            .effective_permissions
+            .insert(principal_id.clone(), permissions);
+        store
+            .reachable_counts
+            .insert(principal_id.clone(), reachable);
+        store
+            .shortest_paths
+            .insert(principal_id.clone(), shortest_path);
+        store
+            .cross_account_hops
+            .insert(principal_id, cross_account_hops);
         Ok(())
     }
 }
@@ -64,9 +75,15 @@ impl TestGraphService {
 #[async_trait]
 impl GraphQueryService for TestGraphService {
     async fn reachable_count(&self, principal_id: &str, _max_hops: u8) -> Result<u64, SignalError> {
-        let store = self.principals.read()
+        let store = self
+            .principals
+            .read()
             .map_err(|e| Box::new(GraphQueryError(format!("lock failed: {}", e))) as SignalError)?;
-        Ok(store.reachable_counts.get(principal_id).copied().unwrap_or(0))
+        Ok(store
+            .reachable_counts
+            .get(principal_id)
+            .copied()
+            .unwrap_or(0))
     }
 
     async fn shortest_path_to_admin(
@@ -74,36 +91,64 @@ impl GraphQueryService for TestGraphService {
         principal_id: &str,
         _max_depth: u8,
     ) -> Result<Option<u32>, SignalError> {
-        let store = self.principals.read()
+        let store = self
+            .principals
+            .read()
             .map_err(|e| Box::new(GraphQueryError(format!("lock failed: {}", e))) as SignalError)?;
         Ok(store.shortest_paths.get(principal_id).copied().flatten())
     }
 
     async fn cross_account_hop_count(&self, principal_id: &str) -> Result<u32, SignalError> {
-        let store = self.principals.read()
+        let store = self
+            .principals
+            .read()
             .map_err(|e| Box::new(GraphQueryError(format!("lock failed: {}", e))) as SignalError)?;
-        Ok(store.cross_account_hops.get(principal_id).copied().unwrap_or(0))
+        Ok(store
+            .cross_account_hops
+            .get(principal_id)
+            .copied()
+            .unwrap_or(0))
     }
 
     async fn list_principal_ids(&self) -> Result<Vec<String>, SignalError> {
-        let store = self.principals.read()
+        let store = self
+            .principals
+            .read()
             .map_err(|e| Box::new(GraphQueryError(format!("lock failed: {}", e))) as SignalError)?;
         Ok(store.principal_ids.clone())
     }
 
-    async fn get_effective_permissions(&self, principal_id: &str) -> Result<Vec<(String, String)>, SignalError> {
-        let store = self.principals.read()
+    async fn get_effective_permissions(
+        &self,
+        principal_id: &str,
+    ) -> Result<Vec<(String, String)>, SignalError> {
+        let store = self
+            .principals
+            .read()
             .map_err(|e| Box::new(GraphQueryError(format!("lock failed: {}", e))) as SignalError)?;
-        Ok(store.effective_permissions.get(principal_id).cloned().unwrap_or_default())
+        Ok(store
+            .effective_permissions
+            .get(principal_id)
+            .cloned()
+            .unwrap_or_default())
     }
 
-    async fn read_risk_assessment(&self, _principal_id: &str) -> Result<Option<String>, SignalError> {
-        let _store = self.principals.read()
+    async fn read_risk_assessment(
+        &self,
+        _principal_id: &str,
+    ) -> Result<Option<String>, SignalError> {
+        let _store = self
+            .principals
+            .read()
             .map_err(|e| Box::new(GraphQueryError(format!("lock failed: {}", e))) as SignalError)?;
         Ok(None)
     }
 
-    async fn write_risk_assessment(&self, _principal_id: &str, _assessment_json: &str) -> Result<(), SignalError> {
+    async fn write_risk_assessment(
+        &self,
+        _principal_id: &str,
+        _assessment_json: &str,
+    ) -> Result<(), SignalError> {
         Ok(())
     }
 }
@@ -190,24 +235,42 @@ async fn benchmark_scoring_1k_principals() {
             1 => {
                 // Developer with PassRole
                 vec![
-                    (String::from("iam:PassRole"), String::from("arn:aws:iam::123456789012:role/*")),
-                    (String::from("ec2:RunInstances"), String::from("arn:aws:ec2:*:123456789012:instance/*")),
+                    (
+                        String::from("iam:PassRole"),
+                        String::from("arn:aws:iam::123456789012:role/*"),
+                    ),
+                    (
+                        String::from("ec2:RunInstances"),
+                        String::from("arn:aws:ec2:*:123456789012:instance/*"),
+                    ),
                 ]
             }
             2 => {
                 // Read-only
-                vec![(String::from("s3:GetObject"), String::from("arn:aws:s3:::bucket/*"))]
+                vec![(
+                    String::from("s3:GetObject"),
+                    String::from("arn:aws:s3:::bucket/*"),
+                )]
             }
             3 => {
                 // Elevated with dangerous actions
                 vec![
-                    (String::from("iam:CreateAccessKey"), String::from("arn:aws:iam::123456789012:user/*")),
-                    (String::from("iam:AttachUserPolicy"), String::from("arn:aws:iam::123456789012:user/*")),
+                    (
+                        String::from("iam:CreateAccessKey"),
+                        String::from("arn:aws:iam::123456789012:user/*"),
+                    ),
+                    (
+                        String::from("iam:AttachUserPolicy"),
+                        String::from("arn:aws:iam::123456789012:user/*"),
+                    ),
                 ]
             }
             _ => {
                 // Service account
-                vec![(String::from("dynamodb:GetItem"), String::from("arn:aws:dynamodb:*:123456789012:table/*"))]
+                vec![(
+                    String::from("dynamodb:GetItem"),
+                    String::from("arn:aws:dynamodb:*:123456789012:table/*"),
+                )]
             }
         };
 
@@ -281,14 +344,27 @@ async fn benchmark_scoring_100_principals_fast() {
         let perms = match i % 5 {
             0 => vec![(String::from("*"), String::from("*"))],
             1 => vec![
-                (String::from("iam:PassRole"), String::from("arn:aws:iam::123456789012:role/*")),
-                (String::from("ec2:RunInstances"), String::from("arn:aws:ec2:*:123456789012:instance/*")),
+                (
+                    String::from("iam:PassRole"),
+                    String::from("arn:aws:iam::123456789012:role/*"),
+                ),
+                (
+                    String::from("ec2:RunInstances"),
+                    String::from("arn:aws:ec2:*:123456789012:instance/*"),
+                ),
             ],
-            2 => vec![(String::from("s3:GetObject"), String::from("arn:aws:s3:::bucket/*"))],
-            3 => vec![
-                (String::from("iam:CreateAccessKey"), String::from("arn:aws:iam::123456789012:user/*")),
-            ],
-            _ => vec![(String::from("dynamodb:GetItem"), String::from("arn:aws:dynamodb:*:123456789012:table/*"))],
+            2 => vec![(
+                String::from("s3:GetObject"),
+                String::from("arn:aws:s3:::bucket/*"),
+            )],
+            3 => vec![(
+                String::from("iam:CreateAccessKey"),
+                String::from("arn:aws:iam::123456789012:user/*"),
+            )],
+            _ => vec![(
+                String::from("dynamodb:GetItem"),
+                String::from("arn:aws:dynamodb:*:123456789012:table/*"),
+            )],
         };
 
         let reachable = match i % 5 {
@@ -356,21 +432,11 @@ fn benchmark_permission_matching_wildcard_expansion() {
     // (e.g., iam:* matches iam:CreatePolicyVersion, iam:AttachUserPolicy, etc.)
     let mut permission_sets = Vec::new();
 
-    let wildcard_perms = vec![
-        "iam:*",
-        "ec2:*",
-        "s3:*",
-        "lambda:*",
-        "dynamodb:*",
-        "kms:*",
-    ];
+    let wildcard_perms = vec!["iam:*", "ec2:*", "s3:*", "lambda:*", "dynamodb:*", "kms:*"];
 
     for i in 0..1_000 {
         let perm_idx = i % wildcard_perms.len();
-        let perms = vec![EffectivePermission::new(
-            wildcard_perms[perm_idx],
-            "*",
-        )];
+        let perms = vec![EffectivePermission::new(wildcard_perms[perm_idx], "*")];
         permission_sets.push(perms);
     }
 

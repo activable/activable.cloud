@@ -100,7 +100,9 @@ impl NativeEnricher for S3Enricher {
                 }
                 Err(e) => {
                     let error_message = e.to_string();
-                    if error_message.contains("NoSuchBucketPolicy") || error_message.contains("The bucket policy does not exist") {
+                    if error_message.contains("NoSuchBucketPolicy")
+                        || error_message.contains("The bucket policy does not exist")
+                    {
                         tracing::debug!(bucket = %bucket_name_str, "No bucket policy configured (expected)");
                     } else {
                         tracing::warn!(

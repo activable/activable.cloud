@@ -5,8 +5,7 @@
 //! - PassRole combos → lateral edge from principal to passable role (P → R)
 
 use crate::dangerous_actions::{
-    detect_dangerous_actions, DangerousAction,
-    EffectivePermission, Severity,
+    detect_dangerous_actions, DangerousAction, EffectivePermission, Severity,
 };
 
 /// An escalation edge from one principal to another (or self-escalation).
@@ -44,10 +43,7 @@ pub fn derive_escalation_edges(
 
     for matched_danger in dangerous_matches {
         // Look up the full danger definition from registry
-        let danger_def = registry
-            .iter()
-            .find(|d| d.id == matched_danger.id)
-            .cloned();
+        let danger_def = registry.iter().find(|d| d.id == matched_danger.id).cloned();
 
         if danger_def.is_none() {
             continue;
@@ -148,11 +144,15 @@ mod tests {
     #[test]
     fn self_escalation_edge_from_create_policy_version() {
         let principal = "arn:aws:iam::123456789012:user/alice";
-        let perms = vec![eff("iam:CreatePolicyVersion", "arn:aws:iam::123456789012:policy/MyPolicy")];
+        let perms = vec![eff(
+            "iam:CreatePolicyVersion",
+            "arn:aws:iam::123456789012:policy/MyPolicy",
+        )];
         let registry = load_dangerous_actions_registry();
         let edges = derive_escalation_edges(principal, &perms, &registry);
         assert!(
-            edges.iter().any(|e| e.from == principal && e.to == principal
+            edges.iter().any(|e| e.from == principal
+                && e.to == principal
                 && e.edge_type == "CanEscalateTo"),
             "Should have self-escalation edge"
         );
@@ -162,15 +162,13 @@ mod tests {
     fn passrole_ec2_creates_edge_to_passable_role() {
         let principal = "arn:aws:iam::123456789012:user/alice";
         let role = "arn:aws:iam::123456789012:role/admin-role";
-        let perms = vec![
-            eff("iam:PassRole", role),
-            eff("ec2:RunInstances", "*"),
-        ];
+        let perms = vec![eff("iam:PassRole", role), eff("ec2:RunInstances", "*")];
         let registry = load_dangerous_actions_registry();
         let edges = derive_escalation_edges(principal, &perms, &registry);
         assert!(
-            edges.iter().any(|e| e.from == principal && e.to == role
-                && e.edge_type == "CanEscalateTo"),
+            edges
+                .iter()
+                .any(|e| e.from == principal && e.to == role && e.edge_type == "CanEscalateTo"),
             "Should have edge to passable role"
         );
     }
@@ -195,10 +193,7 @@ mod tests {
     #[test]
     fn wildcard_passrole_creates_wildcard_target_edge() {
         let principal = "arn:aws:iam::123456789012:user/alice";
-        let perms = vec![
-            eff("iam:PassRole", "*"),
-            eff("ec2:RunInstances", "*"),
-        ];
+        let perms = vec![eff("iam:PassRole", "*"), eff("ec2:RunInstances", "*")];
         let registry = load_dangerous_actions_registry();
         let edges = derive_escalation_edges(principal, &perms, &registry);
         assert!(
@@ -214,7 +209,9 @@ mod tests {
         let registry = load_dangerous_actions_registry();
         let edges = derive_escalation_edges(principal, &perms, &registry);
         assert!(
-            edges.iter().any(|e| e.tier == 1 && e.severity == Severity::Critical),
+            edges
+                .iter()
+                .any(|e| e.tier == 1 && e.severity == Severity::Critical),
             "Should propagate tier and severity"
         );
     }

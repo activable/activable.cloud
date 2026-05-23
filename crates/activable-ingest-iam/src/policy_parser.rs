@@ -3,7 +3,9 @@
 use serde_json::Value;
 
 use crate::error::{PolicyParseError, PolicyParseResult};
-use crate::types::{ActionPattern, Condition, Effect, ParsedPolicy, PolicyStatement, ResourcePattern};
+use crate::types::{
+    ActionPattern, Condition, Effect, ParsedPolicy, PolicyStatement, ResourcePattern,
+};
 
 /// Parse a JSON string into a structured IAM policy with full validation.
 ///
@@ -37,29 +39,29 @@ pub fn parse_policy(json: &str) -> PolicyParseResult<ParsedPolicy> {
         .get("Statement")
         .ok_or_else(|| PolicyParseError::MissingField("Statement".to_string()))?;
 
-    let statements_array = statements_value
-        .as_array()
-        .ok_or_else(|| {
-            PolicyParseError::InvalidStatement("Statement must be an array".to_string())
-        })?;
+    let statements_array = statements_value.as_array().ok_or_else(|| {
+        PolicyParseError::InvalidStatement("Statement must be an array".to_string())
+    })?;
 
     let mut statements = Vec::new();
     for (idx, stmt_value) in statements_array.iter().enumerate() {
-        let stmt = parse_statement(stmt_value)
-            .map_err(|e| {
-                PolicyParseError::InvalidStatement(format!("Statement[{}]: {}", idx, e))
-            })?;
+        let stmt = parse_statement(stmt_value).map_err(|e| {
+            PolicyParseError::InvalidStatement(format!("Statement[{}]: {}", idx, e))
+        })?;
         statements.push(stmt);
     }
 
-    Ok(ParsedPolicy { version, statements })
+    Ok(ParsedPolicy {
+        version,
+        statements,
+    })
 }
 
 /// Parse a single statement object.
 fn parse_statement(value: &Value) -> PolicyParseResult<PolicyStatement> {
-    let obj = value
-        .as_object()
-        .ok_or_else(|| PolicyParseError::InvalidStatement("statement must be an object".to_string()))?;
+    let obj = value.as_object().ok_or_else(|| {
+        PolicyParseError::InvalidStatement("statement must be an object".to_string())
+    })?;
 
     // Parse Effect (required)
     let effect_str = obj
@@ -76,7 +78,10 @@ fn parse_statement(value: &Value) -> PolicyParseResult<PolicyStatement> {
     };
 
     // Parse Sid (optional)
-    let sid = obj.get("Sid").and_then(|v| v.as_str()).map(|s| s.to_string());
+    let sid = obj
+        .get("Sid")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
 
     // Parse Action / NotAction (at least one, mutually exclusive)
     let actions = parse_action_field(obj.get("Action"))?;
@@ -122,27 +127,25 @@ fn parse_statement(value: &Value) -> PolicyParseResult<PolicyStatement> {
 fn parse_action_field(value: Option<&Value>) -> PolicyParseResult<Vec<ActionPattern>> {
     match value {
         None => Ok(Vec::new()),
-        Some(v) => {
-            match v {
-                Value::String(s) => Ok(vec![ActionPattern(s.clone())]),
-                Value::Array(arr) => {
-                    let mut patterns = Vec::new();
-                    for item in arr {
-                        if let Some(s) = item.as_str() {
-                            patterns.push(ActionPattern(s.to_string()));
-                        } else {
-                            return Err(PolicyParseError::InvalidStatement(
-                                "Action array items must be strings".to_string(),
-                            ));
-                        }
+        Some(v) => match v {
+            Value::String(s) => Ok(vec![ActionPattern(s.clone())]),
+            Value::Array(arr) => {
+                let mut patterns = Vec::new();
+                for item in arr {
+                    if let Some(s) = item.as_str() {
+                        patterns.push(ActionPattern(s.to_string()));
+                    } else {
+                        return Err(PolicyParseError::InvalidStatement(
+                            "Action array items must be strings".to_string(),
+                        ));
                     }
-                    Ok(patterns)
                 }
-                _ => Err(PolicyParseError::InvalidStatement(
-                    "Action must be a string or array".to_string(),
-                )),
+                Ok(patterns)
             }
-        }
+            _ => Err(PolicyParseError::InvalidStatement(
+                "Action must be a string or array".to_string(),
+            )),
+        },
     }
 }
 
@@ -150,27 +153,25 @@ fn parse_action_field(value: Option<&Value>) -> PolicyParseResult<Vec<ActionPatt
 fn parse_resource_field(value: Option<&Value>) -> PolicyParseResult<Vec<ResourcePattern>> {
     match value {
         None => Ok(Vec::new()),
-        Some(v) => {
-            match v {
-                Value::String(s) => Ok(vec![ResourcePattern(s.clone())]),
-                Value::Array(arr) => {
-                    let mut patterns = Vec::new();
-                    for item in arr {
-                        if let Some(s) = item.as_str() {
-                            patterns.push(ResourcePattern(s.to_string()));
-                        } else {
-                            return Err(PolicyParseError::InvalidStatement(
-                                "Resource array items must be strings".to_string(),
-                            ));
-                        }
+        Some(v) => match v {
+            Value::String(s) => Ok(vec![ResourcePattern(s.clone())]),
+            Value::Array(arr) => {
+                let mut patterns = Vec::new();
+                for item in arr {
+                    if let Some(s) = item.as_str() {
+                        patterns.push(ResourcePattern(s.to_string()));
+                    } else {
+                        return Err(PolicyParseError::InvalidStatement(
+                            "Resource array items must be strings".to_string(),
+                        ));
                     }
-                    Ok(patterns)
                 }
-                _ => Err(PolicyParseError::InvalidStatement(
-                    "Resource must be a string or array".to_string(),
-                )),
+                Ok(patterns)
             }
-        }
+            _ => Err(PolicyParseError::InvalidStatement(
+                "Resource must be a string or array".to_string(),
+            )),
+        },
     }
 }
 
@@ -265,7 +266,10 @@ mod tests {
         assert_eq!(policy.statements.len(), 2);
         assert_eq!(policy.statements[1].effect, Effect::Deny);
         assert_eq!(policy.statements[1].conditions.len(), 1);
-        assert_eq!(policy.statements[1].conditions[0].operator, "StringNotEquals");
+        assert_eq!(
+            policy.statements[1].conditions[0].operator,
+            "StringNotEquals"
+        );
     }
 
     // ===== Test group 3: Parse NotAction / NotResource =====

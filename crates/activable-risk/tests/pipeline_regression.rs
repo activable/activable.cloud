@@ -4,8 +4,9 @@
 //! signal computation to final risk assessment.
 
 use activable_risk::{
-    batch_score_all, load_rules_from_dir, RiskConfig,
-    signals::{GraphQueryService, SignalError, GraphQueryError},
+    batch_score_all, load_rules_from_dir,
+    signals::{GraphQueryError, GraphQueryService, SignalError},
+    RiskConfig,
 };
 use async_trait::async_trait;
 use std::collections::HashMap;
@@ -45,16 +46,26 @@ impl TestGraphService {
         shortest_path: Option<u32>,
         cross_account_hops: u32,
     ) -> Result<(), SignalError> {
-        let mut store = self.principals.write()
+        let mut store = self
+            .principals
+            .write()
             .map_err(|e| Box::new(GraphQueryError(format!("lock failed: {}", e))) as SignalError)?;
 
         if !store.principal_ids.contains(&principal_id) {
             store.principal_ids.push(principal_id.clone());
         }
-        store.effective_permissions.insert(principal_id.clone(), permissions);
-        store.reachable_counts.insert(principal_id.clone(), reachable);
-        store.shortest_paths.insert(principal_id.clone(), shortest_path);
-        store.cross_account_hops.insert(principal_id, cross_account_hops);
+        store
+            .effective_permissions
+            .insert(principal_id.clone(), permissions);
+        store
+            .reachable_counts
+            .insert(principal_id.clone(), reachable);
+        store
+            .shortest_paths
+            .insert(principal_id.clone(), shortest_path);
+        store
+            .cross_account_hops
+            .insert(principal_id, cross_account_hops);
         Ok(())
     }
 }
@@ -62,9 +73,15 @@ impl TestGraphService {
 #[async_trait]
 impl GraphQueryService for TestGraphService {
     async fn reachable_count(&self, principal_id: &str, _max_hops: u8) -> Result<u64, SignalError> {
-        let store = self.principals.read()
+        let store = self
+            .principals
+            .read()
             .map_err(|e| Box::new(GraphQueryError(format!("lock failed: {}", e))) as SignalError)?;
-        Ok(store.reachable_counts.get(principal_id).copied().unwrap_or(0))
+        Ok(store
+            .reachable_counts
+            .get(principal_id)
+            .copied()
+            .unwrap_or(0))
     }
 
     async fn shortest_path_to_admin(
@@ -72,36 +89,64 @@ impl GraphQueryService for TestGraphService {
         principal_id: &str,
         _max_depth: u8,
     ) -> Result<Option<u32>, SignalError> {
-        let store = self.principals.read()
+        let store = self
+            .principals
+            .read()
             .map_err(|e| Box::new(GraphQueryError(format!("lock failed: {}", e))) as SignalError)?;
         Ok(store.shortest_paths.get(principal_id).copied().flatten())
     }
 
     async fn cross_account_hop_count(&self, principal_id: &str) -> Result<u32, SignalError> {
-        let store = self.principals.read()
+        let store = self
+            .principals
+            .read()
             .map_err(|e| Box::new(GraphQueryError(format!("lock failed: {}", e))) as SignalError)?;
-        Ok(store.cross_account_hops.get(principal_id).copied().unwrap_or(0))
+        Ok(store
+            .cross_account_hops
+            .get(principal_id)
+            .copied()
+            .unwrap_or(0))
     }
 
     async fn list_principal_ids(&self) -> Result<Vec<String>, SignalError> {
-        let store = self.principals.read()
+        let store = self
+            .principals
+            .read()
             .map_err(|e| Box::new(GraphQueryError(format!("lock failed: {}", e))) as SignalError)?;
         Ok(store.principal_ids.clone())
     }
 
-    async fn get_effective_permissions(&self, principal_id: &str) -> Result<Vec<(String, String)>, SignalError> {
-        let store = self.principals.read()
+    async fn get_effective_permissions(
+        &self,
+        principal_id: &str,
+    ) -> Result<Vec<(String, String)>, SignalError> {
+        let store = self
+            .principals
+            .read()
             .map_err(|e| Box::new(GraphQueryError(format!("lock failed: {}", e))) as SignalError)?;
-        Ok(store.effective_permissions.get(principal_id).cloned().unwrap_or_default())
+        Ok(store
+            .effective_permissions
+            .get(principal_id)
+            .cloned()
+            .unwrap_or_default())
     }
 
-    async fn read_risk_assessment(&self, _principal_id: &str) -> Result<Option<String>, SignalError> {
-        let _store = self.principals.read()
+    async fn read_risk_assessment(
+        &self,
+        _principal_id: &str,
+    ) -> Result<Option<String>, SignalError> {
+        let _store = self
+            .principals
+            .read()
             .map_err(|e| Box::new(GraphQueryError(format!("lock failed: {}", e))) as SignalError)?;
         Ok(None)
     }
 
-    async fn write_risk_assessment(&self, _principal_id: &str, _assessment_json: &str) -> Result<(), SignalError> {
+    async fn write_risk_assessment(
+        &self,
+        _principal_id: &str,
+        _assessment_json: &str,
+    ) -> Result<(), SignalError> {
         Ok(())
     }
 }
@@ -126,9 +171,9 @@ async fn pipeline_admin_gets_critical_severity() {
         .add_principal(
             "admin".to_string(),
             vec![(String::from("*"), String::from("*"))],
-            1000,   // very high reachability
+            1000,    // very high reachability
             Some(0), // is admin (distance 0)
-            3,      // 3 cross-account hops
+            3,       // 3 cross-account hops
         )
         .expect("Failed to add principal");
 
@@ -183,12 +228,18 @@ async fn pipeline_readonly_gets_info_severity() {
         .add_principal(
             "readonly".to_string(),
             vec![
-                (String::from("s3:GetObject"), String::from("arn:aws:s3:::bucket/*")),
-                (String::from("s3:ListBucket"), String::from("arn:aws:s3:::bucket")),
+                (
+                    String::from("s3:GetObject"),
+                    String::from("arn:aws:s3:::bucket/*"),
+                ),
+                (
+                    String::from("s3:ListBucket"),
+                    String::from("arn:aws:s3:::bucket"),
+                ),
             ],
-            5,      // very low reachability
-            None,   // no path to admin
-            0,      // no cross-account access
+            5,    // very low reachability
+            None, // no path to admin
+            0,    // no cross-account access
         )
         .expect("Failed to add principal");
 
@@ -241,13 +292,22 @@ async fn pipeline_developer_passrole_gets_medium() {
         .add_principal(
             "developer".to_string(),
             vec![
-                (String::from("iam:PassRole"), String::from("arn:aws:iam::123456789012:role/*")),
-                (String::from("ec2:RunInstances"), String::from("arn:aws:ec2:*:123456789012:instance/*")),
-                (String::from("s3:GetObject"), String::from("arn:aws:s3:::bucket/*")),
+                (
+                    String::from("iam:PassRole"),
+                    String::from("arn:aws:iam::123456789012:role/*"),
+                ),
+                (
+                    String::from("ec2:RunInstances"),
+                    String::from("arn:aws:ec2:*:123456789012:instance/*"),
+                ),
+                (
+                    String::from("s3:GetObject"),
+                    String::from("arn:aws:s3:::bucket/*"),
+                ),
             ],
-            50,     // moderate reachability
+            50,      // moderate reachability
             Some(3), // 3 hops to admin
-            1,      // 1 cross-account hop
+            1,       // 1 cross-account hop
         )
         .expect("Failed to add principal");
 
@@ -277,7 +337,10 @@ async fn pipeline_developer_passrole_gets_medium() {
 
     // ec2-001 rule matched
     assert!(
-        assessment.matched_rules.iter().any(|r| r.rule_id == "ec2-001"),
+        assessment
+            .matched_rules
+            .iter()
+            .any(|r| r.rule_id == "ec2-001"),
         "Developer should match ec2-001 (PassRole + ec2:RunInstances)"
     );
 
@@ -312,8 +375,14 @@ async fn pipeline_batch_multiple_principals() {
         .add_principal(
             "developer-user".to_string(),
             vec![
-                (String::from("iam:PassRole"), String::from("arn:aws:iam::123456789012:role/*")),
-                (String::from("ec2:RunInstances"), String::from("arn:aws:ec2:*:123456789012:instance/*")),
+                (
+                    String::from("iam:PassRole"),
+                    String::from("arn:aws:iam::123456789012:role/*"),
+                ),
+                (
+                    String::from("ec2:RunInstances"),
+                    String::from("arn:aws:ec2:*:123456789012:instance/*"),
+                ),
             ],
             50,
             Some(3),
@@ -324,7 +393,10 @@ async fn pipeline_batch_multiple_principals() {
     graph
         .add_principal(
             "readonly-user".to_string(),
-            vec![(String::from("s3:GetObject"), String::from("arn:aws:s3:::bucket/*"))],
+            vec![(
+                String::from("s3:GetObject"),
+                String::from("arn:aws:s3:::bucket/*"),
+            )],
             5,
             None,
             0,
@@ -376,9 +448,7 @@ async fn pipeline_batch_multiple_principals() {
         "Admin severity should be Critical or High, got {}",
         admin_sev
     );
-    assert!(
-        developer.severity.to_string() == "Low" || developer.severity.to_string() == "Medium"
-    );
+    assert!(developer.severity.to_string() == "Low" || developer.severity.to_string() == "Medium");
     assert_eq!(readonly.severity.to_string(), "Info");
 }
 
@@ -395,10 +465,13 @@ async fn pipeline_high_blast_radius_with_limited_perms() {
     graph
         .add_principal(
             "service-account".to_string(),
-            vec![(String::from("s3:GetObject"), String::from("arn:aws:s3:::bucket/*"))],
-            5000,   // extremely high reachability (compromised)
+            vec![(
+                String::from("s3:GetObject"),
+                String::from("arn:aws:s3:::bucket/*"),
+            )],
+            5000,    // extremely high reachability (compromised)
             Some(5), // 5 hops to admin
-            2,      // 2 cross-account hops
+            2,       // 2 cross-account hops
         )
         .expect("Failed to add principal");
 
@@ -419,7 +492,8 @@ async fn pipeline_high_blast_radius_with_limited_perms() {
     );
 
     // Verify we have signal contributions (exact signals depend on implementation)
-    assert!(!assessment.signal_contributions.is_empty(),
+    assert!(
+        !assessment.signal_contributions.is_empty(),
         "Assessment should have signal contributions"
     );
 }
@@ -436,8 +510,16 @@ async fn pipeline_path_to_admin_increases_risk() {
     graph
         .add_principal(
             "principal-far".to_string(),
-            vec![(String::from("iam:PassRole"), String::from("arn:aws:iam::123456789012:role/*")),
-                 (String::from("ec2:RunInstances"), String::from("arn:aws:ec2:*:123456789012:instance/*"))],
+            vec![
+                (
+                    String::from("iam:PassRole"),
+                    String::from("arn:aws:iam::123456789012:role/*"),
+                ),
+                (
+                    String::from("ec2:RunInstances"),
+                    String::from("arn:aws:ec2:*:123456789012:instance/*"),
+                ),
+            ],
             50,
             Some(10), // 10 hops to admin
             0,
@@ -448,8 +530,16 @@ async fn pipeline_path_to_admin_increases_risk() {
     graph
         .add_principal(
             "principal-close".to_string(),
-            vec![(String::from("iam:PassRole"), String::from("arn:aws:iam::123456789012:role/*")),
-                 (String::from("ec2:RunInstances"), String::from("arn:aws:ec2:*:123456789012:instance/*"))],
+            vec![
+                (
+                    String::from("iam:PassRole"),
+                    String::from("arn:aws:iam::123456789012:role/*"),
+                ),
+                (
+                    String::from("ec2:RunInstances"),
+                    String::from("arn:aws:ec2:*:123456789012:instance/*"),
+                ),
+            ],
             50,
             Some(1), // 1 hop to admin
             0,
@@ -493,8 +583,16 @@ async fn pipeline_cross_account_hops_increase_risk() {
     graph
         .add_principal(
             "single-account".to_string(),
-            vec![(String::from("iam:PassRole"), String::from("arn:aws:iam::123456789012:role/*")),
-                 (String::from("ec2:RunInstances"), String::from("arn:aws:ec2:*:123456789012:instance/*"))],
+            vec![
+                (
+                    String::from("iam:PassRole"),
+                    String::from("arn:aws:iam::123456789012:role/*"),
+                ),
+                (
+                    String::from("ec2:RunInstances"),
+                    String::from("arn:aws:ec2:*:123456789012:instance/*"),
+                ),
+            ],
             50,
             Some(3),
             0, // no cross-account
@@ -505,8 +603,16 @@ async fn pipeline_cross_account_hops_increase_risk() {
     graph
         .add_principal(
             "multi-account".to_string(),
-            vec![(String::from("iam:PassRole"), String::from("arn:aws:iam::123456789012:role/*")),
-                 (String::from("ec2:RunInstances"), String::from("arn:aws:ec2:*:123456789012:instance/*"))],
+            vec![
+                (
+                    String::from("iam:PassRole"),
+                    String::from("arn:aws:iam::123456789012:role/*"),
+                ),
+                (
+                    String::from("ec2:RunInstances"),
+                    String::from("arn:aws:ec2:*:123456789012:instance/*"),
+                ),
+            ],
             50,
             Some(3),
             5, // 5 cross-account hops

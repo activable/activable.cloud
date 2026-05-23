@@ -110,7 +110,10 @@ mod tests {
 
     #[test]
     fn arn_star_matches_all() {
-        assert!(resource_matches("*", "arn:aws:iam::123456789012:user/alice"));
+        assert!(resource_matches(
+            "*",
+            "arn:aws:iam::123456789012:user/alice"
+        ));
         assert!(resource_matches("*", "arn:aws:s3:::bucket"));
     }
 

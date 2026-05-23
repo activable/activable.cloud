@@ -48,10 +48,15 @@ pub fn boundary_allows(
         // Check if action matches
         let action_matches_result = if !stmt.not_actions.is_empty() {
             // NotAction: allow if action does NOT match any pattern
-            !stmt.not_actions.iter().any(|pattern| action_matches(&pattern.0, action))
+            !stmt
+                .not_actions
+                .iter()
+                .any(|pattern| action_matches(&pattern.0, action))
         } else if !stmt.actions.is_empty() {
             // Action: allow if action matches any pattern
-            stmt.actions.iter().any(|pattern| action_matches(&pattern.0, action))
+            stmt.actions
+                .iter()
+                .any(|pattern| action_matches(&pattern.0, action))
         } else {
             // No Action or NotAction specified: match everything
             true
@@ -70,7 +75,9 @@ pub fn boundary_allows(
                 .any(|pattern| resource_matches(&pattern.0, resource))
         } else if !stmt.resources.is_empty() {
             // Resource: allow if resource matches any pattern
-            stmt.resources.iter().any(|pattern| resource_matches(&pattern.0, resource))
+            stmt.resources
+                .iter()
+                .any(|pattern| resource_matches(&pattern.0, resource))
         } else {
             // No Resource or NotResource specified: match everything
             true
@@ -122,9 +129,15 @@ mod tests {
         PolicyStatement {
             sid: None,
             effect,
-            actions: actions.iter().map(|a| ActionPattern(a.to_string())).collect(),
+            actions: actions
+                .iter()
+                .map(|a| ActionPattern(a.to_string()))
+                .collect(),
             not_actions: vec![],
-            resources: resources.iter().map(|r| ResourcePattern(r.to_string())).collect(),
+            resources: resources
+                .iter()
+                .map(|r| ResourcePattern(r.to_string()))
+                .collect(),
             not_resources: vec![],
             conditions: vec![],
         }
@@ -150,8 +163,16 @@ mod tests {
     #[test]
     fn test_boundary_with_resource_pattern() {
         let boundary = vec![stmt(Effect::Allow, &["s3:*"], &["arn:aws:s3:::public-*"])];
-        assert!(boundary_allows(&boundary, "s3:GetObject", "arn:aws:s3:::public-data"));
-        assert!(!boundary_allows(&boundary, "s3:GetObject", "arn:aws:s3:::private-data"));
+        assert!(boundary_allows(
+            &boundary,
+            "s3:GetObject",
+            "arn:aws:s3:::public-data"
+        ));
+        assert!(!boundary_allows(
+            &boundary,
+            "s3:GetObject",
+            "arn:aws:s3:::private-data"
+        ));
     }
 
     #[test]

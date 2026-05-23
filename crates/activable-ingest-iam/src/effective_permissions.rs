@@ -124,14 +124,12 @@ mod tests {
 
     const ADMIN_ACCESS_JSON: &str =
         r#"{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":"*","Resource":"*"}]}"#;
-    const S3_ONLY_BOUNDARY_JSON: &str =
-        r#"{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":"s3:*","Resource":"*"}]}"#;
+    const S3_ONLY_BOUNDARY_JSON: &str = r#"{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":"s3:*","Resource":"*"}]}"#;
 
     #[test]
     fn simple_allow_produces_effective_permission() {
         let policy = parse_policy(ADMIN_ACCESS_JSON).unwrap();
-        let result =
-            effective_permissions(&[policy], None, &[], &EvalContext::default());
+        let result = effective_permissions(&[policy], None, &[], &EvalContext::default());
         assert!(
             result.iter().any(|p| p.action == "*" && p.resource == "*"),
             "Should contain wildcard permission"
@@ -144,8 +142,7 @@ mod tests {
             {"Effect":"Allow","Action":["s3:GetObject","s3:PutObject"],"Resource":"arn:aws:s3:::mybucket/*"}
         ]}"#;
         let policy = parse_policy(policy_json).unwrap();
-        let result =
-            effective_permissions(&[policy], None, &[], &EvalContext::default());
+        let result = effective_permissions(&[policy], None, &[], &EvalContext::default());
         assert!(
             result.iter().any(|p| p.action == "s3:GetObject"),
             "Should contain s3:GetObject"
@@ -159,8 +156,7 @@ mod tests {
     #[test]
     fn wildcard_action_stored_as_is() {
         let policy = parse_policy(ADMIN_ACCESS_JSON).unwrap();
-        let result =
-            effective_permissions(&[policy], None, &[], &EvalContext::default());
+        let result = effective_permissions(&[policy], None, &[], &EvalContext::default());
         assert!(
             result.iter().any(|p| p.action == "*" && p.resource == "*"),
             "Wildcard should NOT be expanded"
@@ -174,8 +170,7 @@ mod tests {
             {"Effect":"Deny","Action":"s3:DeleteBucket","Resource":"*"}
         ]}"#;
         let policy = parse_policy(policy_json).unwrap();
-        let result =
-            effective_permissions(&[policy], None, &[], &EvalContext::default());
+        let result = effective_permissions(&[policy], None, &[], &EvalContext::default());
         assert!(
             !result.iter().any(|p| p.action == "s3:DeleteBucket"),
             "s3:DeleteBucket should be removed by Deny"
@@ -193,19 +188,16 @@ mod tests {
             {"Effect":"Deny","Action":"*","Resource":"*"}
         ]}"#;
         let policy = parse_policy(policy_json).unwrap();
-        let result =
-            effective_permissions(&[policy], None, &[], &EvalContext::default());
-        assert!(
-            result.is_empty(),
-            "All actions should be denied"
-        );
+        let result = effective_permissions(&[policy], None, &[], &EvalContext::default());
+        assert!(result.is_empty(), "All actions should be denied");
     }
 
     #[test]
     fn boundary_restricts_to_intersection() {
         let identity = parse_policy(ADMIN_ACCESS_JSON).unwrap();
         let boundary = parse_policy(S3_ONLY_BOUNDARY_JSON).unwrap();
-        let result = effective_permissions(&[identity], Some(&boundary), &[], &EvalContext::default());
+        let result =
+            effective_permissions(&[identity], Some(&boundary), &[], &EvalContext::default());
         // Identity allows "*", boundary restricts to "s3:*".
         // Since we store wildcards as-is (no expansion), "*" doesn't match the boundary's "s3:*" pattern.
         // Result should be empty (the wildcard from identity is filtered out by the boundary check).
@@ -218,20 +210,18 @@ mod tests {
     #[test]
     fn scp_chain_blocks_actions_not_in_ou_allow() {
         let identity = parse_policy(ADMIN_ACCESS_JSON).unwrap();
-        let ou_scp = vec![
-            PolicyStatement {
-                sid: None,
-                effect: Effect::Allow,
-                actions: vec![
-                    crate::types::ActionPattern("s3:*".to_string()),
-                    crate::types::ActionPattern("ec2:*".to_string()),
-                ],
-                not_actions: vec![],
-                resources: vec![crate::types::ResourcePattern("*".to_string())],
-                not_resources: vec![],
-                conditions: vec![],
-            },
-        ];
+        let ou_scp = vec![PolicyStatement {
+            sid: None,
+            effect: Effect::Allow,
+            actions: vec![
+                crate::types::ActionPattern("s3:*".to_string()),
+                crate::types::ActionPattern("ec2:*".to_string()),
+            ],
+            not_actions: vec![],
+            resources: vec![crate::types::ResourcePattern("*".to_string())],
+            not_resources: vec![],
+            conditions: vec![],
+        }];
         let result = effective_permissions(&[identity], None, &[&ou_scp], &EvalContext::default());
         assert!(
             !result.iter().any(|p| p.action == "iam:CreateUser"),

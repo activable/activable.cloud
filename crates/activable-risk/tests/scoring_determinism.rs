@@ -4,12 +4,13 @@
 //! for identical input across multiple runs.
 
 use activable_risk::{
-    batch_score_all, load_rules_from_dir, RiskConfig,
-    signals::{GraphQueryService, SignalError, GraphQueryError},
+    batch_score_all, load_rules_from_dir,
+    signals::{GraphQueryError, GraphQueryService, SignalError},
+    RiskConfig,
 };
 use async_trait::async_trait;
 use std::collections::HashMap;
-use std::sync::{RwLock, Arc};
+use std::sync::{Arc, RwLock};
 
 /// In-memory graph service for testing (local copy)
 struct TestGraphService {
@@ -45,16 +46,26 @@ impl TestGraphService {
         shortest_path: Option<u32>,
         cross_account_hops: u32,
     ) -> Result<(), SignalError> {
-        let mut store = self.principals.write()
+        let mut store = self
+            .principals
+            .write()
             .map_err(|e| Box::new(GraphQueryError(format!("lock failed: {}", e))) as SignalError)?;
 
         if !store.principal_ids.contains(&principal_id) {
             store.principal_ids.push(principal_id.clone());
         }
-        store.effective_permissions.insert(principal_id.clone(), permissions);
-        store.reachable_counts.insert(principal_id.clone(), reachable);
-        store.shortest_paths.insert(principal_id.clone(), shortest_path);
-        store.cross_account_hops.insert(principal_id, cross_account_hops);
+        store
+            .effective_permissions
+            .insert(principal_id.clone(), permissions);
+        store
+            .reachable_counts
+            .insert(principal_id.clone(), reachable);
+        store
+            .shortest_paths
+            .insert(principal_id.clone(), shortest_path);
+        store
+            .cross_account_hops
+            .insert(principal_id, cross_account_hops);
         Ok(())
     }
 }
@@ -62,9 +73,15 @@ impl TestGraphService {
 #[async_trait]
 impl GraphQueryService for TestGraphService {
     async fn reachable_count(&self, principal_id: &str, _max_hops: u8) -> Result<u64, SignalError> {
-        let store = self.principals.read()
+        let store = self
+            .principals
+            .read()
             .map_err(|e| Box::new(GraphQueryError(format!("lock failed: {}", e))) as SignalError)?;
-        Ok(store.reachable_counts.get(principal_id).copied().unwrap_or(0))
+        Ok(store
+            .reachable_counts
+            .get(principal_id)
+            .copied()
+            .unwrap_or(0))
     }
 
     async fn shortest_path_to_admin(
@@ -72,36 +89,64 @@ impl GraphQueryService for TestGraphService {
         principal_id: &str,
         _max_depth: u8,
     ) -> Result<Option<u32>, SignalError> {
-        let store = self.principals.read()
+        let store = self
+            .principals
+            .read()
             .map_err(|e| Box::new(GraphQueryError(format!("lock failed: {}", e))) as SignalError)?;
         Ok(store.shortest_paths.get(principal_id).copied().flatten())
     }
 
     async fn cross_account_hop_count(&self, principal_id: &str) -> Result<u32, SignalError> {
-        let store = self.principals.read()
+        let store = self
+            .principals
+            .read()
             .map_err(|e| Box::new(GraphQueryError(format!("lock failed: {}", e))) as SignalError)?;
-        Ok(store.cross_account_hops.get(principal_id).copied().unwrap_or(0))
+        Ok(store
+            .cross_account_hops
+            .get(principal_id)
+            .copied()
+            .unwrap_or(0))
     }
 
     async fn list_principal_ids(&self) -> Result<Vec<String>, SignalError> {
-        let store = self.principals.read()
+        let store = self
+            .principals
+            .read()
             .map_err(|e| Box::new(GraphQueryError(format!("lock failed: {}", e))) as SignalError)?;
         Ok(store.principal_ids.clone())
     }
 
-    async fn get_effective_permissions(&self, principal_id: &str) -> Result<Vec<(String, String)>, SignalError> {
-        let store = self.principals.read()
+    async fn get_effective_permissions(
+        &self,
+        principal_id: &str,
+    ) -> Result<Vec<(String, String)>, SignalError> {
+        let store = self
+            .principals
+            .read()
             .map_err(|e| Box::new(GraphQueryError(format!("lock failed: {}", e))) as SignalError)?;
-        Ok(store.effective_permissions.get(principal_id).cloned().unwrap_or_default())
+        Ok(store
+            .effective_permissions
+            .get(principal_id)
+            .cloned()
+            .unwrap_or_default())
     }
 
-    async fn read_risk_assessment(&self, _principal_id: &str) -> Result<Option<String>, SignalError> {
-        let _store = self.principals.read()
+    async fn read_risk_assessment(
+        &self,
+        _principal_id: &str,
+    ) -> Result<Option<String>, SignalError> {
+        let _store = self
+            .principals
+            .read()
             .map_err(|e| Box::new(GraphQueryError(format!("lock failed: {}", e))) as SignalError)?;
         Ok(None)
     }
 
-    async fn write_risk_assessment(&self, _principal_id: &str, _assessment_json: &str) -> Result<(), SignalError> {
+    async fn write_risk_assessment(
+        &self,
+        _principal_id: &str,
+        _assessment_json: &str,
+    ) -> Result<(), SignalError> {
         Ok(())
     }
 }
@@ -133,9 +178,18 @@ fn create_test_graph() -> TestGraphService {
         .add_principal(
             "principal-dev-1".to_string(),
             vec![
-                (String::from("iam:PassRole"), String::from("arn:aws:iam::123456789012:role/*")),
-                (String::from("ec2:RunInstances"), String::from("arn:aws:ec2:*:123456789012:instance/*")),
-                (String::from("s3:GetObject"), String::from("arn:aws:s3:::bucket/*")),
+                (
+                    String::from("iam:PassRole"),
+                    String::from("arn:aws:iam::123456789012:role/*"),
+                ),
+                (
+                    String::from("ec2:RunInstances"),
+                    String::from("arn:aws:ec2:*:123456789012:instance/*"),
+                ),
+                (
+                    String::from("s3:GetObject"),
+                    String::from("arn:aws:s3:::bucket/*"),
+                ),
             ],
             50,
             Some(3),
@@ -147,7 +201,10 @@ fn create_test_graph() -> TestGraphService {
     graph
         .add_principal(
             "principal-readonly".to_string(),
-            vec![(String::from("s3:GetObject"), String::from("arn:aws:s3:::bucket/*"))],
+            vec![(
+                String::from("s3:GetObject"),
+                String::from("arn:aws:s3:::bucket/*"),
+            )],
             5,
             None,
             0,
@@ -159,8 +216,14 @@ fn create_test_graph() -> TestGraphService {
         .add_principal(
             "principal-elevated".to_string(),
             vec![
-                (String::from("iam:CreateAccessKey"), String::from("arn:aws:iam::123456789012:user/*")),
-                (String::from("iam:AttachUserPolicy"), String::from("arn:aws:iam::123456789012:user/*")),
+                (
+                    String::from("iam:CreateAccessKey"),
+                    String::from("arn:aws:iam::123456789012:user/*"),
+                ),
+                (
+                    String::from("iam:AttachUserPolicy"),
+                    String::from("arn:aws:iam::123456789012:user/*"),
+                ),
                 (String::from("ec2:DescribeInstances"), String::from("*")),
             ],
             200,
@@ -174,9 +237,18 @@ fn create_test_graph() -> TestGraphService {
         .add_principal(
             "principal-service".to_string(),
             vec![
-                (String::from("dynamodb:GetItem"), String::from("arn:aws:dynamodb:*:123456789012:table/app")),
-                (String::from("dynamodb:Query"), String::from("arn:aws:dynamodb:*:123456789012:table/app")),
-                (String::from("kms:Decrypt"), String::from("arn:aws:kms:*:123456789012:key/*")),
+                (
+                    String::from("dynamodb:GetItem"),
+                    String::from("arn:aws:dynamodb:*:123456789012:table/app"),
+                ),
+                (
+                    String::from("dynamodb:Query"),
+                    String::from("arn:aws:dynamodb:*:123456789012:table/app"),
+                ),
+                (
+                    String::from("kms:Decrypt"),
+                    String::from("arn:aws:kms:*:123456789012:key/*"),
+                ),
             ],
             100,
             Some(5),
@@ -247,7 +319,11 @@ async fn scoring_deterministic_signal_contributions() {
     for (a1, a2) in result1.assessments.iter().zip(result2.assessments.iter()) {
         assert_eq!(a1.signal_contributions.len(), a2.signal_contributions.len());
 
-        for (s1, s2) in a1.signal_contributions.iter().zip(a2.signal_contributions.iter()) {
+        for (s1, s2) in a1
+            .signal_contributions
+            .iter()
+            .zip(a2.signal_contributions.iter())
+        {
             assert_eq!(s1.name, s2.name);
 
             // Check contribution matches (this is what actually matters for the score)
@@ -309,20 +385,24 @@ async fn scoring_deterministic_golden_file_exact_match() {
     // Golden file: expected scores for each principal (within 10% tolerance)
     // These values are empirically determined from the current scoring formula
     let golden: std::collections::HashMap<&str, (f64, &str)> = [
-        ("principal-admin", (0.76, "High")),                // Admin: very high
-        ("principal-dev-1", (0.40, "Low")),                 // Developer with PassRole: low-moderate
-        ("principal-readonly", (0.08, "Info")),             // Read-only: very low
-        ("principal-elevated", (0.45, "Medium")),           // Elevated with dangerous actions: medium
-        ("principal-service", (0.18, "Low")),               // Service account: low
+        ("principal-admin", (0.76, "High")),      // Admin: very high
+        ("principal-dev-1", (0.40, "Low")),       // Developer with PassRole: low-moderate
+        ("principal-readonly", (0.08, "Info")),   // Read-only: very low
+        ("principal-elevated", (0.45, "Medium")), // Elevated with dangerous actions: medium
+        ("principal-service", (0.18, "Low")),     // Service account: low
     ]
     .iter()
     .cloned()
     .collect();
 
     for assessment in &result.assessments {
-        let (expected_score, expected_sev) = golden
-            .get(assessment.principal_id.as_str())
-            .expect(&format!("Principal {} not in golden file", assessment.principal_id));
+        let (expected_score, expected_sev) =
+            golden
+                .get(assessment.principal_id.as_str())
+                .expect(&format!(
+                    "Principal {} not in golden file",
+                    assessment.principal_id
+                ));
 
         // Score should be within 0.05 (5%) of expected
         let score_diff = (assessment.score - expected_score).abs();
@@ -366,7 +446,10 @@ async fn scoring_deterministic_order_independent() {
     graph1
         .add_principal(
             "p-dev".to_string(),
-            vec![(String::from("iam:PassRole"), String::from("arn:aws:iam::123456789012:role/*"))],
+            vec![(
+                String::from("iam:PassRole"),
+                String::from("arn:aws:iam::123456789012:role/*"),
+            )],
             50,
             Some(3),
             1,
@@ -375,7 +458,10 @@ async fn scoring_deterministic_order_independent() {
     graph1
         .add_principal(
             "p-readonly".to_string(),
-            vec![(String::from("s3:GetObject"), String::from("arn:aws:s3:::bucket/*"))],
+            vec![(
+                String::from("s3:GetObject"),
+                String::from("arn:aws:s3:::bucket/*"),
+            )],
             5,
             None,
             0,
@@ -387,7 +473,10 @@ async fn scoring_deterministic_order_independent() {
     graph2
         .add_principal(
             "p-readonly".to_string(),
-            vec![(String::from("s3:GetObject"), String::from("arn:aws:s3:::bucket/*"))],
+            vec![(
+                String::from("s3:GetObject"),
+                String::from("arn:aws:s3:::bucket/*"),
+            )],
             5,
             None,
             0,
@@ -396,7 +485,10 @@ async fn scoring_deterministic_order_independent() {
     graph2
         .add_principal(
             "p-dev".to_string(),
-            vec![(String::from("iam:PassRole"), String::from("arn:aws:iam::123456789012:role/*"))],
+            vec![(
+                String::from("iam:PassRole"),
+                String::from("arn:aws:iam::123456789012:role/*"),
+            )],
             50,
             Some(3),
             1,
@@ -486,13 +578,21 @@ async fn scoring_deterministic_across_async_calls() {
     for (a1, a2, a3) in izip(
         result1.assessments.iter(),
         result2.assessments.iter(),
-        result3.assessments.iter()
+        result3.assessments.iter(),
     ) {
         let diff12 = (a1.score - a2.score).abs();
         let diff23 = (a2.score - a3.score).abs();
 
-        assert!(diff12 < 0.0001, "Results 1 and 2 differ for {}", a1.principal_id);
-        assert!(diff23 < 0.0001, "Results 2 and 3 differ for {}", a2.principal_id);
+        assert!(
+            diff12 < 0.0001,
+            "Results 1 and 2 differ for {}",
+            a1.principal_id
+        );
+        assert!(
+            diff23 < 0.0001,
+            "Results 2 and 3 differ for {}",
+            a2.principal_id
+        );
     }
 }
 
@@ -507,10 +607,8 @@ where
     let mut iter2 = i2.into_iter();
     let mut iter3 = i3.into_iter();
 
-    std::iter::from_fn(move || {
-        match (iter1.next(), iter2.next(), iter3.next()) {
-            (Some(v1), Some(v2), Some(v3)) => Some((v1, v2, v3)),
-            _ => None,
-        }
+    std::iter::from_fn(move || match (iter1.next(), iter2.next(), iter3.next()) {
+        (Some(v1), Some(v2), Some(v3)) => Some((v1, v2, v3)),
+        _ => None,
     })
 }

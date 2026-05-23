@@ -10,11 +10,11 @@
 //! - Deny with NotResource: deny if resource does NOT match
 //! - Deny with Conditions: only deny if ALL conditions evaluate to true
 
-use crate::condition_evaluator::evaluate_condition;
 use crate::action_matcher::action_matches;
+use crate::condition_evaluator::evaluate_condition;
+use crate::eval_context::EvalContext;
 use crate::resource_matcher::resource_matches;
 use crate::types::{Effect, PolicyStatement};
-use crate::eval_context::EvalContext;
 
 /// Result of deny evaluation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -63,10 +63,15 @@ pub fn evaluate_deny_with_context(
         // Check if action matches
         let action_matches_result = if !stmt.not_actions.is_empty() {
             // NotAction: deny if action does NOT match any pattern
-            !stmt.not_actions.iter().any(|pattern| action_matches(&pattern.0, action))
+            !stmt
+                .not_actions
+                .iter()
+                .any(|pattern| action_matches(&pattern.0, action))
         } else if !stmt.actions.is_empty() {
             // Action: deny if action matches any pattern
-            stmt.actions.iter().any(|pattern| action_matches(&pattern.0, action))
+            stmt.actions
+                .iter()
+                .any(|pattern| action_matches(&pattern.0, action))
         } else {
             // No Action or NotAction specified: match everything
             true
@@ -85,7 +90,9 @@ pub fn evaluate_deny_with_context(
                 .any(|pattern| resource_matches(&pattern.0, resource))
         } else if !stmt.resources.is_empty() {
             // Resource: deny if resource matches any pattern
-            stmt.resources.iter().any(|pattern| resource_matches(&pattern.0, resource))
+            stmt.resources
+                .iter()
+                .any(|pattern| resource_matches(&pattern.0, resource))
         } else {
             // No Resource or NotResource specified: match everything
             true
@@ -137,9 +144,15 @@ mod tests {
         PolicyStatement {
             sid: None,
             effect,
-            actions: actions.iter().map(|a| ActionPattern(a.to_string())).collect(),
+            actions: actions
+                .iter()
+                .map(|a| ActionPattern(a.to_string()))
+                .collect(),
             not_actions: vec![],
-            resources: resources.iter().map(|r| ResourcePattern(r.to_string())).collect(),
+            resources: resources
+                .iter()
+                .map(|r| ResourcePattern(r.to_string()))
+                .collect(),
             not_resources: vec![],
             conditions: vec![],
         }

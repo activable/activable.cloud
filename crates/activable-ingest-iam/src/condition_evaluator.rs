@@ -35,19 +35,27 @@ pub fn evaluate_condition(operator: &str, _key: &str, values: &[&str], actual_va
         }
         "StringLike" => {
             // Wildcard match using action_matcher logic
-            values.iter().any(|pattern| action_matches(pattern, actual_value))
+            values
+                .iter()
+                .any(|pattern| action_matches(pattern, actual_value))
         }
         "StringNotLike" => {
             // Match if actual_value does NOT match ANY pattern
-            values.iter().all(|pattern| !action_matches(pattern, actual_value))
+            values
+                .iter()
+                .all(|pattern| !action_matches(pattern, actual_value))
         }
         "ArnLike" => {
             // ARN wildcard match using resource_matcher logic
-            values.iter().any(|pattern| resource_matches(pattern, actual_value))
+            values
+                .iter()
+                .any(|pattern| resource_matches(pattern, actual_value))
         }
         "ArnNotLike" => {
             // Match if actual_value does NOT match ANY pattern
-            values.iter().all(|pattern| !resource_matches(pattern, actual_value))
+            values
+                .iter()
+                .all(|pattern| !resource_matches(pattern, actual_value))
         }
         "IpAddress" => {
             // Parse actual_value as IP, check if it's in any CIDR block
@@ -105,13 +113,28 @@ mod tests {
 
     #[test]
     fn test_string_equals() {
-        assert!(evaluate_condition("StringEquals", "region", &["us-east-1"], "us-east-1"));
-        assert!(!evaluate_condition("StringEquals", "region", &["us-east-1"], "us-west-2"));
+        assert!(evaluate_condition(
+            "StringEquals",
+            "region",
+            &["us-east-1"],
+            "us-east-1"
+        ));
+        assert!(!evaluate_condition(
+            "StringEquals",
+            "region",
+            &["us-east-1"],
+            "us-west-2"
+        ));
     }
 
     #[test]
     fn test_string_equals_case_insensitive() {
-        assert!(evaluate_condition("StringEquals", "region", &["US-EAST-1"], "us-east-1"));
+        assert!(evaluate_condition(
+            "StringEquals",
+            "region",
+            &["US-EAST-1"],
+            "us-east-1"
+        ));
     }
 
     #[test]
@@ -132,8 +155,18 @@ mod tests {
 
     #[test]
     fn test_string_like() {
-        assert!(evaluate_condition("StringLike", "prefix", &["home/*"], "home/alice/doc"));
-        assert!(!evaluate_condition("StringLike", "prefix", &["home/*"], "work/bob"));
+        assert!(evaluate_condition(
+            "StringLike",
+            "prefix",
+            &["home/*"],
+            "home/alice/doc"
+        ));
+        assert!(!evaluate_condition(
+            "StringLike",
+            "prefix",
+            &["home/*"],
+            "work/bob"
+        ));
     }
 
     #[test]

@@ -61,12 +61,8 @@ pub async fn load_nodes(
                             serde_json::Value::String(s) => {
                                 Some(format!("{}: '{}'", k, escape_sql_literal(s)))
                             }
-                            serde_json::Value::Number(n) => {
-                                Some(format!("{}: {}", k, n))
-                            }
-                            serde_json::Value::Bool(b) => {
-                                Some(format!("{}: {}", k, b))
-                            }
+                            serde_json::Value::Number(n) => Some(format!("{}: {}", k, n)),
+                            serde_json::Value::Bool(b) => Some(format!("{}: {}", k, b)),
                             _ => None, // Skip arrays/objects/nulls
                         }
                     })

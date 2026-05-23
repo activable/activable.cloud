@@ -59,7 +59,8 @@ async fn e2e_full_pipeline_ingest_score_query() {
     // 4. Query findings
     // 5. Verify scores
 
-    let graphql_endpoint = env::var("GRAPHQL_ENDPOINT").unwrap_or("http://localhost:8080/graphql".to_string());
+    let graphql_endpoint =
+        env::var("GRAPHQL_ENDPOINT").unwrap_or("http://localhost:8080/graphql".to_string());
     let client = GraphQLClient::new(&graphql_endpoint);
 
     // Step 1: Trigger ingestion
@@ -141,7 +142,8 @@ async fn e2e_full_pipeline_ingest_score_query() {
 #[tokio::test]
 #[ignore] // requires live K8s
 async fn e2e_ingest_completes_successfully() {
-    let graphql_endpoint = env::var("GRAPHQL_ENDPOINT").unwrap_or("http://localhost:8080/graphql".to_string());
+    let graphql_endpoint =
+        env::var("GRAPHQL_ENDPOINT").unwrap_or("http://localhost:8080/graphql".to_string());
     let client = GraphQLClient::new(&graphql_endpoint);
 
     let mutation = r#"
@@ -168,7 +170,8 @@ async fn e2e_ingest_completes_successfully() {
 #[tokio::test]
 #[ignore] // requires live K8s + AWS creds
 async fn e2e_risk_scoring_produces_scores() {
-    let graphql_endpoint = env::var("GRAPHQL_ENDPOINT").unwrap_or("http://localhost:8080/graphql".to_string());
+    let graphql_endpoint =
+        env::var("GRAPHQL_ENDPOINT").unwrap_or("http://localhost:8080/graphql".to_string());
     let client = GraphQLClient::new(&graphql_endpoint);
 
     let query = r#"
@@ -206,7 +209,8 @@ async fn e2e_risk_scoring_produces_scores() {
 #[tokio::test]
 #[ignore] // requires live K8s
 async fn e2e_findings_have_correct_structure() {
-    let graphql_endpoint = env::var("GRAPHQL_ENDPOINT").unwrap_or("http://localhost:8080/graphql".to_string());
+    let graphql_endpoint =
+        env::var("GRAPHQL_ENDPOINT").unwrap_or("http://localhost:8080/graphql".to_string());
     let client = GraphQLClient::new(&graphql_endpoint);
 
     let query = r#"
@@ -256,7 +260,8 @@ async fn e2e_findings_have_correct_structure() {
 #[tokio::test]
 #[ignore] // requires live K8s + AWS creds
 async fn e2e_admin_principal_critical_severity() {
-    let graphql_endpoint = env::var("GRAPHQL_ENDPOINT").unwrap_or("http://localhost:8080/graphql".to_string());
+    let graphql_endpoint =
+        env::var("GRAPHQL_ENDPOINT").unwrap_or("http://localhost:8080/graphql".to_string());
     let client = GraphQLClient::new(&graphql_endpoint);
 
     let query = r#"
@@ -287,7 +292,8 @@ async fn e2e_admin_principal_critical_severity() {
 #[tokio::test]
 #[ignore] // requires live K8s + AWS creds
 async fn e2e_service_accounts_reasonable_scores() {
-    let graphql_endpoint = env::var("GRAPHQL_ENDPOINT").unwrap_or("http://localhost:8080/graphql".to_string());
+    let graphql_endpoint =
+        env::var("GRAPHQL_ENDPOINT").unwrap_or("http://localhost:8080/graphql".to_string());
     let client = GraphQLClient::new(&graphql_endpoint);
 
     let query = r#"
@@ -329,7 +335,8 @@ async fn e2e_service_accounts_reasonable_scores() {
 #[tokio::test]
 #[ignore] // requires live K8s + AWS creds
 async fn e2e_full_pipeline_performance() {
-    let graphql_endpoint = env::var("GRAPHQL_ENDPOINT").unwrap_or("http://localhost:8080/graphql".to_string());
+    let graphql_endpoint =
+        env::var("GRAPHQL_ENDPOINT").unwrap_or("http://localhost:8080/graphql".to_string());
     let client = GraphQLClient::new(&graphql_endpoint);
 
     let start = std::time::Instant::now();
@@ -368,7 +375,8 @@ async fn e2e_full_pipeline_performance() {
 #[tokio::test]
 #[ignore] // requires live K8s
 async fn e2e_graphql_endpoint_health() {
-    let graphql_endpoint = env::var("GRAPHQL_ENDPOINT").unwrap_or("http://localhost:8080/graphql".to_string());
+    let graphql_endpoint =
+        env::var("GRAPHQL_ENDPOINT").unwrap_or("http://localhost:8080/graphql".to_string());
     let client = GraphQLClient::new(&graphql_endpoint);
 
     let health_query = r#"
@@ -389,7 +397,8 @@ async fn e2e_graphql_endpoint_health() {
 #[tokio::test]
 #[ignore] // requires live K8s + AWS creds
 async fn e2e_principals_populated_after_ingest() {
-    let graphql_endpoint = env::var("GRAPHQL_ENDPOINT").unwrap_or("http://localhost:8080/graphql".to_string());
+    let graphql_endpoint =
+        env::var("GRAPHQL_ENDPOINT").unwrap_or("http://localhost:8080/graphql".to_string());
     let client = GraphQLClient::new(&graphql_endpoint);
 
     let query = r#"

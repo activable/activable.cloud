@@ -50,10 +50,15 @@ fn statement_slice_allows(statements: &[PolicyStatement], action: &str, resource
         // Check if action matches
         let action_matches_result = if !stmt.not_actions.is_empty() {
             // NotAction: allow if action does NOT match any pattern
-            !stmt.not_actions.iter().any(|pattern| action_matches(&pattern.0, action))
+            !stmt
+                .not_actions
+                .iter()
+                .any(|pattern| action_matches(&pattern.0, action))
         } else if !stmt.actions.is_empty() {
             // Action: allow if action matches any pattern
-            stmt.actions.iter().any(|pattern| action_matches(&pattern.0, action))
+            stmt.actions
+                .iter()
+                .any(|pattern| action_matches(&pattern.0, action))
         } else {
             // No Action or NotAction specified: match everything
             true
@@ -72,7 +77,9 @@ fn statement_slice_allows(statements: &[PolicyStatement], action: &str, resource
                 .any(|pattern| resource_matches(&pattern.0, resource))
         } else if !stmt.resources.is_empty() {
             // Resource: allow if resource matches any pattern
-            stmt.resources.iter().any(|pattern| resource_matches(&pattern.0, resource))
+            stmt.resources
+                .iter()
+                .any(|pattern| resource_matches(&pattern.0, resource))
         } else {
             // No Resource or NotResource specified: match everything
             true
@@ -97,9 +104,15 @@ mod tests {
         PolicyStatement {
             sid: None,
             effect,
-            actions: actions.iter().map(|a| ActionPattern(a.to_string())).collect(),
+            actions: actions
+                .iter()
+                .map(|a| ActionPattern(a.to_string()))
+                .collect(),
             not_actions: vec![],
-            resources: resources.iter().map(|r| ResourcePattern(r.to_string())).collect(),
+            resources: resources
+                .iter()
+                .map(|r| ResourcePattern(r.to_string()))
+                .collect(),
             not_resources: vec![],
             conditions: vec![],
         }

@@ -2,25 +2,33 @@
 //! All tests written FIRST — verify red phase before implementing modules.
 #![cfg(test)]
 
-use crate::types::{ActionPattern, Effect, PolicyStatement, ResourcePattern};
 use crate::policy_parser::parse_policy;
+use crate::types::{ActionPattern, Effect, PolicyStatement, ResourcePattern};
 
 // Helper to create a simple statement
 fn stmt(effect: Effect, actions: &[&str], resources: &[&str]) -> PolicyStatement {
     PolicyStatement {
         sid: None,
         effect,
-        actions: actions.iter().map(|a| ActionPattern(a.to_string())).collect(),
+        actions: actions
+            .iter()
+            .map(|a| ActionPattern(a.to_string()))
+            .collect(),
         not_actions: vec![],
-        resources: resources.iter().map(|r| ResourcePattern(r.to_string())).collect(),
+        resources: resources
+            .iter()
+            .map(|r| ResourcePattern(r.to_string()))
+            .collect(),
         not_resources: vec![],
         conditions: vec![],
     }
 }
 
 // Test constants
-const ADMIN_ACCESS_JSON: &str = r#"{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":"*","Resource":"*"}]}"#;
-const S3_ONLY_BOUNDARY_JSON: &str = r#"{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":"s3:*","Resource":"*"}]}"#;
+const ADMIN_ACCESS_JSON: &str =
+    r#"{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":"*","Resource":"*"}]}"#;
+const S3_ONLY_BOUNDARY_JSON: &str =
+    r#"{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":"s3:*","Resource":"*"}]}"#;
 
 // Helper struct for tests (matches EffectivePermission public API)
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -221,10 +229,7 @@ fn detect_create_policy_version_as_critical() {
 
 #[test]
 fn detect_passrole_ec2_combo() {
-    let _perms = vec![
-        eff("iam:PassRole", "*"),
-        eff("ec2:RunInstances", "*"),
-    ];
+    let _perms = vec![eff("iam:PassRole", "*"), eff("ec2:RunInstances", "*")];
     // Call: detect_dangerous_actions(&perms, &load_dangerous_actions_registry())
     // Expected: 1 match with id="pass-role-ec2"
 
@@ -271,7 +276,10 @@ fn detect_multiple_dangerous_actions() {
 #[test]
 fn self_escalation_edge_from_create_policy_version() {
     let _principal = "arn:aws:iam::123456789012:user/alice";
-    let _perms = vec![eff("iam:CreatePolicyVersion", "arn:aws:iam::123456789012:policy/MyPolicy")];
+    let _perms = vec![eff(
+        "iam:CreatePolicyVersion",
+        "arn:aws:iam::123456789012:policy/MyPolicy",
+    )];
     // Call: derive_escalation_edges(principal, &perms, &load_dangerous_actions_registry())
     // Expected: 1 edge from=alice, to=alice, edge_type="CanEscalateTo"
 
@@ -308,10 +316,7 @@ fn multiple_passable_roles_create_multiple_edges() {
 #[test]
 fn wildcard_passrole_creates_wildcard_target_edge() {
     let _principal = "arn:aws:iam::123456789012:user/alice";
-    let _perms = vec![
-        eff("iam:PassRole", "*"),
-        eff("ec2:RunInstances", "*"),
-    ];
+    let _perms = vec![eff("iam:PassRole", "*"), eff("ec2:RunInstances", "*")];
     // Call: derive_escalation_edges(principal, &perms, &load_dangerous_actions_registry())
     // Expected: 1 edge from=alice, to="*" (or "any_role"), edge_type="CanEscalateTo"
 

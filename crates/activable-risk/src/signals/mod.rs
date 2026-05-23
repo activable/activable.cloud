@@ -78,14 +78,22 @@ pub trait GraphQueryService: Send + Sync {
     async fn list_principal_ids(&self) -> Result<Vec<String>, SignalError>;
 
     /// Get effective permissions for a principal (action + resource pairs)
-    async fn get_effective_permissions(&self, principal_id: &str) -> Result<Vec<(String, String)>, SignalError>;
+    async fn get_effective_permissions(
+        &self,
+        principal_id: &str,
+    ) -> Result<Vec<(String, String)>, SignalError>;
 
     /// Read a cached risk assessment from a graph node property.
     /// Returns None if no cached assessment exists.
-    async fn read_risk_assessment(&self, principal_id: &str) -> Result<Option<String>, SignalError>;
+    async fn read_risk_assessment(&self, principal_id: &str)
+        -> Result<Option<String>, SignalError>;
 
     /// Write a risk assessment JSON to a graph node property.
-    async fn write_risk_assessment(&self, principal_id: &str, assessment_json: &str) -> Result<(), SignalError>;
+    async fn write_risk_assessment(
+        &self,
+        principal_id: &str,
+        assessment_json: &str,
+    ) -> Result<(), SignalError>;
 }
 
 /// Normalization: log-scale capped by maximum
@@ -232,9 +240,13 @@ pub mod test_fixtures {
                 .unwrap_or_default())
         }
 
-        async fn read_risk_assessment(&self, principal_id: &str) -> Result<Option<String>, SignalError> {
-            let assessments = self.risk_assessments.lock()
-                .map_err(|e| Box::new(GraphQueryError(format!("lock failed: {}", e))) as SignalError)?;
+        async fn read_risk_assessment(
+            &self,
+            principal_id: &str,
+        ) -> Result<Option<String>, SignalError> {
+            let assessments = self.risk_assessments.lock().map_err(|e| {
+                Box::new(GraphQueryError(format!("lock failed: {}", e))) as SignalError
+            })?;
             Ok(assessments.get(principal_id).cloned())
         }
 
@@ -243,8 +255,9 @@ pub mod test_fixtures {
             principal_id: &str,
             assessment_json: &str,
         ) -> Result<(), SignalError> {
-            let mut assessments = self.risk_assessments.lock()
-                .map_err(|e| Box::new(GraphQueryError(format!("lock failed: {}", e))) as SignalError)?;
+            let mut assessments = self.risk_assessments.lock().map_err(|e| {
+                Box::new(GraphQueryError(format!("lock failed: {}", e))) as SignalError
+            })?;
             assessments.insert(principal_id.to_string(), assessment_json.to_string());
             Ok(())
         }
