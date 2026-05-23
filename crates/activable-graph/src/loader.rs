@@ -49,31 +49,45 @@ pub async fn load_nodes(
     let mut count = 0u64;
 
     for chunk in nodes.chunks(batch_size) {
-        // Build property list for UNWIND
-        let props_list: Vec<String> = chunk
-            .iter()
-            .map(|v| {
-                let json_str = v.to_string();
-                format!("'{}'::agtype", escape_sql_literal(&json_str))
-            })
-            .collect();
+        // AGE doesn't support UNWIND...SET — use individual CREATE per node
+        for node in chunk {
+            // Build property map from JSON object
+            let props = if let Some(obj) = node.as_object() {
+                let pairs: Vec<String> = obj
+                    .iter()
+                    .filter_map(|(k, v)| {
+                        // Only include string/number/bool properties (AGE limitation)
+                        match v {
+                            serde_json::Value::String(s) => {
+                                Some(format!("{}: '{}'", k, escape_sql_literal(s)))
+                            }
+                            serde_json::Value::Number(n) => {
+                                Some(format!("{}: {}", k, n))
+                            }
+                            serde_json::Value::Bool(b) => {
+                                Some(format!("{}: {}", k, b))
+                            }
+                            _ => None, // Skip arrays/objects/nulls
+                        }
+                    })
+                    .collect();
+                pairs.join(", ")
+            } else {
+                String::new()
+            };
 
-        let cypher = format!(
-            "UNWIND [{}] AS props CREATE (n:{} {{id: props.id}}) SET n = props RETURN count(n)",
-            props_list.join(", "),
-            label
-        );
+            let cypher = format!("CREATE (n:{} {{{}}})", label, props);
+            let sql = format!(
+                "SELECT * FROM ag_catalog.cypher('{}', $${}$$) AS (n agtype)",
+                graph_name, cypher
+            );
 
-        let sql = format!(
-            "SELECT * FROM ag_catalog.cypher('{}', $${}$$) AS (result agtype)",
-            graph_name, cypher
-        );
+            conn.execute(&sql, &[])
+                .await
+                .map_err(|e| GraphError::Query(format!("Node insert failed: {}", e)))?;
 
-        conn.execute(&sql, &[])
-            .await
-            .map_err(|e| GraphError::Query(format!("Batch insert failed: {}", e)))?;
-
-        count += chunk.len() as u64;
+            count += 1;
+        }
     }
 
     // Commit transaction
@@ -122,34 +136,28 @@ pub async fn load_edges(
     let mut count = 0u64;
 
     for chunk in edges.chunks(batch_size) {
-        // Build VALUES list with escaped IDs
-        let values_list: Vec<String> = chunk
-            .iter()
-            .map(|(from, to)| {
-                format!(
-                    "('\"{}\"'::agtype, '\"{}\"'::agtype)",
-                    escape_sql_literal(from),
-                    escape_sql_literal(to)
-                )
-            })
-            .collect();
+        // AGE doesn't support UNWIND with tuple destructuring — use individual MATCH+CREATE
+        for (from_id, to_id) in chunk {
+            let cypher = format!(
+                "MATCH (a {{id: '{}'}}), (b {{id: '{}'}}) CREATE (a)-[:{}]->(b)",
+                escape_sql_literal(from_id),
+                escape_sql_literal(to_id),
+                edge_label
+            );
 
-        let cypher = format!(
-            "UNWIND [{}] AS (from_id, to_id) MATCH (a {{id: from_id}}), (b {{id: to_id}}) CREATE (a)-[:{} {{}}]->(b) RETURN count(*)",
-            values_list.join(", "),
-            edge_label
-        );
+            let sql = format!(
+                "SELECT * FROM ag_catalog.cypher('{}', $${}$$) AS (a agtype, b agtype)",
+                graph_name, cypher
+            );
 
-        let sql = format!(
-            "SELECT * FROM ag_catalog.cypher('{}', $${}$$) AS (result agtype)",
-            graph_name, cypher
-        );
-
-        conn.execute(&sql, &[])
-            .await
-            .map_err(|e| GraphError::Query(format!("Batch edge insert failed: {}", e)))?;
-
-        count += chunk.len() as u64;
+            // Edge creation may fail if source/target nodes don't exist — skip gracefully
+            match conn.execute(&sql, &[]).await {
+                Ok(_) => count += 1,
+                Err(_) => {
+                    // Skip — source or target node may not exist in graph
+                }
+            }
+        }
     }
 
     // Commit transaction

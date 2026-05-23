@@ -1,7 +1,7 @@
-# Single-stage Dockerfile for activable GraphQL API server
+# Multi-stage Dockerfile for activable GraphQL API server (pure Rust)
 
 # Stage 1: Build Rust binary
-FROM rust:1.95 AS builder
+FROM rust:1.95-bookworm AS builder
 
 WORKDIR /workspace
 
@@ -14,8 +14,8 @@ COPY crates /workspace/crates
 # Build GraphQL server binary (release mode)
 RUN cargo build --release -p activable-graphql
 
-# Stage 2: Slim runtime
-FROM debian:bookworm-slim
+# Stage 2: Slim runtime — use same Debian version as builder to match glibc
+FROM debian:bookworm
 
 WORKDIR /app
 
