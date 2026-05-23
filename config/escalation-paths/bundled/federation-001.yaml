@@ -1,0 +1,100 @@
+id: federation-001
+name: "Federated identity weak trust — missing audience/subject conditions"
+category: federation
+services:
+  - iam
+  - sts
+permissions:
+  required:
+    - permission: "sts:AssumeRoleWithSAML"
+    - permission: "sts:AssumeRoleWithWebIdentity"
+description: >
+  Role trust policy allows SAML/OIDC federation without audience or subject conditions.
+  This enables any user from the compromised IdP to assume the role without further
+  authentication constraints.
+
+risk_level: high
+
+attack_vector: |
+  1. Attacker compromises external SAML/OIDC identity provider (Okta, Azure AD, Google Workspace, etc.)
+  2. Attacker forges SAML response or JWT with arbitrary claims
+  3. Without audience condition, forged assertion is accepted for role assumption
+  4. Without subject condition, any user identity in the assertion can assume the role
+  5. Attacker assumes privileged AWS role with no additional validation
+
+affected_conditions:
+  - missing_aud: No SAML:aud or oidc:aud condition present in trust policy
+  - missing_sub: No SAML:sub or oidc:sub condition present in trust policy
+  - missing_both: Neither audience nor subject conditions present
+
+mitigation: |
+  1. Add SAML:aud condition matching the AWS account's SAML endpoint
+     Condition: StringEquals
+     SAML:aud: "https://signin.aws.amazon.com/saml"
+
+  2. Add SAML:sub or SAML:NameQualifier to restrict which users can assume
+     Condition: StringLike
+     SAML:sub: "user@example.com"
+
+  3. For OIDC, add aud (audience) condition matching your application ID
+     Condition: StringEquals
+     oidc.example.com:aud: "my-application-id"
+
+  4. For OIDC, add sub (subject) condition to restrict user/service account
+     Condition: StringLike
+     oidc.example.com:sub: "repo:organization/*"
+
+  5. Implement IdP access controls and MFA for federation
+  6. Monitor AssumeRoleWithSAML/WebIdentity CloudTrail events
+  7. Review federation trust policies quarterly
+
+references:
+  - "AWS: Using SAML federation: https://docs.aws.amazon.com/IAM/latest/UserGuide/id_roles_providers_saml.html"
+  - "AWS: Using OpenID Connect: https://docs.aws.amazon.com/IAM/latest/UserGuide/id_roles_providers_oidc.html"
+  - "AWS: Assume role condition examples: https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_condition-keys.html#condition-keys-saml"
+  - "Paper §4.4: Federation and Compromise Impact"
+
+cves: []
+
+test_case_examples:
+  weak_saml_no_conditions:
+    principal: "arn:aws:iam::123456789012:saml-provider/Okta"
+    conditions: []
+    risk: "CRITICAL - Any IdP user can assume role"
+
+  weak_saml_aud_only:
+    principal: "arn:aws:iam::123456789012:saml-provider/Okta"
+    conditions:
+      - key: "SAML:aud"
+        values: ["https://signin.aws.amazon.com/saml"]
+    risk: "HIGH - Any authenticated user from IdP can assume"
+
+  weak_saml_sub_only:
+    principal: "arn:aws:iam::123456789012:saml-provider/Okta"
+    conditions:
+      - key: "SAML:sub"
+        values: ["user@example.com"]
+    risk: "HIGH - Audience forgery attack possible"
+
+  strong_saml:
+    principal: "arn:aws:iam::123456789012:saml-provider/Okta"
+    conditions:
+      - key: "SAML:aud"
+        values: ["https://signin.aws.amazon.com/saml"]
+      - key: "SAML:sub"
+        values: ["user@example.com"]
+    risk: "LOW - Properly constrained federation"
+
+  weak_oidc_no_conditions:
+    principal: "arn:aws:iam::123456789012:oidc-provider/oidc.example.com"
+    conditions: []
+    risk: "CRITICAL - JWT from any app at IdP can assume role"
+
+  strong_github_actions:
+    principal: "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com"
+    conditions:
+      - key: "token.actions.githubusercontent.com:aud"
+        values: ["sts.amazonaws.com"]
+      - key: "token.actions.githubusercontent.com:sub"
+        values: ["repo:organization/repository:*"]
+    risk: "LOW - Only GitHub Actions in specific repo can assume"
