@@ -115,6 +115,9 @@ async fn apply_single_rule(
     // YAML is trusted (compile-time constant), but validate anyway.
     validate_property_name(&rule.from_property)?;
     validate_property_name(&rule.to_property)?;
+    validate_property_name(&rule.edge_type)?;
+    validate_property_name(&rule.from_label)?;
+    validate_property_name(&rule.to_label)?;
 
     // Build Cypher MERGE query that pushes the join to the database.
     // This is O(n log n) via DB indexes, not O(n²) in application code.

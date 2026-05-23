@@ -54,19 +54,27 @@ pub async fn fetch_via_ccapi(
         // Convert resource descriptions to graph nodes
         let nodes: Vec<Value> = descriptions
             .iter()
-            .map(|desc| {
+            .filter_map(|desc| {
                 let identifier = desc.identifier().unwrap_or_default();
+                if identifier.is_empty() {
+                    warn!(type_name = %type_name, "Skipping resource with empty identifier");
+                    return None;
+                }
+
                 let properties: Value = desc
                     .properties()
                     .and_then(|p| serde_json::from_str(p).ok())
-                    .unwrap_or_else(|| json!({}));
+                    .unwrap_or_else(|| {
+                        debug!(identifier = %identifier, "Failed to parse properties, using empty object");
+                        json!({})
+                    });
 
                 match properties {
                     Value::Object(mut obj) => {
                         obj.insert("id".to_string(), Value::String(identifier.to_string()));
-                        Value::Object(obj)
+                        Some(Value::Object(obj))
                     }
-                    _ => json!({"id": identifier}),
+                    _ => Some(json!({"id": identifier})),
                 }
             })
             .collect();

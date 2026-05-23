@@ -99,11 +99,16 @@ impl NativeEnricher for S3Enricher {
                     }
                 }
                 Err(e) => {
-                    debug!(
-                        bucket = %bucket_name_str,
-                        error = %e,
-                        "No bucket policy or permission denied (expected for some buckets)"
-                    );
+                    let error_message = e.to_string();
+                    if error_message.contains("NoSuchBucketPolicy") || error_message.contains("The bucket policy does not exist") {
+                        tracing::debug!(bucket = %bucket_name_str, "No bucket policy configured (expected)");
+                    } else {
+                        tracing::warn!(
+                            bucket = %bucket_name_str,
+                            error = %error_message,
+                            "Failed to fetch bucket policy (permission denied or other error)"
+                        );
+                    }
                 }
             }
         }
