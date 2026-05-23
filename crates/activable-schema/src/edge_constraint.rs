@@ -77,10 +77,22 @@ pub fn is_valid_edge(from: &NodeLabel, edge: &EdgeType, to: &NodeLabel) -> bool 
         | (NodeLabel::Account, EdgeType::Contains, NodeLabel::KmsKey)
         | (NodeLabel::Account, EdgeType::Contains, NodeLabel::AccessKey)
         | (NodeLabel::Account, EdgeType::Contains, NodeLabel::FederatedProvider)
+        | (NodeLabel::Account, EdgeType::Contains, NodeLabel::PolicyStatement)
+        | (NodeLabel::Account, EdgeType::Contains, NodeLabel::PermissionBoundary)
+        | (NodeLabel::Account, EdgeType::Contains, NodeLabel::ServiceControlPolicy)
         // MemberOf: Principal is a member of an IamGroup
         | (NodeLabel::Principal, EdgeType::MemberOf, NodeLabel::IamGroup)
         // SignedBy: AccessKey is signed by (belongs to) a Principal
         | (NodeLabel::AccessKey, EdgeType::SignedBy, NodeLabel::Principal)
+        // HasEffectivePermission: Principal has effective permission on Resource or Permission
+        | (NodeLabel::Principal, EdgeType::HasEffectivePermission, NodeLabel::Resource)
+        | (NodeLabel::Principal, EdgeType::HasEffectivePermission, NodeLabel::Permission)
+        // BoundedBy: Principal is bounded by a PermissionBoundary
+        | (NodeLabel::Principal, EdgeType::BoundedBy, NodeLabel::PermissionBoundary)
+        // GovernedBy: Account is governed by a ServiceControlPolicy
+        | (NodeLabel::Account, EdgeType::GovernedBy, NodeLabel::ServiceControlPolicy)
+        // CanEscalateTo: Principal can escalate privileges to another Principal
+        | (NodeLabel::Principal, EdgeType::CanEscalateTo, NodeLabel::Principal)
     )
 }
 
@@ -437,6 +449,116 @@ mod tests {
             &NodeLabel::FederatedProvider,
             &EdgeType::SignedBy,
             &NodeLabel::Principal
+        ));
+    }
+
+    // New edge constraint tests (red phase — will fail until variants are added)
+    #[test]
+    fn principal_can_escalate_to_principal() {
+        assert!(is_valid_edge(
+            &NodeLabel::Principal,
+            &EdgeType::CanEscalateTo,
+            &NodeLabel::Principal
+        ));
+    }
+
+    #[test]
+    fn principal_has_effective_permission_resource() {
+        assert!(is_valid_edge(
+            &NodeLabel::Principal,
+            &EdgeType::HasEffectivePermission,
+            &NodeLabel::Resource
+        ));
+    }
+
+    #[test]
+    fn principal_has_effective_permission_permission() {
+        assert!(is_valid_edge(
+            &NodeLabel::Principal,
+            &EdgeType::HasEffectivePermission,
+            &NodeLabel::Permission
+        ));
+    }
+
+    #[test]
+    fn principal_bounded_by_boundary() {
+        assert!(is_valid_edge(
+            &NodeLabel::Principal,
+            &EdgeType::BoundedBy,
+            &NodeLabel::PermissionBoundary
+        ));
+    }
+
+    #[test]
+    fn account_governed_by_scp() {
+        assert!(is_valid_edge(
+            &NodeLabel::Account,
+            &EdgeType::GovernedBy,
+            &NodeLabel::ServiceControlPolicy
+        ));
+    }
+
+    #[test]
+    fn account_contains_policy_statement() {
+        assert!(is_valid_edge(
+            &NodeLabel::Account,
+            &EdgeType::Contains,
+            &NodeLabel::PolicyStatement
+        ));
+    }
+
+    #[test]
+    fn account_contains_permission_boundary() {
+        assert!(is_valid_edge(
+            &NodeLabel::Account,
+            &EdgeType::Contains,
+            &NodeLabel::PermissionBoundary
+        ));
+    }
+
+    #[test]
+    fn account_contains_service_control_policy() {
+        assert!(is_valid_edge(
+            &NodeLabel::Account,
+            &EdgeType::Contains,
+            &NodeLabel::ServiceControlPolicy
+        ));
+    }
+
+    // Invalid combos (should be rejected)
+    #[test]
+    fn resource_cannot_escalate_to_resource() {
+        assert!(!is_valid_edge(
+            &NodeLabel::Resource,
+            &EdgeType::CanEscalateTo,
+            &NodeLabel::Resource
+        ));
+    }
+
+    #[test]
+    fn resource_cannot_have_effective_permission() {
+        assert!(!is_valid_edge(
+            &NodeLabel::Resource,
+            &EdgeType::HasEffectivePermission,
+            &NodeLabel::Principal
+        ));
+    }
+
+    #[test]
+    fn permission_cannot_be_bounded_by_boundary() {
+        assert!(!is_valid_edge(
+            &NodeLabel::Permission,
+            &EdgeType::BoundedBy,
+            &NodeLabel::PermissionBoundary
+        ));
+    }
+
+    #[test]
+    fn resource_cannot_be_governed_by_scp() {
+        assert!(!is_valid_edge(
+            &NodeLabel::Resource,
+            &EdgeType::GovernedBy,
+            &NodeLabel::ServiceControlPolicy
         ));
     }
 }

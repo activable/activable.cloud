@@ -1,0 +1,19 @@
+[package]
+name = "activable-ingest-iam"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "IAM policy evaluator — Parliament-equivalent. Deep policy parsing, Deny evaluation, permission boundaries."
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+serde_yaml = "0.9"
+thiserror = "2"
+activable-schema = { path = "../activable-schema" }
+ipnet = "2"
+tracing = "0.1"
+
+[lints]
+workspace = true

@@ -33,6 +33,9 @@ pub enum NodeLabel {
     KmsKey,
     AccessKey,
     FederatedProvider,
+    PolicyStatement,
+    PermissionBoundary,
+    ServiceControlPolicy,
     /// Escape hatch for types not yet in the v1 schema.
     Custom(String),
 }
@@ -50,6 +53,9 @@ impl NodeLabel {
             Self::KmsKey => "KmsKey",
             Self::AccessKey => "AccessKey",
             Self::FederatedProvider => "FederatedProvider",
+            Self::PolicyStatement => "PolicyStatement",
+            Self::PermissionBoundary => "PermissionBoundary",
+            Self::ServiceControlPolicy => "ServiceControlPolicy",
             Self::Custom(s) => s.as_str(),
         }
     }
@@ -79,6 +85,9 @@ impl FromStr for NodeLabel {
             "KmsKey" => Self::KmsKey,
             "AccessKey" => Self::AccessKey,
             "FederatedProvider" => Self::FederatedProvider,
+            "PolicyStatement" => Self::PolicyStatement,
+            "PermissionBoundary" => Self::PermissionBoundary,
+            "ServiceControlPolicy" => Self::ServiceControlPolicy,
             other => Self::Custom(other.to_string()),
         })
     }
@@ -112,6 +121,10 @@ pub enum EdgeType {
     Contains,
     MemberOf,
     SignedBy,
+    HasEffectivePermission,
+    BoundedBy,
+    GovernedBy,
+    CanEscalateTo,
     /// Escape hatch for relationship types not yet in the v1 schema.
     Custom(String),
 }
@@ -125,6 +138,10 @@ impl EdgeType {
             Self::Contains => "Contains",
             Self::MemberOf => "MemberOf",
             Self::SignedBy => "SignedBy",
+            Self::HasEffectivePermission => "HasEffectivePermission",
+            Self::BoundedBy => "BoundedBy",
+            Self::GovernedBy => "GovernedBy",
+            Self::CanEscalateTo => "CanEscalateTo",
             Self::Custom(s) => s.as_str(),
         }
     }
@@ -150,6 +167,10 @@ impl FromStr for EdgeType {
             "Contains" => Self::Contains,
             "MemberOf" => Self::MemberOf,
             "SignedBy" => Self::SignedBy,
+            "HasEffectivePermission" => Self::HasEffectivePermission,
+            "BoundedBy" => Self::BoundedBy,
+            "GovernedBy" => Self::GovernedBy,
+            "CanEscalateTo" => Self::CanEscalateTo,
             other => Self::Custom(other.to_string()),
         })
     }
@@ -331,6 +352,83 @@ mod tests {
         assert_eq!(
             EdgeType::Custom("X".to_string()),
             EdgeType::Custom("X".to_string())
+        );
+    }
+
+    // New NodeLabel variants (red phase — will fail until variants are added)
+    #[test]
+    fn policy_statement_label() {
+        assert_eq!(NodeLabel::PolicyStatement.as_str(), "PolicyStatement");
+        assert_eq!(
+            "PolicyStatement".parse::<NodeLabel>().unwrap().as_str(),
+            "PolicyStatement"
+        );
+    }
+
+    #[test]
+    fn permission_boundary_label() {
+        assert_eq!(NodeLabel::PermissionBoundary.as_str(), "PermissionBoundary");
+        assert_eq!(
+            "PermissionBoundary".parse::<NodeLabel>().unwrap().as_str(),
+            "PermissionBoundary"
+        );
+    }
+
+    #[test]
+    fn service_control_policy_label() {
+        assert_eq!(
+            NodeLabel::ServiceControlPolicy.as_str(),
+            "ServiceControlPolicy"
+        );
+        assert_eq!(
+            "ServiceControlPolicy"
+                .parse::<NodeLabel>()
+                .unwrap()
+                .as_str(),
+            "ServiceControlPolicy"
+        );
+    }
+
+    // New EdgeType variants (red phase — will fail until variants are added)
+    #[test]
+    fn has_effective_permission_edge() {
+        assert_eq!(
+            EdgeType::HasEffectivePermission.as_str(),
+            "HasEffectivePermission"
+        );
+        assert_eq!(
+            "HasEffectivePermission"
+                .parse::<EdgeType>()
+                .unwrap()
+                .as_str(),
+            "HasEffectivePermission"
+        );
+    }
+
+    #[test]
+    fn can_escalate_to_edge() {
+        assert_eq!(EdgeType::CanEscalateTo.as_str(), "CanEscalateTo");
+        assert_eq!(
+            "CanEscalateTo".parse::<EdgeType>().unwrap().as_str(),
+            "CanEscalateTo"
+        );
+    }
+
+    #[test]
+    fn bounded_by_edge() {
+        assert_eq!(EdgeType::BoundedBy.as_str(), "BoundedBy");
+        assert_eq!(
+            "BoundedBy".parse::<EdgeType>().unwrap().as_str(),
+            "BoundedBy"
+        );
+    }
+
+    #[test]
+    fn governed_by_edge() {
+        assert_eq!(EdgeType::GovernedBy.as_str(), "GovernedBy");
+        assert_eq!(
+            "GovernedBy".parse::<EdgeType>().unwrap().as_str(),
+            "GovernedBy"
         );
     }
 }

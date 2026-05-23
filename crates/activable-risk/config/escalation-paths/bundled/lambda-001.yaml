@@ -1,0 +1,17 @@
+id: lambda-001
+name: "iam:PassRole + lambda:CreateFunction"
+category: new-passrole
+services:
+  - iam
+  - lambda
+permissions:
+  required:
+    - permission: "iam:PassRole"
+    - permission: "lambda:CreateFunction"
+prerequisites:
+  admin:
+    - "A role must exist that trusts lambda.amazonaws.com"
+    - "The role must have admin permissions"
+  lateral:
+    - "A role must exist that trusts lambda.amazonaws.com"
+description: "Create Lambda function with a passed role to escalate privileges"

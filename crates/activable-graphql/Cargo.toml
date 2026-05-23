@@ -13,8 +13,12 @@ path = "src/main.rs"
 [dependencies]
 activable-schema = { path = "../activable-schema" }
 activable-graph = { path = "../activable-graph" }
+activable-ingest = { path = "../activable-ingest" }
+activable-risk = { path = "../activable-risk" }
+activable-ingest-iam = { path = "../activable-ingest-iam" }
 async-graphql = "=8.0.0-rc.5"
 async-graphql-axum = "=8.0.0-rc.5"
+async-trait = "0.1"
 axum = "0.8"
 tokio = { version = "1", features = ["full"] }
 tower = "0.5"

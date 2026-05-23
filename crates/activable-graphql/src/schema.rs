@@ -66,14 +66,37 @@ impl QueryRoot {
         resolvers::subgraph::subgraph(ctx, center, radius).await
     }
 
-    /// Get the status of a previous ingest run (v1: placeholder).
-    async fn ingest_status(&self, run_id: String) -> async_graphql::Result<Option<GqlIngestRun>> {
-        resolvers::ingest::ingest_status(run_id).await
+    /// Get the status of a previous ingest run.
+    async fn ingest_status(
+        &self,
+        ctx: &Context<'_>,
+        run_id: String,
+    ) -> async_graphql::Result<Option<GqlIngestRun>> {
+        resolvers::ingest::ingest_status(ctx, run_id).await
     }
 
     /// Check the health of the GraphQL server and database.
     async fn healthz(&self, ctx: &Context<'_>) -> async_graphql::Result<String> {
         resolvers::health::healthz(ctx).await
+    }
+
+    /// Get risk assessment for a principal.
+    async fn risk_score(
+        &self,
+        ctx: &Context<'_>,
+        principal_id: String,
+    ) -> async_graphql::Result<GqlRiskAssessment> {
+        resolvers::risk::risk_score(ctx, principal_id).await
+    }
+
+    /// List all risk findings above a minimum severity threshold.
+    async fn findings(
+        &self,
+        ctx: &Context<'_>,
+        min_severity: Option<GqlSeverity>,
+        limit: Option<i32>,
+    ) -> async_graphql::Result<Vec<GqlRiskAssessment>> {
+        resolvers::risk::findings(ctx, min_severity, limit).await
     }
 }
 
@@ -82,12 +105,22 @@ pub struct MutationRoot;
 
 #[Object]
 impl MutationRoot {
-    /// Trigger a new ingestion run (v1: placeholder).
+    /// Trigger a new ingestion run.
     async fn trigger_ingest(
         &self,
+        ctx: &Context<'_>,
         provider: String,
         regions: Vec<String>,
     ) -> async_graphql::Result<GqlIngestRun> {
-        resolvers::ingest::trigger_ingest(provider, regions).await
+        resolvers::ingest::trigger_ingest(ctx, provider, regions).await
+    }
+
+    /// Refresh (re-score) a principal's risk assessment.
+    async fn refresh_risk_score(
+        &self,
+        ctx: &Context<'_>,
+        principal_id: String,
+    ) -> async_graphql::Result<GqlRiskAssessment> {
+        resolvers::risk::refresh_risk_score(ctx, principal_id).await
     }
 }

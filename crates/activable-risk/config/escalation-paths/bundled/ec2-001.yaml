@@ -1,0 +1,17 @@
+id: ec2-001
+name: "iam:PassRole + ec2:RunInstances"
+category: new-passrole
+services:
+  - iam
+  - ec2
+permissions:
+  required:
+    - permission: "iam:PassRole"
+    - permission: "ec2:RunInstances"
+prerequisites:
+  admin:
+    - "A role must exist that trusts ec2.amazonaws.com"
+    - "The role must have admin permissions"
+  lateral:
+    - "A role must exist that trusts ec2.amazonaws.com"
+description: "Launch EC2 instance with a passed role to escalate privileges"

@@ -5,10 +5,12 @@ metadata:
   labels:
     {{- include "activable.labels" . | nindent 4 }}
 data:
-  db.host: {{ .Values.database.host | quote }}
-  db.port: {{ .Values.database.port | quote }}
-  db.name: {{ .Values.database.name | quote }}
-  db.max_connections: {{ .Values.database.maxConnections | default 20 | quote }}
-  graph.name: {{ .Values.graphql.graphName | quote }}
-  log.level: {{ .Values.graphql.logLevel | quote }}
-  server.port: {{ .Values.graphql.port | quote }}
+  ACTIVABLE_DB_HOST: {{ .Values.database.host | quote }}
+  ACTIVABLE_DB_PORT: {{ .Values.database.port | quote }}
+  ACTIVABLE_DB_NAME: {{ .Values.database.name | quote }}
+  ACTIVABLE_DB_USER: {{ .Values.database.user | default "activable" | quote }}
+  ACTIVABLE_DB_PASSWORD: {{ .Values.database.password | default "activable" | quote }}
+  ACTIVABLE_GRAPH_NAME: {{ .Values.graphql.graphName | quote }}
+  ACTIVABLE_MAX_CONNECTIONS: {{ .Values.database.maxConnections | default 20 | quote }}
+  RUST_LOG: {{ .Values.graphql.logLevel | default "info" | quote }}
+  PORT: {{ .Values.graphql.port | quote }}

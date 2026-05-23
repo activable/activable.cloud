@@ -69,7 +69,7 @@ impl CypherBuilder {
         validate_label(label)?;
         let escaped_id = escape_cypher(id.as_str());
         Ok(format!(
-            "SELECT * FROM ag_catalog.cypher('{}', $$MATCH (n:{} {{id: '{}'}}) RETURN n.id, labels(n)$$) AS (node_id agtype, node_labels agtype)",
+            "SELECT node_id::text, node_label::text FROM ag_catalog.cypher('{}', $$MATCH (n:{} {{id: '{}'}}) RETURN n.id, label(n)$$) AS (node_id agtype, node_label agtype)",
             self.graph_name, label, escaped_id
         ))
     }
@@ -93,18 +93,18 @@ impl CypherBuilder {
         };
 
         let (arrow_left, arrow_right) = match direction {
-            Direction::Outgoing => ("", "->"),
-            Direction::Incoming => ("<-", ""),
-            Direction::Both => ("", "-"),
+            Direction::Outgoing => ("-", "->"),
+            Direction::Incoming => ("<-", "-"),
+            Direction::Both => ("-", "-"),
         };
 
         let cypher = format!(
-            "MATCH (s {{id: '{}'}}) {}{}{} (t) RETURN t.id, labels(t) LIMIT {}",
+            "MATCH (s {{id: '{}'}}){}{}{}(t) RETURN t.id, label(t) LIMIT {}",
             escaped_start, arrow_left, rel_pattern, arrow_right, depth_limit
         );
 
         Ok(format!(
-            "SELECT * FROM ag_catalog.cypher('{}', $${}$$) AS (node_id agtype, node_labels agtype)",
+            "SELECT node_id::text, node_label::text FROM ag_catalog.cypher('{}', $${}$$) AS (node_id agtype, node_label agtype)",
             self.graph_name, cypher
         ))
     }
@@ -130,12 +130,12 @@ impl CypherBuilder {
         };
 
         let cypher = format!(
-            "MATCH path = (s {{id: '{}'}}) {}(t {{id: '{}'}}) RETURN [n IN nodes(path) | {{id: n.id, label: labels(n)}}]",
+            "MATCH path = (s {{id: '{}'}})-{}->(t {{id: '{}'}}) RETURN [n IN nodes(path) | {{id: n.id, label: label(n)}}]",
             escaped_start, rel_pattern, escaped_end
         );
 
         Ok(format!(
-            "SELECT * FROM ag_catalog.cypher('{}', $${}$$) AS (path agtype)",
+            "SELECT path::text FROM ag_catalog.cypher('{}', $${}$$) AS (path agtype)",
             self.graph_name, cypher
         ))
     }
@@ -150,12 +150,12 @@ impl CypherBuilder {
         let escaped_end = escape_cypher(end.as_str());
 
         let cypher = format!(
-            "MATCH path = (s {{id: '{}'}}) [*1..{}] (t {{id: '{}'}}) RETURN length(path) ORDER BY length(path) LIMIT 1",
+            "MATCH path = (s {{id: '{}'}})-[*1..{}]->(t {{id: '{}'}}) RETURN length(path) ORDER BY length(path) LIMIT 1",
             escaped_start, max_hops, escaped_end
         );
 
         Ok(format!(
-            "SELECT * FROM ag_catalog.cypher('{}', $${}$$) AS (path_length agtype)",
+            "SELECT path_length::text FROM ag_catalog.cypher('{}', $${}$$) AS (path_length agtype)",
             self.graph_name, cypher
         ))
     }
@@ -179,12 +179,12 @@ impl CypherBuilder {
         };
 
         let cypher = format!(
-            "MATCH (c {{id: '{}'}}) {} (neighbor) RETURN neighbor.id, labels(neighbor) LIMIT 100",
+            "MATCH (c {{id: '{}'}})-{}->(neighbor) RETURN neighbor.id, label(neighbor) LIMIT 100",
             escaped_node, rel_pattern
         );
 
         Ok(format!(
-            "SELECT * FROM ag_catalog.cypher('{}', $${}$$) AS (node_id agtype, node_labels agtype)",
+            "SELECT node_id::text, node_label::text FROM ag_catalog.cypher('{}', $${}$$) AS (node_id agtype, node_label agtype)",
             self.graph_name, cypher
         ))
     }
@@ -193,12 +193,12 @@ impl CypherBuilder {
         let escaped_center = escape_cypher(center.as_str());
 
         let cypher = format!(
-            "MATCH (c {{id: '{}'}}) [*1..{}] (neighbor) RETURN neighbor.id, labels(neighbor) LIMIT 100",
+            "MATCH (c {{id: '{}'}})-[*1..{}]->(neighbor) RETURN neighbor.id, label(neighbor) LIMIT 100",
             escaped_center, radius
         );
 
         Ok(format!(
-            "SELECT * FROM ag_catalog.cypher('{}', $${}$$) AS (node_id agtype, node_labels agtype)",
+            "SELECT node_id::text, node_label::text FROM ag_catalog.cypher('{}', $${}$$) AS (node_id agtype, node_label agtype)",
             self.graph_name, cypher
         ))
     }

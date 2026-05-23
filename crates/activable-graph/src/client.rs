@@ -54,9 +54,13 @@ impl GraphClient {
             return Ok(None);
         }
 
-        let id_val: &str = rows[0]
-            .try_get(0)
+        // AGE returns agtype values — extract as string and strip AGE quoting
+        let raw: String = rows[0]
+            .try_get::<_, String>(0)
             .map_err(|e| GraphError::Parse(e.to_string()))?;
+
+        // AGE wraps string values in extra quotes: "\"value\"" → strip them
+        let id_val = raw.trim().trim_matches('"');
 
         Ok(Some(NodeRef::new(id_val, label)))
     }
@@ -92,14 +96,15 @@ impl GraphClient {
         let refs: Vec<NodeRef> = rows
             .iter()
             .map(|row| {
-                let id: &str = row
-                    .try_get(0)
+                let raw_id: String = row
+                    .try_get::<_, String>(0)
                     .map_err(|e| GraphError::Parse(e.to_string()))?;
-                let labels: &str = row
-                    .try_get(1)
+                let raw_label: String = row
+                    .try_get::<_, String>(1)
                     .map_err(|e| GraphError::Parse(e.to_string()))?;
-                // labels come as a JSON array string "[\"Label\"]"; extract the first.
-                let label = extract_first_label(labels).unwrap_or("Unknown".to_string());
+                // AGE wraps strings in extra quotes — strip them
+                let id = raw_id.trim().trim_matches('"');
+                let label = raw_label.trim().trim_matches('"');
                 Ok(NodeRef::new(id, label))
             })
             .collect::<Result<Vec<_>, GraphError>>()?;
@@ -213,13 +218,14 @@ impl GraphClient {
         let refs: Vec<NodeRef> = rows
             .iter()
             .map(|row| {
-                let id: &str = row
-                    .try_get(0)
+                let raw_id: String = row
+                    .try_get::<_, String>(0)
                     .map_err(|e| GraphError::Parse(e.to_string()))?;
-                let labels: &str = row
-                    .try_get(1)
+                let raw_label: String = row
+                    .try_get::<_, String>(1)
                     .map_err(|e| GraphError::Parse(e.to_string()))?;
-                let label = extract_first_label(labels).unwrap_or("Unknown".to_string());
+                let id = raw_id.trim().trim_matches('"');
+                let label = raw_label.trim().trim_matches('"');
                 Ok(NodeRef::new(id, label))
             })
             .collect::<Result<Vec<_>, GraphError>>()?;
