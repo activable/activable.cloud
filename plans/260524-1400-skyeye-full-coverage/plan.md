@@ -32,9 +32,18 @@ source: user
 
 **Effort remaining:** ~3-5d engineering to fix ingestion pipeline gaps, then E2E re-run.
 
+**E2E execution environment:** Kubernetes (Kind/k3d) — NOT docker-compose or bare binary.
+- Deploy via `helm install activable ./deploy/helm/activable` with Floci enabled
+- Floci runs as sidecar/service in K8s (values.yaml: `floci.enabled: true`)
+- PG+AGE runs as StatefulSet in K8s
+- GraphQL API accessed via `kubectl port-forward svc/activable-api 8080:8080`
+- Seed adversarial IAM configs via `aws --endpoint-url http://activable-floci:4566`
+- Ingest via GraphQL mutation, query via GraphQL queries
+- All E2E must run on K8s to prove the production architecture, not dev shortcuts
+
 **Adversarial validation plan:** 5 red-team scenarios designed (CF trap, OIDC drift, S3 OrgID confusion, KMS CreateGrant, full kill chain). See `adversarial-validation-scenarios.md`. Execution plan at `../260524-adversarial-scenario-execution/`.
 
-**E2E report (honest):** `../reports/adversarial-e2e-validation-260524.md` — documents what works and what's blocked.
+**E2E report (honest):** `../reports/adversarial-e2e-validation-260524.md` — documents what works and what's blocked. NOTE: prior E2E was run via bare binary + docker-compose — must be re-run on K8s.
 
 ---
 
