@@ -34,63 +34,61 @@ Execute 5 realistic privilege escalation scenarios against the SkyEye platform (
 - `activable-risk` — Privilege escalation detection, risk scoring, blast radius calculation
 - `activable-graphql` — Risk API with queries: `riskScore()`, `findings()`, `refreshRiskScore()`
 
-### Deployment Architecture: Kubernetes (NOT docker-compose)
+### Deployment Architecture: All components in Kubernetes
 
-The platform runs on Kubernetes. E2E validation MUST use K8s to prove the production architecture.
+Everything runs inside K8s. No port-forward, no local CLI, no laptop tools hitting services. The entire E2E pipeline — platform, seeding, validation, reporting — is K8s-native.
 
-**Local K8s cluster:**
+**Cluster setup:**
 ```bash
-kind create cluster --name activable   # or k3d cluster create activable
+kind create cluster --name activable
 helm install activable ./deploy/helm/activable \
-  --set floci.enabled=true \
-  --set database.host=postgres-service
+  --set floci.enabled=true
 ```
 
-**Services in K8s:**
-- `activable-api` — GraphQL server (Deployment + Service)
-- `activable-floci` — Floci AWS mock (Deployment + Service, port 4566)
-- `activable-db` — Postgres+AGE (StatefulSet + Service, port 5432)
+**All K8s workloads:**
 
-**Access:**
-```bash
-kubectl port-forward svc/activable-api 8080:8080      # GraphQL API
-kubectl port-forward svc/activable-floci 4566:4566     # Floci (for seeding)
+| Workload | Kind | Image | Purpose |
+|----------|------|-------|---------|
+| `activable-api` | Deployment + Service | `activable-graphql` | GraphQL server (ingestion + risk scoring + queries) |
+| `activable-db` | StatefulSet + Service | `apache/age:PG16` | Postgres+AGE graph database |
+| `activable-floci` | Deployment + Service | `floci/floci:latest` | AWS mock (IAM, S3, STS, EC2, Lambda) |
+| `adversarial-seed` | Job | `amazon/aws-cli` | Seeds 5 adversarial IAM scenarios into Floci |
+| `adversarial-ingest` | Job | `curlimages/curl` | Triggers `triggerIngest` mutation, polls until complete |
+| `adversarial-validate` | Job | `curlimages/curl` | Queries `riskScore`, `findings` for each scenario principal |
+| `adversarial-report` | Job | `curlimages/curl` | Collects all results, writes validation report to ConfigMap |
+
+**Execution flow (all in-cluster):**
+```
+1. helm install → activable-api + activable-db + activable-floci start
+2. adversarial-seed Job → seeds IAM roles/policies into activable-floci:4566
+3. adversarial-ingest Job → POST triggerIngest to activable-api:8080, poll ingestStatus
+4. adversarial-validate Job → query riskScore/findings for each scenario principal
+5. adversarial-report Job → collect results, produce pass/fail matrix
+6. kubectl logs job/adversarial-report → read validation output
+7. helm uninstall activable → clean teardown
 ```
 
-**Seed adversarial scenarios:**
-```bash
-aws --endpoint-url http://localhost:4566 iam create-role ...   # via port-forward to Floci
-```
+**No external access needed.** Jobs use internal K8s service DNS:
+- `http://activable-floci:4566` — Floci (from seed job)
+- `http://activable-api:8080` — GraphQL API (from ingest/validate/report jobs)
 
-**Trigger ingestion + query results:**
-```bash
-curl http://localhost:8080/graphql -d '{"query":"mutation { triggerIngest(...) }"}'
-curl http://localhost:8080/graphql -d '{"query":"{ riskScore(principalId: \"...\") { score severity } }"}'
-```
+**Helm templates needed:**
+- `deploy/helm/activable/templates/adversarial-seed-job.yaml`
+- `deploy/helm/activable/templates/adversarial-ingest-job.yaml`
+- `deploy/helm/activable/templates/adversarial-validate-job.yaml`
+- `deploy/helm/activable/templates/adversarial-report-job.yaml`
+- Gated by `values.yaml`: `adversarial.enabled: false` (only run during E2E validation)
 
 **Teardown:**
 ```bash
-helm uninstall activable
-kind delete cluster --name activable
+helm uninstall activable && kind delete cluster --name activable
 ```
 
-### Test Environments
-
-1. **Kind/k3d cluster (primary)** — local K8s, Helm-deployed stack, Floci as service
-   - All 5 scenarios seeded into Floci service
-   - Full production architecture: K8s networking, service discovery, health checks
-   - Repeatable: `helm uninstall && helm install` for clean state
-
-2. **Real AWS accounts (validation)** — 3+ accounts for production-grade proof
-   - Account IDs: dev=`111111111111`, staging=`222222222222`, prod=`333333333333`
-   - Deploy via CloudFormation StackSets
-   - Teardown via `aws-nuke` with whitelist + dry-run gate
-
 ### Key Artifacts
-- Helm chart: `deploy/helm/activable/` (production deployment)
-- Helm values for Floci: `deploy/helm/activable/values.yaml` (`floci.enabled: true`)
-- Seed scripts: `infra/scripts/seed-adversarial-scenarios.sh`
-- Results matrix: `plans/reports/adversarial-validation-results-YYYYMMDD.md`
+- Helm chart: `deploy/helm/activable/` (all workloads including E2E jobs)
+- Helm values: `adversarial.enabled: true` to activate seed/ingest/validate/report jobs
+- Job scripts: ConfigMaps mounted into jobs (seed commands, GraphQL queries, report template)
+- Results: `kubectl logs job/adversarial-report` → validation output
 
 ---
 
