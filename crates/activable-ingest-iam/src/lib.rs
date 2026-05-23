@@ -14,6 +14,8 @@ pub mod escalation_derivation;
 pub mod eval_context;
 pub mod policy_parser;
 pub mod resource_matcher;
+pub mod resource_policy_evaluator;
+pub mod resource_policy_parser;
 pub mod scp_evaluator;
 pub mod types;
 
@@ -37,5 +39,10 @@ pub use escalation_derivation::{derive_escalation_edges, EscalationEdge};
 pub use eval_context::EvalContext;
 pub use policy_parser::parse_policy;
 pub use resource_matcher::resource_matches;
+pub use resource_policy_evaluator::{
+    evaluate_resource_policy_pair, extract_account_from_arn, principal_matches,
+    ResourcePolicyDecision,
+};
+pub use resource_policy_parser::{parse_resource_policy, PolicyPrincipal, ResourcePolicy};
 pub use scp_evaluator::scp_allows;
 pub use types::{ActionPattern, Condition, Effect, ParsedPolicy, PolicyStatement, ResourcePattern};
