@@ -1,0 +1,9 @@
+id: iam-003
+name: "iam:CreateAccessKey"
+category: credential-access
+services:
+  - iam
+permissions:
+  required:
+    - permission: "iam:CreateAccessKey"
+description: "A principal can create access keys for credential access"

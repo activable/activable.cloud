@@ -1,0 +1,10 @@
+id: iam-001
+name: "iam:CreatePolicyVersion"
+category: self-escalation
+services:
+  - iam
+permissions:
+  required:
+    - permission: "iam:CreatePolicyVersion"
+      resourceConstraints: "Policy ARN must be attached to the actor"
+description: "A principal can create a new policy version with admin permissions"

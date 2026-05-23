@@ -83,6 +83,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "activable-risk"
+version = "0.1.0"
+dependencies = [
+ "activable-ingest-iam",
+ "activable-schema",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "tracing",
+]
+
+[[package]]
 name = "activable-schema"
 version = "0.1.0"
 dependencies = [

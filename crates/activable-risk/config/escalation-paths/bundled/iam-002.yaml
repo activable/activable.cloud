@@ -1,0 +1,9 @@
+id: iam-002
+name: "iam:AttachUserPolicy"
+category: self-escalation
+services:
+  - iam
+permissions:
+  required:
+    - permission: "iam:AttachUserPolicy"
+description: "A principal can attach a user policy to escalate privileges"

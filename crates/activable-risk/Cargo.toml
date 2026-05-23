@@ -1,0 +1,18 @@
+[package]
+name = "activable-risk"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "AML-inspired hybrid risk scoring engine for cloud IAM."
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_yaml = "0.9"
+serde_json = "1.0"
+activable-schema = { path = "../activable-schema" }
+activable-ingest-iam = { path = "../activable-ingest-iam" }
+tracing = "0.1"
+
+[lints]
+workspace = true
