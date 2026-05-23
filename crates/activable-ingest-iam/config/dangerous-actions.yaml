@@ -1,0 +1,157 @@
+---
+# Dangerous IAM actions registry — 20+ actions organized by escalation tier and severity
+# Tier 1: Single-action instant privilege escalation (critical)
+# Tier 2: Multi-action combos or high-privilege actions (high)
+# Tier 3: Privilege escalation enablers (high/medium)
+
+actions:
+  # === TIER 1: Critical Single-Action Escalations ===
+  - id: policy-rewrite
+    tier: 1
+    severity: critical
+    actions: ["iam:CreatePolicyVersion"]
+    combo: false
+    description: "Create new inline policy version — grants arbitrary permissions"
+
+  - id: attach-user-policy
+    tier: 1
+    severity: critical
+    actions: ["iam:AttachUserPolicy"]
+    combo: false
+    description: "Attach managed policy to user — grants arbitrary permissions"
+
+  - id: attach-role-policy
+    tier: 1
+    severity: critical
+    actions: ["iam:AttachRolePolicy"]
+    combo: false
+    description: "Attach managed policy to role — grants arbitrary permissions"
+
+  - id: put-user-policy
+    tier: 1
+    severity: critical
+    actions: ["iam:PutUserPolicy"]
+    combo: false
+    description: "Create inline user policy — grants arbitrary permissions"
+
+  - id: put-role-policy
+    tier: 1
+    severity: critical
+    actions: ["iam:PutRolePolicy"]
+    combo: false
+    description: "Create inline role policy — grants arbitrary permissions"
+
+  - id: update-assume-role-policy
+    tier: 1
+    severity: critical
+    actions: ["iam:UpdateAssumeRolePolicy"]
+    combo: false
+    description: "Modify role trust policy — add malicious principal to assume role"
+
+  - id: create-access-key
+    tier: 1
+    severity: critical
+    actions: ["iam:CreateAccessKey"]
+    combo: false
+    description: "Create long-term credentials for user — persistent backdoor"
+
+  # === TIER 2: High Combos + Role Assumption ===
+  - id: pass-role
+    tier: 2
+    severity: high
+    actions: ["iam:PassRole"]
+    combo: false
+    description: "Pass a role to compute service — enables privilege escalation via compute"
+
+  - id: assume-role
+    tier: 2
+    severity: high
+    actions: ["sts:AssumeRole"]
+    combo: false
+    description: "Assume a role directly — grants role permissions if trust policy allows"
+
+  - id: pass-role-ec2
+    tier: 2
+    severity: high
+    actions: ["iam:PassRole", "ec2:RunInstances"]
+    combo: true
+    description: "Pass role to EC2 — can launch instance with escalated role"
+
+  - id: pass-role-lambda
+    tier: 2
+    severity: high
+    actions: ["iam:PassRole", "lambda:CreateFunction"]
+    combo: true
+    description: "Pass role to Lambda — can create function with escalated role"
+
+  - id: pass-role-ecs
+    tier: 2
+    severity: high
+    actions: ["iam:PassRole", "ecs:RegisterTaskDefinition"]
+    combo: true
+    description: "Pass role to ECS — can register task with escalated role"
+
+  # === TIER 2.5: High Individual Actions ===
+  - id: create-user
+    tier: 2
+    severity: high
+    actions: ["iam:CreateUser"]
+    combo: false
+    description: "Create new IAM user — create peer with attacker-controlled permissions"
+
+  - id: create-role
+    tier: 2
+    severity: high
+    actions: ["iam:CreateRole"]
+    combo: false
+    description: "Create new IAM role — create peer with attacker-controlled trust policy"
+
+  - id: create-login-profile
+    tier: 2
+    severity: high
+    actions: ["iam:CreateLoginProfile"]
+    combo: false
+    description: "Create console password — grant console access to user"
+
+  - id: add-user-to-group
+    tier: 2
+    severity: high
+    actions: ["iam:AddUserToGroup"]
+    combo: false
+    description: "Add user to group — grant group's permissions to user"
+
+  # === TIER 3: Enablers + Lateral Movement ===
+  - id: create-instance-profile
+    tier: 3
+    severity: high
+    actions: ["iam:CreateInstanceProfile"]
+    combo: false
+    description: "Create EC2 instance profile — enable role-to-compute binding"
+
+  - id: add-role-to-instance-profile
+    tier: 3
+    severity: high
+    actions: ["iam:AddRoleToInstanceProfile"]
+    combo: false
+    description: "Add role to instance profile — enable role-to-compute binding"
+
+  - id: update-trust-policy-with-principal
+    tier: 3
+    severity: high
+    actions: ["iam:UpdateAssumeRolePolicyDocument"]
+    combo: false
+    description: "Update trust policy — add attacker principal"
+
+  - id: modify-policy-permissions
+    tier: 3
+    severity: high
+    actions: ["iam:CreatePolicy"]
+    combo: false
+    description: "Create custom managed policy — define arbitrary permissions"
+
+  - id: attach-policy-to-group
+    tier: 3
+    severity: high
+    actions: ["iam:AttachGroupPolicy"]
+    combo: false
+    description: "Attach policy to group — escalate all group members"
