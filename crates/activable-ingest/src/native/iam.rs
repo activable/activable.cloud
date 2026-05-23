@@ -96,6 +96,29 @@ impl NativeEnricher for IamEnricher {
             }
         }
 
+        // Ensure source principals exist as nodes before creating edges.
+        // Trust policies reference principals that may not be in the graph yet:
+        // - "*" (wildcard) → create as Principal node
+        // - "cloudformation.amazonaws.com" (service) → create as Principal node
+        // - "arn:aws:iam::OTHER_ACCOUNT:root" → create as Principal node
+        let mut created_sources = std::collections::HashSet::new();
+        for (source, _target) in &edges {
+            if !created_sources.contains(source) {
+                let source_node = serde_json::json!({
+                    "id": source,
+                    "name": source,
+                    "principal_type": if source.contains(".amazonaws.com") { "Service" }
+                                     else if source == "*" { "Wildcard" }
+                                     else { "External" },
+                });
+                // Ignore errors — node may already exist (MERGE semantics)
+                let _ = activable_graph::loader::load_nodes(
+                    pool.clone(), graph_name, "Principal", &[source_node], 1
+                ).await;
+                created_sources.insert(source.clone());
+            }
+        }
+
         // Write CanAssume edges in batches
         let mut edge_count = 0u32;
         if !edges.is_empty() {
