@@ -26,7 +26,7 @@ API server, ingestion), Postgres + Apache AGE storage, UniFFI boundary.
 ├─────────────────────────────────────────────────────────────┤
 │ activable-schema/   ← Nodes, edges, ARN canonicalizer      │
 │ activable-graph/    ← Postgres + Apache AGE driver         │
-│ activable-iam-eval/ ← Parliament port (IAM eval stub)      │
+│ activable-ingest-iam/ ← IAM ingestion (risk-scoring prep) │
 │ activable-ffi/      ← UniFFI surface                        │
 └────────────────┬────────────────────────────────────────────┘
                  │ SQL (Cypher via AGE)

@@ -260,7 +260,7 @@ activable.cloud/
 ├── crates/                    # Rust workspace
 │   ├── activable-schema/      # Node/edge types, ARN canonicalizer
 │   ├── activable-graph/       # PostgreSQL + Apache AGE driver
-│   ├── activable-iam-eval/    # IAM evaluator (Parliament port — pending implementation)
+│   ├── activable-ingest-iam/  # IAM ingestion (risk-scoring preparation)
 │   └── activable-ffi/         # UniFFI boundary (Rust → Go)
 ├── go/                        # Go module
 │   ├── cmd/activable/         # CLI entry point

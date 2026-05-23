@@ -246,7 +246,6 @@ All of the above are enforced in GitHub Actions CI. PRs must pass:
 
 - SPDX license headers in source files (Apache 2.0)
 - Ignored code inside conditional compilation (`#[cfg(...)]`) can have TODO comments for deferred work
-- IAM-eval stub crate (`activable-iam-eval`) can have unimplemented!() in stub functions **only** — marked with `// IAM-EVAL-STUB:` comment
 
 ## Questions?
 
