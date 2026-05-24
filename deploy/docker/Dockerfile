@@ -4,7 +4,7 @@
 # `cargo zigbuild --target aarch64-unknown-linux-gnu --profile release-fast`
 # and COPIED in directly — no in-container cargo build.
 
-FROM debian:bookworm-slim
+FROM debian:trixie-slim
 
 WORKDIR /app
 
