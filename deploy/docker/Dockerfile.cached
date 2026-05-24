@@ -1,0 +1,16 @@
+# syntax=docker/dockerfile:1.4
+FROM rust:1.95-bookworm AS builder
+WORKDIR /workspace
+COPY Cargo.toml Cargo.lock rust-toolchain.toml /workspace/
+COPY crates /workspace/crates
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/workspace/target \
+    cargo build --profile release-fast -p activable-graphql && \
+    cp /workspace/target/release-fast/activable-graphql /tmp/activable-graphql
+
+FROM debian:bookworm-slim
+WORKDIR /app
+RUN apt-get update -qq && apt-get install -y -qq --no-install-recommends ca-certificates curl libpq5 && rm -rf /var/lib/apt/lists/*
+COPY --from=builder /tmp/activable-graphql /app/activable-graphql
+EXPOSE 8080
+CMD ["/app/activable-graphql"]
