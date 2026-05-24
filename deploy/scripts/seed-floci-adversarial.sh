@@ -195,6 +195,11 @@ aws_in_account "$DEV_ACCOUNT" iam put-role-policy \
 
 # Create a managed policy for developer-role to test managed policy ingestion
 echo "Creating developer-broad-access managed policy..."
+# First, get the ARN if it exists and delete it
+EXISTING_POLICY=$(aws_in_account "$DEV_ACCOUNT" iam list-policies --scope Local --query "Policies[?PolicyName=='developer-broad-access'].Arn" --output text 2>/dev/null || echo "")
+if [ -n "$EXISTING_POLICY" ]; then
+    aws_in_account "$DEV_ACCOUNT" iam delete-policy --policy-arn "$EXISTING_POLICY" 2>/dev/null || true
+fi
 MANAGED_POLICY_ARN=$(aws_in_account "$DEV_ACCOUNT" iam create-policy \
     --policy-name "developer-broad-access" \
     --policy-document '{
@@ -228,6 +233,11 @@ aws_in_account "$DEV_ACCOUNT" iam attach-role-policy \
 
 # Create a permission boundary policy that restricts s3:* to s3:GetObject only
 echo "Creating developer-boundary permission boundary policy..."
+# First, get the ARN if it exists and delete it
+EXISTING_BOUNDARY=$(aws_in_account "$DEV_ACCOUNT" iam list-policies --scope Local --query "Policies[?PolicyName=='developer-boundary'].Arn" --output text 2>/dev/null || echo "")
+if [ -n "$EXISTING_BOUNDARY" ]; then
+    aws_in_account "$DEV_ACCOUNT" iam delete-policy --policy-arn "$EXISTING_BOUNDARY" 2>/dev/null || true
+fi
 BOUNDARY_POLICY_ARN=$(aws_in_account "$DEV_ACCOUNT" iam create-policy \
     --policy-name "developer-boundary" \
     --policy-document '{
@@ -715,6 +725,7 @@ KMS_KEY_ID=$(aws_in_account "$SECRETS_ACCOUNT" kms create-key \
 echo "KMS Key ID: $KMS_KEY_ID"
 
 # Update KMS key policy to allow dev account root and application role to use the key
+# NOTE: Floci collapses all accounts to 000000000000, so we use that for the actual policy
 aws_in_account "$SECRETS_ACCOUNT" kms put-key-policy \
     --key-id "$KMS_KEY_ID" \
     --policy-name "default" \
@@ -725,7 +736,7 @@ aws_in_account "$SECRETS_ACCOUNT" kms put-key-policy \
       "Sid": "AdminManagement",
       "Effect": "Allow",
       "Principal": {
-        "AWS": "arn:aws:iam::'"$SECRETS_ACCOUNT"':root"
+        "AWS": "arn:aws:iam::000000000000:root"
       },
       "Action": "kms:*",
       "Resource": "*"
@@ -734,7 +745,7 @@ aws_in_account "$SECRETS_ACCOUNT" kms put-key-policy \
       "Sid": "AllowAppAccountGrants",
       "Effect": "Allow",
       "Principal": {
-        "AWS": "arn:aws:iam::'"$DEV_ACCOUNT"':root"
+        "AWS": "arn:aws:iam::000000000000:root"
       },
       "Action": [
         "kms:CreateGrant",
@@ -744,12 +755,15 @@ aws_in_account "$SECRETS_ACCOUNT" kms put-key-policy \
       "Resource": "*"
     },
     {
-      "Sid": "AllowAppAccountDecrypt",
+      "Sid": "AllowAppRoleCreateGrant",
       "Effect": "Allow",
       "Principal": {
-        "AWS": "arn:aws:iam::'"$DEV_ACCOUNT"':role/application-role"
+        "AWS": "arn:aws:iam::000000000000:role/application-role"
       },
       "Action": [
+        "kms:CreateGrant",
+        "kms:ListGrants",
+        "kms:RevokeGrant",
         "kms:Decrypt",
         "kms:GenerateDataKey"
       ],

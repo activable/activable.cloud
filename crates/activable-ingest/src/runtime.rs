@@ -205,6 +205,7 @@ impl IngestRuntime {
                 self.aws_config.clone(),
             )),
             Box::new(crate::native::s3::S3Enricher::new(self.aws_config.clone())),
+            Box::new(crate::native::kms::KmsEnricher::new(self.aws_config.clone())),
         ];
 
         for enricher in &enrichers {
