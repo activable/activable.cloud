@@ -72,7 +72,7 @@ pub async fn load_nodes(
                 String::new()
             };
 
-            let cypher = format!("CREATE (n:{} {{{}}})", label, props);
+            let cypher = format!("MERGE (n:{} {{{}}})", label, props);
             let sql = format!(
                 "SELECT * FROM ag_catalog.cypher('{}', $${}$$) AS (n agtype)",
                 graph_name, cypher
@@ -132,10 +132,10 @@ pub async fn load_edges(
     let mut count = 0u64;
 
     for chunk in edges.chunks(batch_size) {
-        // AGE doesn't support UNWIND with tuple destructuring — use individual MATCH+CREATE
+        // AGE doesn't support UNWIND with tuple destructuring — use individual MATCH+MERGE
         for (from_id, to_id) in chunk {
             let cypher = format!(
-                "MATCH (a {{id: '{}'}}), (b {{id: '{}'}}) CREATE (a)-[:{}]->(b)",
+                "MATCH (a {{id: '{}'}}), (b {{id: '{}'}}) MERGE (a)-[:{}]->(b)",
                 escape_sql_literal(from_id),
                 escape_sql_literal(to_id),
                 edge_label
