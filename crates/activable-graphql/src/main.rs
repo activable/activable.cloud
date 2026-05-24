@@ -2,7 +2,7 @@
 
 use activable_graph::pool::GraphPool;
 use activable_graph::GraphClient;
-use activable_risk::RiskConfig;
+use activable_risk::{RiskConfig, load_rules_from_embedded};
 use async_graphql::Schema;
 use axum::{extract::DefaultBodyLimit, routing::get, Json, Router};
 use std::net::SocketAddr;
@@ -119,6 +119,17 @@ async fn main() -> anyhow::Result<()> {
     tracing::info!(
         signals = ?risk_config.signals,
         "Risk configuration initialized"
+    );
+
+    // Load and initialize risk rules
+    let _rules = load_rules_from_embedded()
+        .expect("embedded rules must parse at startup");
+    let rule_count = _rules.len();
+    let weight_sum = risk_config.signals_weight_sum();
+    tracing::info!(
+        rule_count = rule_count,
+        weight_sum = %format!("{:.2}", weight_sum),
+        "risk engine ready"
     );
 
     // Initialize graph service for risk scoring

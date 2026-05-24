@@ -1,11 +1,11 @@
 # Risk signal weights (must sum to 0.70)
 # Remaining 0.30 comes from rule boost (computed by rule_engine)
 signals:
-  blast_radius: 0.20
-  path_to_admin: 0.25
-  dangerous_actions: 0.15
-  cross_account_hops: 0.10
-  permission_surface: 0.00   # reserved, disabled by default
+  blast_radius: 0.18
+  path_to_admin: 0.22
+  dangerous_action_count: 0.18
+  cross_account_hops: 0.07
+  permission_surface: 0.05
 
 # Severity band thresholds
 severity:

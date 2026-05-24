@@ -2,7 +2,7 @@
 
 use crate::types::{GqlRiskAssessment, GqlSeverity};
 use activable_risk::{
-    load_rules_from_dir, score_single_principal, EffectivePermission, GraphQueryService,
+    load_rules_from_embedded, score_single_principal, EffectivePermission, GraphQueryService,
     RiskAssessment, RiskConfig,
 };
 use async_graphql::Context;
@@ -137,8 +137,9 @@ async fn compute_and_return(
         ));
     }
 
-    // Load rules from the default bundled directory
-    let rules = load_rules_from_dir("config/escalation-paths/bundled").unwrap_or_default();
+    // Load rules from embedded bundled directory (compile-time)
+    let rules = load_rules_from_embedded()
+        .expect("embedded rules must parse — fix YAML or report bug");
 
     // Compute timestamp
     let now = std::time::SystemTime::now()

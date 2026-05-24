@@ -80,10 +80,10 @@ mod tests {
     fn score_with_all_signals_and_rules() {
         let config = RiskConfig::default();
         let signals = vec![
-            signal("blast_radius", 0.72, 0.72, 0.20), // contribution: 0.144
-            signal("path_to_admin", 0.75, 0.75, 0.25), // contribution: 0.1875
-            signal("dangerous_actions", 0.60, 0.60, 0.15), // contribution: 0.09
-            signal("cross_account_hops", 0.40, 0.40, 0.10), // contribution: 0.04
+            signal("blast_radius", 0.72, 0.72, 0.18), // contribution: 0.1296
+            signal("path_to_admin", 0.75, 0.75, 0.22), // contribution: 0.165
+            signal("dangerous_action_count", 0.60, 0.60, 0.18), // contribution: 0.108
+            signal("cross_account_hops", 0.40, 0.40, 0.07), // contribution: 0.028
         ];
         let rules = vec![
             matched_rule("iam-001", 1, 0.15),
@@ -97,10 +97,10 @@ mod tests {
             "2026-05-23T10:00:00Z",
         );
 
-        // signal_contribution = 0.144 + 0.1875 + 0.09 + 0.04 = 0.4615
+        // signal_contribution = 0.1296 + 0.165 + 0.108 + 0.028 = 0.4306
         // rule_boost = 0.15 + 0.10 = 0.25
-        // total = 0.7115
-        assert!((assessment.score - 0.7115).abs() < 0.01);
+        // total = 0.6806
+        assert!((assessment.score - 0.6806).abs() < 0.01);
         assert_eq!(assessment.severity, Severity::High);
         assert_eq!(assessment.signal_contributions.len(), 4);
         assert_eq!(assessment.matched_rules.len(), 2);
@@ -110,10 +110,10 @@ mod tests {
     fn score_zero_risk() {
         let config = RiskConfig::default();
         let signals = vec![
-            signal("blast_radius", 0.0, 0.0, 0.20),
-            signal("path_to_admin", 0.0, 0.0, 0.25),
-            signal("dangerous_actions", 0.0, 0.0, 0.15),
-            signal("cross_account_hops", 0.0, 0.0, 0.10),
+            signal("blast_radius", 0.0, 0.0, 0.18),
+            signal("path_to_admin", 0.0, 0.0, 0.22),
+            signal("dangerous_action_count", 0.0, 0.0, 0.18),
+            signal("cross_account_hops", 0.0, 0.0, 0.07),
         ];
         let assessment = score_principal(
             "principal-2",
@@ -133,10 +133,10 @@ mod tests {
     fn score_max_risk() {
         let config = RiskConfig::default();
         let signals = vec![
-            signal("blast_radius", 1.0, 1.0, 0.20),
-            signal("path_to_admin", 1.0, 1.0, 0.25),
-            signal("dangerous_actions", 1.0, 1.0, 0.15),
-            signal("cross_account_hops", 1.0, 1.0, 0.10),
+            signal("blast_radius", 1.0, 1.0, 0.18),
+            signal("path_to_admin", 1.0, 1.0, 0.22),
+            signal("dangerous_action_count", 1.0, 1.0, 0.18),
+            signal("cross_account_hops", 1.0, 1.0, 0.07),
         ];
         let rules = vec![
             matched_rule("iam-001", 1, 0.15),
@@ -151,12 +151,12 @@ mod tests {
             "2026-05-23T10:00:00Z",
         );
 
-        // signal_contribution = 0.20 + 0.25 + 0.15 + 0.10 = 0.70
+        // signal_contribution = 0.18 + 0.22 + 0.18 + 0.07 = 0.65
         // rule_boost = 0.15 + 0.15 + 0.15 = 0.45, capped at 0.30
-        // total = 0.70 + 0.30 = 1.0
-        assert_eq!(assessment.score, 1.0);
+        // total = 0.65 + 0.30 = 0.95
+        assert!((assessment.score - 0.95).abs() < 0.01);
         assert_eq!(assessment.severity, Severity::Critical);
-        assert_eq!(assessment.signal_total, 0.70);
+        assert!((assessment.signal_total - 0.65).abs() < 0.01);
         assert_eq!(assessment.rule_boost, 0.30);
     }
 
@@ -185,7 +185,7 @@ mod tests {
     #[test]
     fn signal_contributions_calculated_correctly() {
         let config = RiskConfig::default();
-        let signals = vec![signal("blast_radius", 0.5, 0.5, 0.20)];
+        let signals = vec![signal("blast_radius", 0.5, 0.5, 0.18)];
         let assessment = score_principal(
             "principal-5",
             signals,
@@ -198,8 +198,8 @@ mod tests {
         let contrib = &assessment.signal_contributions[0];
         assert_eq!(contrib.name, "blast_radius");
         assert_eq!(contrib.normalized, 0.5);
-        assert_eq!(contrib.weight, 0.20);
-        assert_eq!(contrib.contribution, 0.10);
+        assert_eq!(contrib.weight, 0.18);
+        assert_eq!(contrib.contribution, 0.09);
     }
 
     #[test]

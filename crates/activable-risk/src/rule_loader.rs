@@ -1,6 +1,7 @@
 use crate::types::{EscalationRule, Prerequisites, RequiredPermission, RuleError};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
+use include_dir::{include_dir, Dir};
 
 /// Intermediate YAML deserialization structure
 #[derive(Debug, Deserialize, Serialize)]
@@ -22,6 +23,9 @@ struct PermissionsContainer {
     #[serde(default)]
     required: Vec<RequiredPermission>,
 }
+
+/// Embedded rules bundled at compile time
+static EMBEDDED_RULES: Dir = include_dir!("$CARGO_MANIFEST_DIR/config/escalation-paths/bundled");
 
 /// Category → Severity Tier mapping
 fn category_to_tier(category: &str) -> u8 {
@@ -64,6 +68,31 @@ pub fn parse_rule(yaml: &str) -> Result<EscalationRule, RuleError> {
         boost,
         description: yaml_rule.description,
     })
+}
+
+/// Load rules from the bundled directory at compile time. Production code path.
+/// Errors propagate — empty result means missing/corrupt embedded rules, not "no rules".
+pub fn load_rules_from_embedded() -> Result<Vec<EscalationRule>, RuleError> {
+    let mut rules = Vec::new();
+    for file in EMBEDDED_RULES.files() {
+        let path = file.path();
+        if path.extension().and_then(|s| s.to_str()) != Some("yaml")
+            && path.extension().and_then(|s| s.to_str()) != Some("yml")
+        {
+            continue;
+        }
+        let contents = file.contents_utf8().ok_or_else(|| {
+            RuleError::LoadError(format!("rule file {} not valid utf-8", path.display()))
+        })?;
+        match parse_rule(contents) {
+            Ok(rule) => rules.push(rule),
+            Err(e) => {
+                tracing::error!(path = %path.display(), error = %e, "failed to parse bundled rule");
+                return Err(e);
+            }
+        }
+    }
+    Ok(rules)
 }
 
 /// Load all rules from a directory

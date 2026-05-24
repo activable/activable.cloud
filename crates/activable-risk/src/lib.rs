@@ -22,7 +22,7 @@ pub use fuzzing::{
     generate_pairs, generate_triples, run_fuzzer, FuzzConfig, FuzzDiscovery, FuzzSeverity,
 };
 pub use rule_engine::{compute_rule_boost, match_all_rules, match_rule, EffectivePermission};
-pub use rule_loader::{load_rules_from_dir, parse_rule};
+pub use rule_loader::{load_rules_from_dir, load_rules_from_embedded, parse_rule};
 pub use scorer::score_principal;
 pub use service_catalog::{
     assess_expansion_impact, builtin_catalog, compute_expansion_score, create_snapshot,
