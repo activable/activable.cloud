@@ -200,6 +200,68 @@ data:
       ]
     }'
 
+    # Create a managed policy for developer-role to test managed policy ingestion
+    echo "Creating developer-broad-access managed policy..."
+    aws_in_account "$DEV_ACCOUNT" iam delete-policy --policy-arn "arn:aws:iam::aws:policy/developer-broad-access" 2>/dev/null || true
+    MANAGED_POLICY_ARN=$(aws_in_account "$DEV_ACCOUNT" iam create-policy \
+        --policy-name "developer-broad-access" \
+        --policy-document '{
+      "Version": "2012-10-17",
+      "Statement": [
+        {
+          "Sid": "S3FullAccess",
+          "Effect": "Allow",
+          "Action": "s3:*",
+          "Resource": "*"
+        },
+        {
+          "Sid": "IAMRead",
+          "Effect": "Allow",
+          "Action": [
+            "iam:GetRole",
+            "iam:ListRoles",
+            "iam:GetRolePolicy",
+            "iam:ListRolePolicies"
+          ],
+          "Resource": "*"
+        }
+      ]
+    }' --query 'Policy.Arn' --output text)
+
+    # Attach managed policy to developer-role
+    echo "Attaching developer-broad-access to developer-role..."
+    aws_in_account "$DEV_ACCOUNT" iam attach-role-policy \
+        --role-name "developer-role" \
+        --policy-arn "$MANAGED_POLICY_ARN" || true
+
+    # Create a permission boundary policy that restricts s3:* to s3:GetObject only
+    echo "Creating developer-boundary permission boundary policy..."
+    BOUNDARY_POLICY_ARN=$(aws_in_account "$DEV_ACCOUNT" iam create-policy \
+        --policy-name "developer-boundary" \
+        --policy-document '{
+      "Version": "2012-10-17",
+      "Statement": [
+        {
+          "Sid": "S3GetObjectOnly",
+          "Effect": "Allow",
+          "Action": "s3:GetObject",
+          "Resource": "*"
+        },
+        {
+          "Sid": "CloudFormationAll",
+          "Effect": "Allow",
+          "Action": "cloudformation:*",
+          "Resource": "*"
+        }
+      ]
+    }' --query 'Policy.Arn' --output text)
+
+    # Set the permission boundary on developer-role
+    echo "Setting permission boundary on developer-role..."
+    aws_in_account "$DEV_ACCOUNT" iam put-role-permissions-boundary \
+        --role-name "developer-role" \
+        --permissions-boundary "$BOUNDARY_POLICY_ARN" || true
+
     # Dev Account: cf-deploy-production-role (identity policy + trust policy)
     echo "Creating cf-deploy-production-role in dev account ($DEV_ACCOUNT)..."
     aws_in_account "$DEV_ACCOUNT" iam create-role \
