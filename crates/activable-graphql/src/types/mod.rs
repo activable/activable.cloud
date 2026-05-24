@@ -118,6 +118,76 @@ pub struct GqlIngestRun {
     pub services: Vec<GqlIngestService>,
 }
 
+/// GraphQL representation of a key policy statement
+#[derive(SimpleObject, Clone, Debug)]
+pub struct GqlKeyPolicyStatement {
+    pub effect: String,
+    pub principals: Vec<String>,
+    pub actions: Vec<String>,
+    pub condition_keys: Vec<String>,
+}
+
+/// GraphQL representation of a key policy
+#[derive(SimpleObject, Clone, Debug)]
+pub struct GqlKeyPolicy {
+    pub statements: Vec<GqlKeyPolicyStatement>,
+    pub policy_arn: Option<String>,
+}
+
+/// GraphQL representation of create grant risk
+#[derive(SimpleObject, Clone, Debug)]
+pub struct GqlCreateGrantRisk {
+    pub grantable: bool,
+    pub granting_principals: Vec<String>,
+    pub severity: risk::GqlSeverity,
+    pub wildcard_principal: bool,
+}
+
+/// GraphQL representation of key management risks
+#[derive(SimpleObject, Clone, Debug)]
+pub struct GqlKeyManagementRisks {
+    pub key_arn: String,
+    pub key_policy: GqlKeyPolicy,
+    pub create_grant_risk: GqlCreateGrantRisk,
+    pub risk_score: f64,
+    pub severity: risk::GqlSeverity,
+}
+
+/// GraphQL representation of a resource policy statement
+#[derive(SimpleObject, Clone, Debug)]
+pub struct GqlResourcePolicyStatement {
+    pub effect: String,
+    pub principal: String,
+    pub condition_keys: Vec<String>,
+    pub is_trust_boundary: bool,
+}
+
+/// GraphQL representation of a resource policy
+#[derive(SimpleObject, Clone, Debug)]
+pub struct GqlResourcePolicy {
+    pub statements: Vec<GqlResourcePolicyStatement>,
+}
+
+/// GraphQL representation of cross-account access
+#[derive(SimpleObject, Clone, Debug)]
+pub struct GqlCrossAccountAccess {
+    pub destination_account_id: String,
+    pub principal_count: i32,
+    pub severity: risk::GqlSeverity,
+}
+
+/// GraphQL representation of resource policy risks
+#[derive(SimpleObject, Clone, Debug)]
+pub struct GqlResourcePolicyRisks {
+    pub resource_arn: String,
+    pub resource_type: String,
+    pub policy: GqlResourcePolicy,
+    pub cross_account_access: Vec<GqlCrossAccountAccess>,
+    pub risk_score: f64,
+    pub severity: risk::GqlSeverity,
+    pub policy_evaluator_version: String,
+}
+
 // Re-export risk types for convenient access via `use crate::types::*;`
 #[allow(unused_imports)]
 pub use risk::{GqlMatchedRule, GqlRiskAssessment, GqlSeverity, GqlSignalContribution};
