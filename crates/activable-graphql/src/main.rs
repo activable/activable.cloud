@@ -105,6 +105,39 @@ async fn main() -> anyhow::Result<()> {
     let client = GraphClient::new(pool.clone(), &graph_name);
     tracing::info!(graph_name = %graph_name, "GraphClient initialized");
 
+    // Run index migrations (create indexes for common node labels)
+    {
+        let conn = pool.get().await.map_err(|e| {
+            anyhow::anyhow!("Failed to get connection for index migrations: {}", e)
+        })?;
+
+        let index_statements = &[
+            r#"SELECT * FROM cypher('activable', $$ CREATE INDEX IF NOT EXISTS ON :Principal(id) $$) AS (r agtype)"#,
+            r#"SELECT * FROM cypher('activable', $$ CREATE INDEX IF NOT EXISTS ON :Permission(id) $$) AS (r agtype)"#,
+            r#"SELECT * FROM cypher('activable', $$ CREATE INDEX IF NOT EXISTS ON :Bucket(id) $$) AS (r agtype)"#,
+            r#"SELECT * FROM cypher('activable', $$ CREATE INDEX IF NOT EXISTS ON :KmsKey(id) $$) AS (r agtype)"#,
+            r#"SELECT * FROM cypher('activable', $$ CREATE INDEX IF NOT EXISTS ON :Policy(id) $$) AS (r agtype)"#,
+        ];
+
+        for stmt in index_statements {
+            match conn.batch_execute(stmt).await {
+                Ok(_) => {
+                    tracing::debug!(stmt = %stmt, "index migration ok");
+                }
+                Err(e) => {
+                    // Common: label table doesn't exist yet (no nodes created of that label).
+                    // Non-fatal: re-runs on every startup.
+                    tracing::warn!(
+                        error = %e,
+                        stmt = %stmt,
+                        "index migration skipped — label table may not exist yet"
+                    );
+                }
+            }
+        }
+        tracing::info!("index migrations complete");
+    }
+
     // Create the IngestRuntime
     let ingest_runtime =
         activable_ingest::IngestRuntime::new(pool.clone(), graph_name.clone()).await?;

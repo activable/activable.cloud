@@ -12,7 +12,10 @@ pub mod serde_agtype;
 pub use arn::{is_valid_node_id, Arn};
 pub use edge_constraint::{is_valid_edge, CommonEdgeProperties};
 pub use labels::{EdgeType, NodeLabel};
-pub use properties::*;
+pub use properties::{
+    BucketProperties, CommonProperties, KmsKeyExtendedProperties, PolicyProperties,
+    WildcardPrincipalProperties, *,
+};
 
 /// Returns the schema version string.
 #[must_use]

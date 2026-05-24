@@ -36,6 +36,9 @@ pub enum NodeLabel {
     PolicyStatement,
     PermissionBoundary,
     ServiceControlPolicy,
+    Bucket,
+    Policy,
+    WildcardPrincipal,
     /// Escape hatch for types not yet in the v1 schema.
     Custom(String),
 }
@@ -56,6 +59,9 @@ impl NodeLabel {
             Self::PolicyStatement => "PolicyStatement",
             Self::PermissionBoundary => "PermissionBoundary",
             Self::ServiceControlPolicy => "ServiceControlPolicy",
+            Self::Bucket => "Bucket",
+            Self::Policy => "Policy",
+            Self::WildcardPrincipal => "WildcardPrincipal",
             Self::Custom(s) => s.as_str(),
         }
     }
@@ -88,6 +94,9 @@ impl FromStr for NodeLabel {
             "PolicyStatement" => Self::PolicyStatement,
             "PermissionBoundary" => Self::PermissionBoundary,
             "ServiceControlPolicy" => Self::ServiceControlPolicy,
+            "Bucket" => Self::Bucket,
+            "Policy" => Self::Policy,
+            "WildcardPrincipal" => Self::WildcardPrincipal,
             other => Self::Custom(other.to_string()),
         })
     }
@@ -125,6 +134,13 @@ pub enum EdgeType {
     BoundedBy,
     GovernedBy,
     CanEscalateTo,
+    HasManagedPolicy,
+    HasPermissionsBoundary,
+    HasBucketPolicy,
+    HasKeyPolicy,
+    AllowsAccessFrom,
+    KmsGrantable,
+    EnforcesScp,
     /// Escape hatch for relationship types not yet in the v1 schema.
     Custom(String),
 }
@@ -142,6 +158,13 @@ impl EdgeType {
             Self::BoundedBy => "BoundedBy",
             Self::GovernedBy => "GovernedBy",
             Self::CanEscalateTo => "CanEscalateTo",
+            Self::HasManagedPolicy => "HasManagedPolicy",
+            Self::HasPermissionsBoundary => "HasPermissionsBoundary",
+            Self::HasBucketPolicy => "HasBucketPolicy",
+            Self::HasKeyPolicy => "HasKeyPolicy",
+            Self::AllowsAccessFrom => "AllowsAccessFrom",
+            Self::KmsGrantable => "KmsGrantable",
+            Self::EnforcesScp => "EnforcesScp",
             Self::Custom(s) => s.as_str(),
         }
     }
@@ -171,6 +194,13 @@ impl FromStr for EdgeType {
             "BoundedBy" => Self::BoundedBy,
             "GovernedBy" => Self::GovernedBy,
             "CanEscalateTo" => Self::CanEscalateTo,
+            "HasManagedPolicy" => Self::HasManagedPolicy,
+            "HasPermissionsBoundary" => Self::HasPermissionsBoundary,
+            "HasBucketPolicy" => Self::HasBucketPolicy,
+            "HasKeyPolicy" => Self::HasKeyPolicy,
+            "AllowsAccessFrom" => Self::AllowsAccessFrom,
+            "KmsGrantable" => Self::KmsGrantable,
+            "EnforcesScp" => Self::EnforcesScp,
             other => Self::Custom(other.to_string()),
         })
     }
