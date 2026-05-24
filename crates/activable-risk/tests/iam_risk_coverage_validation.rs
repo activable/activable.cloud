@@ -1,6 +1,6 @@
-//! SkyEye coverage inventory and validation tests.
+//! IAM Risk coverage inventory and validation tests.
 //!
-//! Validates that all SkyEye problem categories are addressed by activable.cloud
+//! Validates that all IAM Risk problem categories are addressed by activable.cloud
 //! capabilities. Maps escalation problems to risk module functions and verifies
 //! end-to-end pipeline functionality.
 
@@ -12,20 +12,20 @@ fn load_bundled_rules() -> Vec<activable_risk::EscalationRule> {
     load_rules_from_dir(&rules_path).expect("Failed to load bundled rules")
 }
 
-/// Test: SkyEye coverage inventory
+/// Test: IAM Risk coverage inventory
 ///
-/// Validates that for each major SkyEye problem category,
+/// Validates that for each major IAM Risk problem category,
 /// at least one activable.cloud function/capability exists.
 #[test]
-fn test_skyeye_coverage_exists() {
+fn test_iam_risk_coverage_exists() {
     // Load rules to verify escalation detection capability
     let rules = load_bundled_rules();
     assert!(
         !rules.is_empty(),
-        "Should have escalation rules (SkyEye-001 to SkyEye-010)"
+        "Should have escalation rules (IAM Risk-001 to IAM Risk-010)"
     );
 
-    // Verify rule categories cover main SkyEye gaps:
+    // Verify rule categories cover main IAM Risk gaps:
     // - IAM privilege escalation (iam-* rules)
     // - EC2 privilege escalation (ec2-* rules)
     // - Cross-service escalation (service-* rules)
@@ -37,11 +37,11 @@ fn test_skyeye_coverage_exists() {
 
     assert!(
         has_iam_rules,
-        "Should have IAM escalation rules for SkyEye coverage"
+        "Should have IAM escalation rules for IAM Risk coverage"
     );
     assert!(
         has_ec2_rules,
-        "Should have EC2 escalation rules for SkyEye coverage"
+        "Should have EC2 escalation rules for IAM Risk coverage"
     );
 
     // Verify rule engine capability
@@ -57,7 +57,7 @@ fn test_skyeye_coverage_exists() {
     );
 }
 
-/// Test: IAM escalation rules cover known SkyEye gaps
+/// Test: IAM escalation rules cover known IAM Risk gaps
 ///
 /// Validates that escalation rules match known IAM privilege escalation patterns
 #[test]
@@ -114,7 +114,7 @@ fn test_iam_escalation_rules_coverage() {
 fn test_ec2_passrole_escalation_rules() {
     let rules = load_bundled_rules();
 
-    // Known SkyEye escalation: iam:PassRole + ec2:RunInstances (ec2-001)
+    // Known IAM Risk escalation: iam:PassRole + ec2:RunInstances (ec2-001)
     let perms = vec![
         EffectivePermission::new("iam:PassRole", "arn:aws:iam::123456789012:role/*"),
         EffectivePermission::new("ec2:RunInstances", "arn:aws:ec2:*:123456789012:instance/*"),
@@ -136,7 +136,7 @@ fn test_ec2_passrole_escalation_rules() {
 fn test_lambda_passrole_escalation_rules() {
     let rules = load_bundled_rules();
 
-    // Known SkyEye escalation: iam:PassRole + lambda:CreateFunction
+    // Known IAM Risk escalation: iam:PassRole + lambda:CreateFunction
     let perms = vec![
         EffectivePermission::new("iam:PassRole", "arn:aws:iam::123456789012:role/*"),
         EffectivePermission::new(
@@ -315,7 +315,7 @@ fn test_escalation_rule_prerequisites() {
 
 /// Test: Full rule set coverage
 ///
-/// Validates that bundled rules cover essential SkyEye problems
+/// Validates that bundled rules cover essential IAM Risk problems
 #[test]
 fn test_bundled_rules_comprehensive_coverage() {
     let rules = load_bundled_rules();

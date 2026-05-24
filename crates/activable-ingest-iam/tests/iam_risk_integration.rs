@@ -1,7 +1,7 @@
-//! SkyEye full coverage integration tests.
+//! IAM Risk full coverage integration tests.
 //!
-//! Validates that all SkyEye capabilities work end-to-end together.
-//! Each test exercises a specific SkyEye paper gap and verifies that
+//! Validates that all IAM Risk capabilities work end-to-end together.
+//! Each test exercises a specific IAM Risk paper gap and verifies that
 //! activable.cloud addresses it correctly.
 
 use activable_ingest_iam::{
@@ -12,7 +12,7 @@ use activable_ingest_iam::{
 
 /// Test 1: Resource policy + identity policy compound evaluation
 ///
-/// SkyEye gap: Compound evaluation of resource-based and identity-based policies
+/// IAM Risk gap: Compound evaluation of resource-based and identity-based policies
 /// Expected: Cross-account principal requires BOTH allow, same-account requires EITHER
 #[test]
 fn test_compound_resource_and_identity_policy_evaluation() {
@@ -85,7 +85,7 @@ fn test_compound_resource_and_identity_policy_evaluation() {
 
 /// Test 2: Session policy constrains effective permissions
 ///
-/// SkyEye gap: Session policy intersection reduces blast radius
+/// IAM Risk gap: Session policy intersection reduces blast radius
 /// Expected: Session policy acts as additional constraint
 #[test]
 fn test_session_policy_constrains_permissions() {
@@ -150,7 +150,7 @@ fn test_session_policy_constrains_permissions() {
 
 /// Test 3: Federation trust extraction
 ///
-/// SkyEye gap: Detect SAML trust policies
+/// IAM Risk gap: Detect SAML trust policies
 /// Expected: extract_federation_trusts extracts trust relationships from role policies
 #[test]
 fn test_federation_trust_extraction() {
@@ -190,7 +190,7 @@ fn test_federation_trust_extraction() {
 
 /// Test 4: Policy drift detection
 ///
-/// SkyEye gap: Detect permission expansion across policy versions
+/// IAM Risk gap: Detect permission expansion across policy versions
 /// Expected: v1 (s3:GetObject) → v2 (s3:GetObject + iam:CreatePolicyVersion) detects expansion
 #[test]
 fn test_policy_drift_detection() {
@@ -244,7 +244,7 @@ fn test_policy_drift_detection() {
 
 /// Test 5: Policy drift detection - multiple versions
 ///
-/// SkyEye gap: Detect permission expansion across multiple policy versions
+/// IAM Risk gap: Detect permission expansion across multiple policy versions
 /// Expected: Multiple diffs show increasing risk score
 #[test]
 fn test_policy_drift_with_multiple_versions() {
@@ -329,7 +329,7 @@ fn test_policy_drift_with_multiple_versions() {
 
 /// Test 6: Resource pattern matching with wildcards
 ///
-/// SkyEye gap: Correct wildcard matching in resource ARNs
+/// IAM Risk gap: Correct wildcard matching in resource ARNs
 /// Expected: arn:aws:s3:::bucket/* matches arn:aws:s3:::bucket/file.txt but not arn:aws:s3:::bucket
 #[test]
 fn test_resource_wildcard_matching() {
@@ -387,7 +387,7 @@ fn test_resource_wildcard_matching() {
 
 /// Test 7: Permission boundary intersection
 ///
-/// SkyEye gap: Permission boundary correctly intersects with identity policy
+/// IAM Risk gap: Permission boundary correctly intersects with identity policy
 /// Expected: Boundary is AND operation (most restrictive wins)
 #[test]
 fn test_permission_boundary_intersection() {
@@ -443,7 +443,7 @@ fn test_permission_boundary_intersection() {
 
 /// Test 8: Cross-account role assumption
 ///
-/// SkyEye gap: Detect chained cross-account role assumptions
+/// IAM Risk gap: Detect chained cross-account role assumptions
 /// Expected: Account A can assume role if both policies allow
 #[test]
 fn test_cross_account_role_assumption_chain() {
@@ -479,7 +479,7 @@ fn test_cross_account_role_assumption_chain() {
 
 /// Test 9: Effective permissions from wildcards
 ///
-/// SkyEye gap: Correctly extract effective permissions from wildcard patterns
+/// IAM Risk gap: Correctly extract effective permissions from wildcard patterns
 /// Expected: iam:* captures all IAM actions
 #[test]
 fn test_effective_permissions_from_wildcards() {
@@ -526,7 +526,7 @@ fn test_effective_permissions_from_wildcards() {
 
 /// Test 10: Same-account vs cross-account policy evaluation
 ///
-/// SkyEye gap: Distinguish same-account (OR) from cross-account (AND)
+/// IAM Risk gap: Distinguish same-account (OR) from cross-account (AND)
 /// Expected: Same-account allows if either policy allows
 #[test]
 fn test_same_account_vs_cross_account_evaluation() {

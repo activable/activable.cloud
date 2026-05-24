@@ -4,6 +4,7 @@ use crate::error::GraphError;
 use crate::query_builder::escape_sql_literal;
 use deadpool_postgres::Pool;
 use std::sync::Arc;
+use tracing;
 
 /// Load nodes into the graph from a JSON array.
 ///
@@ -57,13 +58,26 @@ pub async fn load_nodes(
                     .iter()
                     .filter_map(|(k, v)| {
                         // Only include string/number/bool properties (AGE limitation)
+                        // Arrays/objects are serialized to JSON strings; nulls are skipped
                         match v {
                             serde_json::Value::String(s) => {
                                 Some(format!("{}: '{}'", k, escape_sql_literal(s)))
                             }
                             serde_json::Value::Number(n) => Some(format!("{}: {}", k, n)),
                             serde_json::Value::Bool(b) => Some(format!("{}: {}", k, b)),
-                            _ => None, // Skip arrays/objects/nulls
+                            serde_json::Value::Array(_) | serde_json::Value::Object(_) => {
+                                // Serialize complex types to JSON string
+                                let json_str = match serde_json::to_string(v) {
+                                    Ok(s) => s,
+                                    Err(e) => {
+                                        tracing::warn!("Failed to serialize property {} to JSON: {}", k, e);
+                                        return None;
+                                    }
+                                };
+                                tracing::debug!("Serialized property {} ({:?}) to JSON string", k, v);
+                                Some(format!("{}: '{}'", k, escape_sql_literal(&json_str)))
+                            }
+                            serde_json::Value::Null => None, // Skip nulls
                         }
                     })
                     .collect();
@@ -135,7 +149,7 @@ pub async fn load_edges(
         // AGE doesn't support UNWIND with tuple destructuring — use individual MATCH+MERGE
         for (from_id, to_id) in chunk {
             let cypher = format!(
-                "MATCH (a {{id: '{}'}}), (b {{id: '{}'}}) MERGE (a)-[:{}]->(b)",
+                "MATCH (a {{id: '{}'}}), (b {{id: '{}'}}) MERGE (a)-[:{}]->(b) RETURN id(a), id(b)",
                 escape_sql_literal(from_id),
                 escape_sql_literal(to_id),
                 edge_label
@@ -146,11 +160,118 @@ pub async fn load_edges(
                 graph_name, cypher
             );
 
-            // Edge creation may fail if source/target nodes don't exist — skip gracefully
+            // Edge creation may fail if source/target nodes don't exist — MATCH returns 0 rows, not an error
+            // Real errors (syntax, transaction abort, etc.) should propagate
             match conn.execute(&sql, &[]).await {
                 Ok(_) => count += 1,
-                Err(_) => {
-                    // Skip — source or target node may not exist in graph
+                Err(e) => {
+                    // Log the error and propagate — this indicates a real problem, not just missing nodes
+                    tracing::warn!("Edge insert failed for ({} -> {}): {}", from_id, to_id, e);
+                    return Err(GraphError::Query(format!(
+                        "Failed to insert edge from {} to {}: {}",
+                        from_id, to_id, e
+                    )));
+                }
+            }
+        }
+    }
+
+    // Commit transaction
+    conn.batch_execute("COMMIT;")
+        .await
+        .map_err(|e| GraphError::Query(format!("Failed to commit transaction: {}", e)))?;
+
+    Ok(count)
+}
+
+/// Load edges with properties into the graph.
+///
+/// Each edge is created with a set of properties (e.g., action, resource).
+/// Properties are passed as a JSON object and set on the relationship.
+/// Performs batched inserts within explicit BEGIN/COMMIT transaction blocks.
+pub async fn load_edges_with_props(
+    pool: Arc<Pool>,
+    graph_name: &str,
+    edge_label: &str,
+    edges: &[(String, String, serde_json::Value)],
+    batch_size: usize,
+) -> Result<u64, GraphError> {
+    if edges.is_empty() {
+        return Ok(0);
+    }
+
+    let conn = pool
+        .get()
+        .await
+        .map_err(|e| GraphError::Pool(e.to_string()))?;
+
+    // Initialize AGE on this connection
+    conn.batch_execute("LOAD 'age'; SET search_path = ag_catalog, \"$user\", public;")
+        .await
+        .map_err(|e| GraphError::Query(e.to_string()))?;
+
+    // Validate edge label
+    if edge_label.is_empty() {
+        return Err(GraphError::UnsafeParameter("empty edge label".to_string()));
+    }
+
+    // Start transaction
+    conn.batch_execute("BEGIN;")
+        .await
+        .map_err(|e| GraphError::Query(format!("Failed to start transaction: {}", e)))?;
+
+    let mut count = 0u64;
+
+    for chunk in edges.chunks(batch_size) {
+        for (from_id, to_id, props) in chunk {
+            // Convert properties object to SET format: {key: value, ...}
+            // Cypher SET syntax for edge properties: SET r += {action: 'value', resource: 'value'}
+            let props_str = if let serde_json::Value::Object(map) = props {
+                let pairs: Vec<String> = map
+                    .iter()
+                    .filter_map(|(k, v)| {
+                        match v {
+                            serde_json::Value::String(s) => {
+                                Some(format!("{}: '{}'", k, escape_sql_literal(s)))
+                            }
+                            serde_json::Value::Number(n) => Some(format!("{}: {}", k, n)),
+                            serde_json::Value::Bool(b) => Some(format!("{}: {}", k, b)),
+                            _ => None, // Skip arrays/objects/nulls
+                        }
+                    })
+                    .collect();
+                format!("{{{}}}", pairs.join(", "))
+            } else {
+                String::new()
+            };
+
+            let set_clause = if props_str.is_empty() {
+                String::new()
+            } else {
+                format!(" SET r += {}", props_str)
+            };
+
+            let cypher = format!(
+                "MATCH (a {{id: '{}'}}), (b {{id: '{}'}}) MERGE (a)-[r:{}]->(b){}  RETURN id(a), id(b)",
+                escape_sql_literal(from_id),
+                escape_sql_literal(to_id),
+                edge_label,
+                set_clause
+            );
+
+            let sql = format!(
+                "SELECT * FROM ag_catalog.cypher('{}', $${}$$) AS (a agtype, b agtype)",
+                graph_name, cypher
+            );
+
+            match conn.execute(&sql, &[]).await {
+                Ok(_) => count += 1,
+                Err(e) => {
+                    tracing::warn!("Edge insert with props failed for ({} -> {}): {}", from_id, to_id, e);
+                    return Err(GraphError::Query(format!(
+                        "Failed to insert edge with props from {} to {}: {}",
+                        from_id, to_id, e
+                    )));
                 }
             }
         }

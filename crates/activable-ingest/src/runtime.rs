@@ -199,6 +199,8 @@ impl IngestRuntime {
             Box::new(crate::native::iam::IamEnricher::new(
                 self.aws_config.clone(),
             )),
+            // Permissions enricher must run after IAM enricher to materialize HasEffectivePermission edges
+            Box::new(crate::native::permissions::PermissionsEnricher::new()),
             Box::new(crate::native::ec2::Ec2Enricher::new(
                 self.aws_config.clone(),
             )),

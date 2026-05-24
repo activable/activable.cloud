@@ -184,6 +184,7 @@ impl GraphQueryService for GraphClientAdapter {
     }
 
     /// Get effective permissions for a principal (action + resource pairs).
+    /// Queries HasEffectivePermission edges with action and resource properties.
     async fn get_effective_permissions(
         &self,
         principal_id: &str,
@@ -196,7 +197,8 @@ impl GraphQueryService for GraphClientAdapter {
             escaped_id
         );
 
-        let results = self.client.cypher(&cypher).await.map_err(|e| {
+        // Use multi-column query to get both action and resource in one call
+        let results = self.client.cypher_multi_column(&cypher, 2).await.map_err(|e| {
             Box::new(GraphQueryError(format!(
                 "get_effective_permissions cypher query failed: {}",
                 e
@@ -205,18 +207,11 @@ impl GraphQueryService for GraphClientAdapter {
 
         let perms: Vec<(String, String)> = results
             .iter()
-            .filter_map(|v| {
-                // AGE can return results as an array, or we need to handle the specific format
-                if let Some(arr) = v.as_array() {
-                    if arr.len() >= 2 {
-                        let action = arr[0].as_str()?.to_string();
-                        let resource = arr[1].as_str()?.to_string();
-                        return Some((action, resource));
-                    }
-                } else if let Some(obj) = v.as_object() {
-                    // Handle object response format if AGE returns objects
-                    let action = obj.get("action")?.as_str()?.to_string();
-                    let resource = obj.get("resource")?.as_str()?.to_string();
+            .filter_map(|row| {
+                // Each row should have exactly 2 columns: [action, resource]
+                if row.len() >= 2 {
+                    let action = row[0].as_str()?.to_string();
+                    let resource = row[1].as_str()?.to_string();
                     return Some((action, resource));
                 }
                 None
@@ -233,7 +228,7 @@ impl GraphQueryService for GraphClientAdapter {
     }
 
     /// Read a cached risk assessment from a principal node property.
-    /// Returns None if no cached assessment exists.
+    /// Returns None if no cached assessment exists (property missing or null).
     async fn read_risk_assessment(
         &self,
         principal_id: &str,
@@ -254,13 +249,27 @@ impl GraphQueryService for GraphClientAdapter {
         })?;
 
         if let Some(first) = results.first() {
-            if let Some(json_str) = first.as_str() {
-                if !json_str.is_empty() && json_str != "null" {
-                    tracing::trace!(
-                        principal_id = principal_id,
-                        "risk_assessment_json retrieved"
-                    );
-                    return Ok(Some(json_str.to_string()));
+            // Handle both null and missing cases: AGE may return null, JSON null string, or a real JSON value
+            match first {
+                serde_json::Value::Null => {
+                    // AGE returned agtype null — property doesn't exist yet
+                    tracing::trace!(principal_id = principal_id, "no risk_assessment_json found (null)");
+                    return Ok(None);
+                }
+                serde_json::Value::String(json_str) => {
+                    // Successful deserialization of agtype string
+                    if !json_str.is_empty() && json_str != "null" {
+                        tracing::trace!(
+                            principal_id = principal_id,
+                            "risk_assessment_json retrieved"
+                        );
+                        return Ok(Some(json_str.to_string()));
+                    }
+                }
+                _ => {
+                    // Other types (shouldn't happen, but treat as missing)
+                    tracing::trace!(principal_id = principal_id, "unexpected type for risk_assessment_json");
+                    return Ok(None);
                 }
             }
         }
