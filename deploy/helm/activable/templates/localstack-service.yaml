@@ -1,17 +1,17 @@
-{{- if .Values.floci.enabled }}
+{{- if .Values.localstack.enabled }}
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "activable.fullname" . }}-floci
+  name: {{ include "activable.fullname" . }}-localstack
   labels:
     {{- include "activable.labels" . | nindent 4 }}
     app.kubernetes.io/component: aws-emulator
 spec:
   ports:
   - port: 4566
-    targetPort: floci
+    targetPort: aws
     protocol: TCP
-    name: floci
+    name: aws
   selector:
     app.kubernetes.io/instance: {{ .Release.Name }}
     app.kubernetes.io/component: aws-emulator

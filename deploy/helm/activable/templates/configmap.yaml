@@ -14,9 +14,9 @@ data:
   ACTIVABLE_MAX_CONNECTIONS: {{ .Values.database.maxConnections | default 20 | quote }}
   RUST_LOG: {{ .Values.graphql.logLevel | default "info" | quote }}
   PORT: {{ .Values.graphql.port | quote }}
-  {{- if .Values.floci.enabled }}
-  AWS_ENDPOINT_URL: "http://{{ include "activable.fullname" . }}-floci:4566"
+  {{- if .Values.localstack.enabled }}
+  AWS_ENDPOINT_URL: "http://{{ include "activable.fullname" . }}-localstack:4566"
   AWS_ACCESS_KEY_ID: "test"
   AWS_SECRET_ACCESS_KEY: "test"
-  AWS_DEFAULT_REGION: {{ .Values.floci.region | default "us-east-1" | quote }}
+  AWS_DEFAULT_REGION: {{ .Values.localstack.region | default "us-east-1" | quote }}
   {{- end }}

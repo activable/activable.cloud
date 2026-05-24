@@ -1,7 +1,7 @@
 # Local Kubernetes development values — ALL services run in K8s
 # Use with: helm install activable deploy/helm/activable -f deploy/helm/activable/values-local.yaml
 #
-# Deploys: Postgres+AGE (StatefulSet) + Floci (Deployment) + Activable GraphQL API
+# Deploys: Postgres+AGE (StatefulSet) + LocalStack v4.7+ (Deployment) + Activable GraphQL API
 # Zero Docker Compose. Everything on Docker Desktop Kubernetes.
 
 replicaCount: 1
@@ -39,19 +39,18 @@ postgres:
   database: "activable"
   storageSize: "2Gi"
 
-# Enable Floci AWS emulator in K8s (Deployment)
-floci:
+# Enable LocalStack v4.7+ AWS emulator in K8s (Deployment)
+localstack:
   enabled: true
-  image: "floci/floci:latest"
+  image: "localstack/localstack:4.7"
   region: "us-east-1"
-  accountId: "000000000000"
   resources:
     requests:
-      memory: "256Mi"
-      cpu: "250m"
+      memory: "512Mi"
+      cpu: "500m"
     limits:
-      memory: "1Gi"
-      cpu: "1"
+      memory: "2Gi"
+      cpu: "2"
 
 # Environment variables injected into the Activable server pod
 environment:
@@ -60,7 +59,7 @@ environment:
   ACTIVABLE_POOL_SIZE: "10"
   ACTIVABLE_BATCH_SIZE: "500"
   ACTIVABLE_REGIONS: "us-east-1"
-  AWS_ENDPOINT_URL: "http://activable-floci:4566"
+  AWS_ENDPOINT_URL: "http://activable-localstack:4566"
   AWS_ACCESS_KEY_ID: "test"
   AWS_SECRET_ACCESS_KEY: "test"
   AWS_DEFAULT_REGION: "us-east-1"

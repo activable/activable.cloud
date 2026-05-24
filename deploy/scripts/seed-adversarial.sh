@@ -1,31 +1,27 @@
 #!/bin/bash
 
 ################################################################################
-# seed-floci-adversarial.sh
+# seed-adversarial.sh
 #
-# Idempotent script to seed Floci (LocalStack mock AWS) with adversarial IAM
+# Idempotent script to seed LocalStack v4.7+ (AWS mock) with adversarial IAM
 # scenarios for SkyEye validation testing.
 #
 # Scenarios:
 #   1. CloudFormation Service Role Trap
-#   2. GitHub Actions OIDC Configuration Drift (SKIPPED — Floci limitation)
+#   2. GitHub Actions OIDC Configuration Drift
 #   3. S3 Bucket Policy Principal Boundary Confusion
 #   4. KMS CreateGrant Lateral Movement
 #
 # Usage:
-#   export FLOCI_ENDPOINT="http://activable-floci:4566"
-#   ./seed-floci-adversarial.sh
+#   export AWS_ENDPOINT_URL="http://activable-localstack:4566"
+#   ./seed-adversarial.sh
 #
 # Routing Model:
-#   Floci collapses all AWS accounts to a single default account (000000000000).
-#   AWS_ACCESS_KEY_ID is treated as a documentation marker only; all calls use
-#   AWS_ACCESS_KEY_ID=test. Trust policies reference the 4-account model from
-#   scenario design docs. The cross-account ARNs (e.g., arn:aws:iam::111111111111:role/...)
-#   will appear as "phantom edges" in the graph — dangling references to principals from
-#   other accounts that Floci collapses into the default account. This pattern IS expected
-#   for testing IAM risk detection logic.
+#   LocalStack v4.7+ supports multi-account routing via AWS_ACCESS_KEY_ID.
+#   Set AWS_ACCESS_KEY_ID to the 12-digit account ID; LocalStack routes the entity to that account.
+#   Trust policies reference the 4-account model from scenario design docs.
 #
-# Account ID references (documentation only; all map to Floci default 000000000000):
+# Account ID references (routed via AWS_ACCESS_KEY_ID):
 #   111111111111 = development
 #   222222222222 = staging
 #   333333333333 = production
@@ -36,8 +32,21 @@
 set -euo pipefail
 
 # Configuration
-FLOCI_ENDPOINT="${FLOCI_ENDPOINT:-http://activable-floci:4566}"
+AWS_ENDPOINT_URL="${AWS_ENDPOINT_URL:-http://activable-localstack:4566}"
 REGION="us-east-1"
+
+# Wait for LocalStack to be ready (60s timeout)
+echo "Waiting for LocalStack to be ready..."
+for i in $(seq 1 60); do
+  if AWS_ACCESS_KEY_ID=test AWS_SECRET_ACCESS_KEY=test \
+     aws --endpoint-url "$AWS_ENDPOINT_URL" --region "$REGION" iam list-roles >/dev/null 2>&1; then
+    echo "LocalStack ready after ${i}s"
+    break
+  fi
+  sleep 1
+  if [ "$i" = "60" ]; then echo "LocalStack not ready after 60s" >&2; exit 1; fi
+done
+echo ""
 
 # Account IDs
 DEV_ACCOUNT="111111111111"
@@ -47,17 +56,15 @@ SECRETS_ACCOUNT="444444444444"
 
 # Helper function: run aws-cli in a specific account
 # Usage: aws_in_account <account_id> <aws subcommand> <args...>
-# NOTE: account_id is DOCUMENTATION ONLY. Floci routes all calls to the default account
-# (000000000000), regardless of AWS_ACCESS_KEY_ID. We use a fixed AWS_ACCESS_KEY_ID=test
-# for all calls. The account_id parameter is kept for readability and to preserve the
-# scenario's intended cross-account references (they will appear as phantom edges in the
-# graph, which IS the expected threat pattern).
+# NOTE: account_id is routed via AWS_ACCESS_KEY_ID to LocalStack multi-account model.
+# The account_id parameter is used for readability and to preserve the scenario's intended
+# cross-account references.
 aws_in_account() {
     local account_id="$1"
     shift
-    AWS_ACCESS_KEY_ID="test" \
+    AWS_ACCESS_KEY_ID="$account_id" \
     AWS_SECRET_ACCESS_KEY="test" \
-    aws --endpoint-url "$FLOCI_ENDPOINT" \
+    aws --endpoint-url "$AWS_ENDPOINT_URL" \
         --region "$REGION" \
         "$@"
 }
@@ -111,8 +118,8 @@ delete_kms_key_safe() {
     aws_in_account "$account_id" kms schedule-key-deletion --key-id "$key_id" --pending-window-in-days 7 2>/dev/null || { echo "WARN: Failed to schedule key deletion for $key_id (may not exist)"; }
 }
 
-echo "=== Seeding Floci Adversarial Scenarios ==="
-echo "FLOCI_ENDPOINT: $FLOCI_ENDPOINT"
+echo "=== Seeding LocalStack Adversarial Scenarios ==="
+echo "AWS_ENDPOINT_URL: $AWS_ENDPOINT_URL"
 echo "REGION: $REGION"
 echo ""
 
@@ -377,12 +384,10 @@ echo ""
 ################################################################################
 # SCENARIO 2: GitHub Actions OIDC Configuration Drift
 # Accounts: staging (222222222222), prod (333333333333)
-# STATUS: SKIPPED — Floci does not support OIDC IAM operations (UnsupportedOperation)
+# STATUS: ENABLED — LocalStack v4.7+ supports OIDC IAM operations
 ################################################################################
 
-# To re-enable Scenario 2 when Floci adds OIDC support, change the condition below:
-# if false; then ... fi  →  if true; then ... fi
-if false; then
+if true; then
 
 echo "--- Scenario 2: GitHub Actions OIDC Configuration Drift ---"
 
@@ -569,8 +574,7 @@ echo "✓ Scenario 2 complete: GitHub OIDC (drifted) → github-actions-role →
 echo ""
 
 else
-    echo "[SKIP] Scenario 2: OIDC unsupported by Floci (UnsupportedOperation)"
-    echo "  Re-enable by changing 'if false' to 'if true' at line ~300."
+    echo "[SKIP] Scenario 2: OIDC disabled"
     echo ""
 fi
 
@@ -725,7 +729,6 @@ KMS_KEY_ID=$(aws_in_account "$SECRETS_ACCOUNT" kms create-key \
 echo "KMS Key ID: $KMS_KEY_ID"
 
 # Update KMS key policy to allow dev account root and application role to use the key
-# NOTE: Floci collapses all accounts to 000000000000, so we use that for the actual policy
 aws_in_account "$SECRETS_ACCOUNT" kms put-key-policy \
     --key-id "$KMS_KEY_ID" \
     --policy-name "default" \
@@ -832,4 +835,4 @@ echo "    - (Scenario 4, key policy allows dev account root to CreateGrant)"
 echo ""
 echo "All scenarios are idempotent and can be re-run safely."
 echo ""
-echo "Note: Scenario 2 (OIDC) skipped — Floci limitation. Scenarios 1, 3, 4 seeded."
+echo "Note: All 5 scenarios seeded (1, 2 OIDC, 3, 4)."
