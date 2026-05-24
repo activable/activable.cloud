@@ -1,4 +1,5 @@
 pub mod batch_runner;
+pub mod cascade;
 pub mod config;
 pub mod enumeration;
 pub mod finding;
@@ -12,6 +13,7 @@ pub mod stale_checker;
 pub mod types;
 
 pub use batch_runner::{batch_score_all, score_single_principal, BatchResult};
+pub use cascade::harmonic_mean;
 pub use config::{load_risk_config, validate_signal_weights, RiskConfig, SeverityThresholds};
 pub use enumeration::{
     enumerate_principals, run_iterative_scoring, EnumeratedPrincipal, IterationConfig,

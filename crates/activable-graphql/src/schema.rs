@@ -117,6 +117,24 @@ impl QueryRoot {
     ) -> async_graphql::Result<Option<GqlResourcePolicyRisks>> {
         resolvers::resource_policy_risks::resource_policy_risks(ctx, bucket_name, key_id).await
     }
+
+    /// Get account-level risks aggregated across all principals.
+    async fn account_risks(
+        &self,
+        ctx: &Context<'_>,
+        account_id: String,
+    ) -> async_graphql::Result<GqlAccountRisks> {
+        resolvers::account_risks::account_risks(ctx, account_id).await
+    }
+
+    /// Get federation (OIDC) risks for an AWS account.
+    async fn federation_risks(
+        &self,
+        ctx: &Context<'_>,
+        account_id: String,
+    ) -> async_graphql::Result<GqlFederationRisks> {
+        resolvers::federation_risks::federation_risks(ctx, account_id).await
+    }
 }
 
 /// Root mutation type.

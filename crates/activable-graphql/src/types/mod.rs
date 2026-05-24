@@ -188,6 +188,79 @@ pub struct GqlResourcePolicyRisks {
     pub policy_evaluator_version: String,
 }
 
+/// GraphQL representation of a severity value with matched rules
+#[derive(SimpleObject, Clone, Debug)]
+pub struct GqlSeverityValue {
+    pub severity: risk::GqlSeverity,
+    pub score: f64,
+    pub matched_rule_ids: Vec<String>,
+}
+
+/// GraphQL representation of account-level signal summary
+#[derive(SimpleObject, Clone, Debug)]
+pub struct GqlAccountSignalSummary {
+    pub cf_escalation: Option<GqlSeverityValue>,
+    pub oidc_drift: Option<GqlSeverityValue>,
+    pub s3_boundary: Option<GqlSeverityValue>,
+    pub kms_grant: Option<GqlSeverityValue>,
+}
+
+/// GraphQL representation of a principal's risk assessment
+#[derive(SimpleObject, Clone, Debug)]
+pub struct GqlPrincipalRisk {
+    pub principal_id: String,
+    pub score: f64,
+    pub severity: risk::GqlSeverity,
+    pub matched_rules: Vec<risk::GqlMatchedRule>,
+}
+
+/// GraphQL representation of account-level risks with cascade aggregation
+#[derive(SimpleObject, Clone, Debug)]
+#[graphql(complex)]
+pub struct GqlAccountRisks {
+    pub account_id: String,
+    pub all_signals: GqlAccountSignalSummary,
+    pub cascade_risk_score: f64,
+    pub cascade_severity: risk::GqlSeverity,
+    pub computed_at: String,
+    #[graphql(skip)]
+    pub top_principals: Vec<GqlPrincipalRisk>,
+}
+
+/// GraphQL representation of a trust policy version
+#[derive(SimpleObject, Clone, Debug)]
+pub struct GqlTrustPolicyVersion {
+    pub version: String,
+    pub created_at: String,
+    pub condition: Option<String>,
+}
+
+/// GraphQL representation of drift analysis
+#[derive(SimpleObject, Clone, Debug)]
+pub struct GqlDriftAnalysis {
+    pub direction: String,
+    pub severity: risk::GqlSeverity,
+    pub removed_condition_keys: Vec<String>,
+}
+
+/// GraphQL representation of an OIDC provider
+#[derive(SimpleObject, Clone, Debug)]
+pub struct GqlOidcProvider {
+    pub provider: String,
+    pub trust_policy_versions: Vec<GqlTrustPolicyVersion>,
+    pub drift: Option<GqlDriftAnalysis>,
+}
+
+/// GraphQL representation of federation (OIDC) risks
+#[derive(SimpleObject, Clone, Debug)]
+pub struct GqlFederationRisks {
+    pub account_id: String,
+    pub oidc_providers: Vec<GqlOidcProvider>,
+    pub risk_score: f64,
+    pub severity: risk::GqlSeverity,
+    pub notice: Option<String>,
+}
+
 // Re-export risk types for convenient access via `use crate::types::*;`
 #[allow(unused_imports)]
 pub use risk::{GqlMatchedRule, GqlRiskAssessment, GqlSeverity, GqlSignalContribution};
