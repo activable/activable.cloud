@@ -1,0 +1,18 @@
+id: kms-grant-001
+name: "kms:CreateGrant cross-account lateral movement"
+category: credential-access
+services:
+  - kms
+permissions:
+  required:
+    - permission: "kms:CreateGrant"
+      resourceConstraints: "Can create grants on KMS keys"
+description: |
+  Principal with kms:CreateGrant on a key whose key-policy allows the
+  actor's account-root can grant other principals decryption authority.
+  This enables lateral movement across accounts that share an organization-wide
+  KMS key for encryption/decryption.
+
+  Attack: A compromised principal in account A can create a grant on an
+  organization-wide KMS key, delegating decrypt permission to a principal
+  in account B.

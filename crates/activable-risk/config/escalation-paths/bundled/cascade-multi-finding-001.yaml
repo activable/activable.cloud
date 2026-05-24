@@ -1,0 +1,14 @@
+id: cascade-multi-finding-001
+name: "Multiple high-severity findings on same principal (cascade)"
+category: cascade
+services: []
+permissions:
+  required: []
+description: |
+  Composite finding: fires when 3 or more tier-3-or-higher rules have already
+  matched on this principal in the current scoring run. This cascade rule
+  indicates a multi-vector attack surface that significantly increases risk.
+
+  The cascade rule contributes an additional boost to the overall risk score,
+  recognizing that multiple simultaneous privilege escalation paths compound
+  the risk and reduce the time/skill needed for successful exploitation.

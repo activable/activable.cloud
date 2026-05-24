@@ -30,6 +30,7 @@ static EMBEDDED_RULES: Dir = include_dir!("$CARGO_MANIFEST_DIR/config/escalation
 /// Category → Severity Tier mapping
 fn category_to_tier(category: &str) -> u8 {
     match category {
+        "cascade" => 1,
         "self-escalation" => 1,
         "new-passrole" | "passrole" => 2,
         "credential-access" | "new-principal" => 3,
@@ -145,6 +146,11 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_category_to_tier_cascade() {
+        assert_eq!(category_to_tier("cascade"), 1);
+    }
+
+    #[test]
     fn test_category_to_tier_self_escalation() {
         assert_eq!(category_to_tier("self-escalation"), 1);
     }
@@ -181,5 +187,25 @@ mod tests {
         assert_eq!(tier_to_boost(3), 0.05);
         assert_eq!(tier_to_boost(4), 0.03);
         assert_eq!(tier_to_boost(5), 0.02);
+    }
+
+    #[test]
+    fn test_load_bundled_rules() {
+        let rules = load_rules_from_embedded().expect("Failed to load bundled rules");
+        assert!(rules.len() >= 12, "Expected at least 12 bundled rules, got {}", rules.len());
+
+        // Verify scenario rules are present
+        let rule_ids: Vec<&str> = rules.iter().map(|r| r.id.as_str()).collect();
+        assert!(rule_ids.contains(&"cf-passrole-001"), "Missing cf-passrole-001");
+        assert!(rule_ids.contains(&"s3-org-id-001"), "Missing s3-org-id-001");
+        assert!(rule_ids.contains(&"kms-grant-001"), "Missing kms-grant-001");
+        assert!(rule_ids.contains(&"iam-update-trust-001"), "Missing iam-update-trust-001");
+        assert!(rule_ids.contains(&"cascade-multi-finding-001"), "Missing cascade-multi-finding-001");
+
+        // Verify cascade rule has correct category and tier
+        let cascade = rules.iter().find(|r| r.id == "cascade-multi-finding-001").unwrap();
+        assert_eq!(cascade.category, "cascade");
+        assert_eq!(cascade.severity_tier, 1);
+        assert_eq!(cascade.boost, 0.15);
     }
 }

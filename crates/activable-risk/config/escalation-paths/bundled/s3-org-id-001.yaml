@@ -1,0 +1,18 @@
+id: s3-org-id-001
+name: "s3:PutBucketPolicy with loose organizational boundary"
+category: data-access
+services:
+  - s3
+permissions:
+  required:
+    - permission: "s3:PutBucketPolicy"
+      resourceConstraints: "Can modify bucket policy"
+description: |
+  Principal can write bucket policies that use aws:PrincipalOrgID as the
+  only restriction. Organization-wide org-ID is not a meaningful trust boundary
+  because it admits all principals across all accounts in the organization.
+  An attacker could write a policy allowing any org-member principal to access
+  sensitive data.
+
+  Mitigation: Require additional conditions like PrincipalAccount or explicit
+  role ARNs in bucket policies.
