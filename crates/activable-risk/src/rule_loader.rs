@@ -1,9 +1,12 @@
-use crate::types::{EscalationRule, Prerequisites, RequiredPermission, RuleError};
+use crate::types::{CascadeTrigger, EscalationRule, Prerequisites, RequiredPermission, RuleError, RuleRequirement};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 use include_dir::{include_dir, Dir};
 
-/// Intermediate YAML deserialization structure
+/// Intermediate YAML deserialization structure for backward compatibility.
+/// The `permissions` field can be either:
+/// - (old) `permissions: { required: [...] }` → implicitly AllOf
+/// - (new) `permissions: { all_of: [...] }` or `permissions: { any_of: [...] }`
 #[derive(Debug, Deserialize, Serialize)]
 struct YamlRule {
     id: String,
@@ -11,17 +14,13 @@ struct YamlRule {
     category: String,
     services: Vec<String>,
     #[serde(default)]
-    permissions: PermissionsContainer,
+    permissions: Option<serde_json::Value>,
     #[serde(default)]
     prerequisites: Prerequisites,
     #[serde(default)]
-    description: Option<String>,
-}
-
-#[derive(Debug, Deserialize, Serialize, Default)]
-struct PermissionsContainer {
+    trigger: Option<CascadeTrigger>,
     #[serde(default)]
-    required: Vec<RequiredPermission>,
+    description: Option<String>,
 }
 
 /// Embedded rules bundled at compile time
@@ -50,6 +49,65 @@ fn tier_to_boost(tier: u8) -> f64 {
     }
 }
 
+/// Helper to parse permissions field — handles both old and new schema.
+fn parse_permissions(permissions_value: Option<serde_json::Value>) -> Result<Option<RuleRequirement>, RuleError> {
+    match permissions_value {
+        None => Ok(None),
+        Some(val) => {
+            // Empty object {} means no permissions (for cascade rules)
+            if let Some(obj) = val.as_object() {
+                if obj.is_empty() {
+                    return Ok(None);
+                }
+            }
+
+            // Try to deserialize as RuleRequirement (handles all_of, any_of, or a single permission)
+            let req: RuleRequirement = match serde_json::from_value::<RuleRequirement>(val.clone()) {
+                Ok(r) => r,
+                Err(_) => {
+                    // Fall back: if it looks like old schema { required: [...] }, extract required
+                    if let Some(obj) = val.as_object() {
+                        if let Some(required_val) = obj.get("required") {
+                            match serde_json::from_value::<Vec<RequiredPermission>>(required_val.clone()) {
+                                Ok(perms) => {
+                                    // Implicit AllOf: wrap in AllOf { all_of: [...] }
+                                    RuleRequirement::AllOf {
+                                        all_of: perms
+                                            .into_iter()
+                                            .map(RuleRequirement::Single)
+                                            .collect(),
+                                    }
+                                }
+                                Err(e) => {
+                                    return Err(RuleError::ParseError(format!(
+                                        "failed to parse permissions.required: {}",
+                                        e
+                                    )))
+                                }
+                            }
+                        } else {
+                            return Err(RuleError::ParseError(
+                                "permissions field is malformed — expected all_of, any_of, or required"
+                                    .to_string(),
+                            ));
+                        }
+                    } else {
+                        return Err(RuleError::ParseError(
+                            "permissions field must be an object".to_string(),
+                        ));
+                    }
+                }
+            };
+
+            // Validate depth
+            req.validate_depth()
+                .map_err(|e| RuleError::DepthExceeded(format!("rule requirement: {}", e)))?;
+
+            Ok(Some(req))
+        }
+    }
+}
+
 /// Parse a single YAML rule string
 pub fn parse_rule(yaml: &str) -> Result<EscalationRule, RuleError> {
     let yaml_rule: YamlRule =
@@ -58,15 +116,26 @@ pub fn parse_rule(yaml: &str) -> Result<EscalationRule, RuleError> {
     let severity_tier = category_to_tier(&yaml_rule.category);
     let boost = tier_to_boost(severity_tier);
 
+    let permissions = parse_permissions(yaml_rule.permissions)?;
+
+    // Validation: if not a cascade rule, empty permissions is an error
+    if permissions.is_none() && yaml_rule.category != "cascade" {
+        return Err(RuleError::ParseError(format!(
+            "rule {}: non-cascade rules must have permissions",
+            yaml_rule.id
+        )));
+    }
+
     Ok(EscalationRule {
         id: yaml_rule.id,
         name: yaml_rule.name,
         category: yaml_rule.category,
         services: yaml_rule.services,
-        permissions_required: yaml_rule.permissions.required,
+        permissions,
         prerequisites: yaml_rule.prerequisites,
         severity_tier,
         boost,
+        trigger: yaml_rule.trigger,
         description: yaml_rule.description,
     })
 }

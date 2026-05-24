@@ -2,8 +2,11 @@ id: cascade-multi-finding-001
 name: "Multiple high-severity findings on same principal (cascade)"
 category: cascade
 services: []
-permissions:
-  required: []
+permissions: {}
+trigger:
+  match_count: 3
+  min_tier: 3
+  scope: Principal
 description: |
   Composite finding: fires when 3 or more tier-3-or-higher rules have already
   matched on this principal in the current scoring run. This cascade rule

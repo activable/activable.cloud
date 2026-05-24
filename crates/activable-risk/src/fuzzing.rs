@@ -198,7 +198,23 @@ mod tests {
     use super::*;
 
     fn test_rule(id: &str, permissions: &[&str], tier: u8) -> EscalationRule {
-        use crate::types::{Prerequisites, RequiredPermission};
+        use crate::types::{Prerequisites, RequiredPermission, RuleRequirement};
+
+        let permissions_req = if permissions.is_empty() {
+            None
+        } else {
+            Some(RuleRequirement::AllOf {
+                all_of: permissions
+                    .iter()
+                    .map(|p| {
+                        RuleRequirement::Single(RequiredPermission {
+                            permission: p.to_string(),
+                            resource_constraints: None,
+                        })
+                    })
+                    .collect(),
+            })
+        };
 
         EscalationRule {
             id: id.to_string(),
@@ -211,13 +227,7 @@ mod tests {
                 _ => "other".to_string(),
             },
             services: vec!["test".to_string()],
-            permissions_required: permissions
-                .iter()
-                .map(|p| RequiredPermission {
-                    permission: p.to_string(),
-                    resource_constraints: None,
-                })
-                .collect(),
+            permissions: permissions_req,
             prerequisites: Prerequisites::default(),
             severity_tier: tier,
             boost: match tier {
@@ -227,6 +237,7 @@ mod tests {
                 4 => 0.03,
                 _ => 0.02,
             },
+            trigger: None,
             description: None,
         }
     }
