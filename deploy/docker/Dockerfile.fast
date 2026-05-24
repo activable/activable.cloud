@@ -1,6 +1,0 @@
-FROM debian:bookworm-slim
-WORKDIR /app
-RUN apt-get update -qq && apt-get install -y -qq --no-install-recommends ca-certificates curl libpq5 && rm -rf /var/lib/apt/lists/*
-COPY target-linux/release/activable-graphql /app/activable-graphql
-EXPOSE 8080
-CMD ["/app/activable-graphql"]
