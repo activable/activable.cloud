@@ -7,6 +7,7 @@ pub mod ingest;
 pub mod key_management_risks;
 pub mod node;
 pub mod path;
+pub mod policy_helpers;
 pub mod resource_policy_risks;
 pub mod risk;
 pub mod subgraph;

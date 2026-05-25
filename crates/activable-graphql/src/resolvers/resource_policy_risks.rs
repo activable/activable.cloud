@@ -4,6 +4,7 @@ use crate::types::{
     GqlCrossAccountAccess, GqlResourcePolicy, GqlResourcePolicyRisks, GqlResourcePolicyStatement,
     GqlSeverity,
 };
+use crate::resolvers::policy_helpers::{policy_value_to_json, extract_account_id_from_arn};
 use activable_graph::GraphClient;
 use async_graphql::Context;
 use std::collections::HashMap;
@@ -32,22 +33,6 @@ pub async fn resource_policy_risks(
                 "Provide only one of bucketName or keyId",
             ))
         }
-    }
-}
-
-/// Convert a Policy.document agtype value to a JSON string.
-/// The document property may decode from AGE as either a JSON string (quoted scalar)
-/// or a JSON object (map), depending on how it was stored. Normalize to the policy JSON
-/// string either way so the parser receives valid input.
-fn policy_value_to_json(v: &serde_json::Value) -> Option<String> {
-    if let Some(s) = v.as_str() {
-        // Already a string — use it directly
-        Some(s.to_string())
-    } else if v.is_object() || v.is_array() {
-        // Object or array — serialize to JSON string
-        Some(v.to_string())
-    } else {
-        None
     }
 }
 
@@ -337,21 +322,6 @@ fn extract_cross_account_access(
             severity,
         })
         .collect()
-}
-
-/// Extract account ID from a principal ARN.
-/// Handles ARNs like: arn:aws:iam::123456789012:role/RoleName
-/// Returns the 12-digit account ID if present and non-wildcard.
-fn extract_account_id_from_arn(principal_arn: &str) -> Option<String> {
-    // Pattern: arn:aws:iam::123456789012:...
-    let parts: Vec<&str> = principal_arn.split(':').collect();
-    if parts.len() >= 5 {
-        let account = parts[4];
-        if !account.is_empty() && account != "*" && account.len() == 12 {
-            return Some(account.to_string());
-        }
-    }
-    None
 }
 
 /// Extract account ID from a principal ARN.

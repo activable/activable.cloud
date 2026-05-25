@@ -10,8 +10,58 @@ use aws_config::SdkConfig;
 use deadpool_postgres::Pool;
 use serde_json::json;
 use sha2::Digest;
+use std::collections::HashSet;
 use std::sync::Arc;
 use tracing::{debug, warn};
+
+/// Build a Principal node from an IAM principal ARN.
+/// Returns a JSON node with id, name, principal_type, and account_id.
+/// Deduplicates based on ARN to ensure one node per unique principal.
+fn build_principal_node(principal_arn: &str) -> serde_json::Value {
+    // Determine principal type: check more specific types first
+    let principal_type = if principal_arn.contains(".amazonaws.com") {
+        "Service"
+    } else if principal_arn.contains(":root") {
+        "AccountRoot"
+    } else if principal_arn.contains(":role/") {
+        "Role"
+    } else if principal_arn.contains(":user/") {
+        "User"
+    } else {
+        "Principal"
+    };
+
+    // Extract account ID from ARN (part 4 of colon-separated fields)
+    let account_id = principal_arn
+        .split(':')
+        .nth(4)
+        .unwrap_or("000000000000")
+        .to_string();
+
+    // Use last segment of ARN as display name for readability
+    // Try slash-separated first (roles, users), then colon-separated (root)
+    let name = if principal_arn.contains('/') {
+        principal_arn
+            .rsplit('/')
+            .next()
+            .unwrap_or(principal_arn)
+            .to_string()
+    } else {
+        // For arns like ...::123456789012:root, extract "root"
+        principal_arn
+            .rsplit(':')
+            .next()
+            .unwrap_or(principal_arn)
+            .to_string()
+    };
+
+    json!({
+        "id": principal_arn,
+        "name": name,
+        "principal_type": principal_type,
+        "account_id": account_id,
+    })
+}
 
 /// KMS enricher that extracts key policies and creates access edges.
 pub struct KmsEnricher {
@@ -83,9 +133,12 @@ impl NativeEnricher for KmsEnricher {
 
         let mut key_nodes = Vec::new();
         let mut policy_nodes = Vec::new();
+        let mut principal_nodes = Vec::new();
         let mut has_key_policy_edges: Vec<(String, String)> = Vec::new();
         let mut allows_access_edges: Vec<(String, String, serde_json::Value)> = Vec::new();
         let mut kms_grantable_edges: Vec<(String, String, serde_json::Value)> = Vec::new();
+        // Track unique principals encountered in policy statements (for both AllowsAccessFrom and KmsGrantable edges)
+        let mut grant_principals: HashSet<String> = HashSet::new();
 
         for key_id in key_ids {
             // Describe the key
@@ -159,6 +212,7 @@ impl NativeEnricher for KmsEnricher {
                                                                 "condition_keys": condition_keys_json,
                                                             }),
                                                         ));
+                                                        grant_principals.insert(principal.clone());
                                                     }
                                                     allows_access_edges.push((
                                                         key_arn.clone(),
@@ -177,6 +231,7 @@ impl NativeEnricher for KmsEnricher {
                                                                 "condition_keys": condition_keys_json,
                                                             }),
                                                         ));
+                                                        grant_principals.insert(principal.clone());
                                                     }
                                                 }
                                             }
@@ -208,6 +263,7 @@ impl NativeEnricher for KmsEnricher {
                                                                     "condition_keys": condition_keys_json,
                                                                 }),
                                                             ));
+                                                            grant_principals.insert(principal.clone());
                                                         }
                                                         kms_grantable_edges.push((
                                                             WILDCARD_PRINCIPAL_ID.to_string(),
@@ -226,6 +282,7 @@ impl NativeEnricher for KmsEnricher {
                                                                     "condition_keys": condition_keys_json,
                                                                 }),
                                                             ));
+                                                            grant_principals.insert(principal.clone());
                                                         }
                                                     }
                                                 }
@@ -256,6 +313,11 @@ impl NativeEnricher for KmsEnricher {
             }
         }
 
+        // Build Principal nodes from grant principals (for KmsGrantable + AllowsAccessFrom edge endpoints)
+        for principal in grant_principals {
+            principal_nodes.push(build_principal_node(&principal));
+        }
+
         // Write nodes and edges
         let mut total_edges = 0u32;
 
@@ -267,6 +329,11 @@ impl NativeEnricher for KmsEnricher {
         if !policy_nodes.is_empty() {
             debug!(count = policy_nodes.len(), "Writing Policy nodes");
             load_nodes(pool.clone(), graph_name, "Policy", &policy_nodes, 100).await?;
+        }
+
+        if !principal_nodes.is_empty() {
+            debug!(count = principal_nodes.len(), "Writing Principal nodes for KMS grant principals");
+            load_nodes(pool.clone(), graph_name, "Principal", &principal_nodes, 100).await?;
         }
 
         if !has_key_policy_edges.is_empty() {
@@ -312,5 +379,71 @@ impl NativeEnricher for KmsEnricher {
             service: self.service().to_string(),
             edges_created: total_edges,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_build_principal_node_account_root() {
+        let arn = "arn:aws:iam::123456789012:root";
+        let node = build_principal_node(arn);
+        assert_eq!(node["id"].as_str().unwrap(), arn);
+        assert_eq!(node["principal_type"].as_str().unwrap(), "AccountRoot");
+        assert_eq!(node["account_id"].as_str().unwrap(), "123456789012");
+        assert_eq!(node["name"].as_str().unwrap(), "root");
+    }
+
+    #[test]
+    fn test_build_principal_node_role() {
+        let arn = "arn:aws:iam::000000000000:role/application-role";
+        let node = build_principal_node(arn);
+        assert_eq!(node["id"].as_str().unwrap(), arn);
+        assert_eq!(node["principal_type"].as_str().unwrap(), "Role");
+        assert_eq!(node["account_id"].as_str().unwrap(), "000000000000");
+        assert_eq!(node["name"].as_str().unwrap(), "application-role");
+    }
+
+    #[test]
+    fn test_build_principal_node_user() {
+        let arn = "arn:aws:iam::999999999999:user/testuser";
+        let node = build_principal_node(arn);
+        assert_eq!(node["id"].as_str().unwrap(), arn);
+        assert_eq!(node["principal_type"].as_str().unwrap(), "User");
+        assert_eq!(node["account_id"].as_str().unwrap(), "999999999999");
+        assert_eq!(node["name"].as_str().unwrap(), "testuser");
+    }
+
+    #[test]
+    fn test_build_principal_node_service() {
+        let arn = "arn:aws:iam::123456789012:role/aws-service-role/example.amazonaws.com/AWSServiceRoleForExample";
+        let node = build_principal_node(arn);
+        assert_eq!(node["principal_type"].as_str().unwrap(), "Service");
+        assert_eq!(node["account_id"].as_str().unwrap(), "123456789012");
+    }
+
+    #[test]
+    fn test_build_principal_node_malformed_arn() {
+        let arn = "malformed-arn";
+        let node = build_principal_node(arn);
+        assert_eq!(node["id"].as_str().unwrap(), arn);
+        assert_eq!(node["account_id"].as_str().unwrap(), "000000000000"); // Default
+        assert_eq!(node["principal_type"].as_str().unwrap(), "Principal"); // Fallback type
+    }
+
+    #[test]
+    fn test_principal_node_deduplication_via_hashset() {
+        let mut principals: HashSet<String> = HashSet::new();
+        let arn1 = "arn:aws:iam::123456789012:role/test-role";
+        let arn2 = "arn:aws:iam::999999999999:role/another-role";
+
+        principals.insert(arn1.to_string());
+        principals.insert(arn2.to_string());
+        principals.insert(arn1.to_string()); // Duplicate
+
+        // Should only have 2 unique principals
+        assert_eq!(principals.len(), 2);
     }
 }

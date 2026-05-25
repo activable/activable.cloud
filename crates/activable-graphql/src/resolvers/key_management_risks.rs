@@ -3,6 +3,7 @@
 use crate::types::{
     GqlCreateGrantRisk, GqlKeyManagementRisks, GqlKeyPolicy, GqlKeyPolicyStatement, GqlSeverity,
 };
+use crate::resolvers::policy_helpers::{policy_value_to_json, extract_account_id_from_arn};
 use activable_graph::GraphClient;
 use async_graphql::Context;
 
@@ -52,7 +53,8 @@ pub async fn key_management_risks(
         .map(|s| s.to_string())
         .unwrap_or(key_arn.clone());
 
-    let policy_doc = first[1].as_str();
+    let policy_doc_owned = policy_value_to_json(&first[1]);
+    let policy_doc = policy_doc_owned.as_deref();
     let grantable_principals: Vec<String> = first[2]
         .as_array()
         .map(|arr| {
@@ -77,8 +79,19 @@ pub async fn key_management_risks(
     let wildcard_principal = grantable_principals
         .iter()
         .any(|p| p.contains("*") || p == "*");
-    let severity = compute_grant_severity(grantable, wildcard_principal);
-    let risk_score = compute_key_risk_score(grantable, wildcard_principal);
+
+    // Extract the key's account ID from the ARN
+    let key_account = extract_key_account(&key_arn_val);
+
+    // Detect cross-account grant capability
+    let has_cross_account_grant = grantable && grantable_principals.iter().any(|p| {
+        extract_account_id_from_arn(p)
+            .map(|acct| acct != key_account)
+            .unwrap_or(false)
+    });
+
+    let severity = compute_grant_severity(grantable, wildcard_principal, has_cross_account_grant);
+    let risk_score = compute_key_risk_score(grantable, wildcard_principal, has_cross_account_grant);
 
     let create_grant_risk = GqlCreateGrantRisk {
         grantable,
@@ -187,23 +200,44 @@ fn parse_policy_statement(stmt: &serde_json::Value) -> Option<GqlKeyPolicyStatem
     })
 }
 
-/// Compute grant severity: HIGH if wildcard/external, MEDIUM if same-account-root, LOW otherwise.
-fn compute_grant_severity(grantable: bool, wildcard: bool) -> GqlSeverity {
+/// Compute grant severity: HIGH if wildcard or cross-account, MEDIUM if same-account grantable, LOW otherwise.
+/// - Wildcard principal → anyone can kms:CreateGrant (highest escalation) → HIGH
+/// - Cross-account principal → external account can escalate (privilege boundary breach) → HIGH
+/// - Same-account grantable → restricted but still risky → MEDIUM
+/// - Not grantable → LOW
+fn compute_grant_severity(grantable: bool, wildcard: bool, cross_account: bool) -> GqlSeverity {
     if !grantable {
         GqlSeverity::Low
-    } else if wildcard {
+    } else if wildcard || cross_account {
         GqlSeverity::High
     } else {
         GqlSeverity::Medium
     }
 }
 
-/// Compute key risk score: higher for wildcard/grantable, lower for restricted.
-fn compute_key_risk_score(grantable: bool, wildcard: bool) -> f64 {
-    match (grantable, wildcard) {
-        (false, _) => 0.0,
-        (true, true) => 0.85,
-        (true, false) => 0.55,
+/// Compute key risk score based on grantability and principal scope.
+/// Scores reflect the escalation risk of kms:CreateGrant:
+/// - not grantable → 0.0 (no CreateGrant permission → no delegation risk)
+/// - grantable + wildcard → 0.90 (anyone can delegate the key to themselves → max escalation)
+/// - grantable + cross-account principal → 0.80 (external account can escalate key access → privilege boundary breach)
+/// - grantable + same-account only → 0.55 (restricted within org, but still allows delegation)
+fn compute_key_risk_score(grantable: bool, wildcard: bool, cross_account: bool) -> f64 {
+    match (grantable, wildcard, cross_account) {
+        (false, _, _) => 0.0,
+        (true, true, _) => 0.90,
+        (true, false, true) => 0.80,
+        (true, false, false) => 0.55,
+    }
+}
+
+/// Extract the account ID from a KMS key ARN.
+/// KMS ARN format: arn:aws:kms:region:account:key/uuid
+fn extract_key_account(key_arn: &str) -> String {
+    let parts: Vec<&str> = key_arn.split(':').collect();
+    if parts.len() >= 5 {
+        parts[4].to_string()
+    } else {
+        "000000000000".to_string() // Default if malformed
     }
 }
 
@@ -247,15 +281,23 @@ mod tests {
     #[test]
     fn severity_high_if_wildcard() {
         assert_eq!(
-            compute_grant_severity(true, true),
+            compute_grant_severity(true, true, false),
             GqlSeverity::High
         );
     }
 
     #[test]
-    fn severity_medium_if_grantable_no_wildcard() {
+    fn severity_high_if_cross_account() {
         assert_eq!(
-            compute_grant_severity(true, false),
+            compute_grant_severity(true, false, true),
+            GqlSeverity::High
+        );
+    }
+
+    #[test]
+    fn severity_medium_if_grantable_no_wildcard_same_account() {
+        assert_eq!(
+            compute_grant_severity(true, false, false),
             GqlSeverity::Medium
         );
     }
@@ -263,24 +305,43 @@ mod tests {
     #[test]
     fn severity_low_if_not_grantable() {
         assert_eq!(
-            compute_grant_severity(false, false),
+            compute_grant_severity(false, false, false),
             GqlSeverity::Low
         );
     }
 
     #[test]
     fn score_zero_if_not_grantable() {
-        assert_eq!(compute_key_risk_score(false, false), 0.0);
+        assert_eq!(compute_key_risk_score(false, false, false), 0.0);
     }
 
     #[test]
     fn score_high_if_wildcard_grantable() {
-        assert_eq!(compute_key_risk_score(true, true), 0.85);
+        assert_eq!(compute_key_risk_score(true, true, false), 0.90);
     }
 
     #[test]
-    fn score_medium_if_grantable_no_wildcard() {
-        assert_eq!(compute_key_risk_score(true, false), 0.55);
+    fn score_high_if_cross_account_grantable() {
+        assert_eq!(compute_key_risk_score(true, false, true), 0.80);
+    }
+
+    #[test]
+    fn score_medium_if_grantable_no_wildcard_same_account() {
+        assert_eq!(compute_key_risk_score(true, false, false), 0.55);
+    }
+
+    #[test]
+    fn extract_key_account_from_full_arn() {
+        let arn = "arn:aws:kms:us-east-1:444444444444:key/12345678-abcd-1234-abcd-123456789012";
+        let account = extract_key_account(arn);
+        assert_eq!(account, "444444444444");
+    }
+
+    #[test]
+    fn extract_key_account_from_malformed_arn() {
+        let arn = "invalid-arn";
+        let account = extract_key_account(arn);
+        assert_eq!(account, "000000000000"); // Default
     }
 
     #[test]
