@@ -1,4 +1,39 @@
-.PHONY: setup lint test test-integration build ingest verify clean dev-up dev-down dev-reset dev-seed dev-ingest dev-query dev-status dev-logs
+.PHONY: setup lint test test-integration build build-linux deploy-dev probe-accounts ingest verify clean dev-up dev-down dev-reset dev-seed dev-ingest dev-query dev-status dev-logs
+
+# Cross-compile activable-graphql for linux/arm64 (K8s pod target on M-series Mac).
+# Bakes the toolchain + zig PATH so we never re-diagnose homebrew rust shadowing rustup.
+# Uses sccache if available for incremental rebuild speedups (~10x after cold compile).
+RUSTUP_BIN := $(HOME)/.rustup/toolchains/1.95-aarch64-apple-darwin/bin
+ZIG_BIN    := /opt/homebrew/opt/zig@0.14/bin
+BUILD_PATH := $(RUSTUP_BIN):$(HOME)/.cargo/bin:$(ZIG_BIN):$(PATH)
+SCCACHE    := $(shell command -v sccache 2>/dev/null)
+
+RTK := $(shell command -v rtk 2>/dev/null)
+
+build-linux:
+	@echo "Building activable-graphql for aarch64-unknown-linux-gnu via zigbuild..."
+	@if [ -n "$(SCCACHE)" ]; then echo "sccache active: $(SCCACHE)"; fi
+	@if [ -z "$(RTK)" ]; then echo "warning: rtk not on PATH; build output will be unfiltered"; fi
+	PATH="$(BUILD_PATH)" RUSTC_WRAPPER="$(SCCACHE)" \
+		$(RTK) cargo zigbuild --target aarch64-unknown-linux-gnu --profile release-fast -p activable-graphql
+	@echo "✓ Linux binary ready: target/aarch64-unknown-linux-gnu/release-fast/activable-graphql"
+
+deploy-dev: build-linux
+	$(RTK) docker build -f deploy/docker/Dockerfile -t activable-server:dev .
+	$(RTK) kubectl rollout restart deployment/activable
+	$(RTK) kubectl rollout status deployment/activable --timeout=240s
+	@echo "✓ Deployed and rolled out"
+
+# Live-verify gate per CLAUDE.md §1.5 — query cascadeRiskScore for the four seeded accounts.
+# Usage: make probe-accounts GRAPHQL_URL=http://localhost:8080/graphql
+GRAPHQL_URL ?= http://localhost:8080/graphql
+probe-accounts:
+	@for acct in 111111111111 222222222222 333333333333 444444444444; do \
+		echo "=== account $$acct ==="; \
+		$(RTK) curl -sS -X POST -H "Content-Type: application/json" \
+			-d "{\"query\":\"{ accountRisks(accountId: \\\"$$acct\\\") { cascadeRiskScore cascadeSeverity allSignals { cfEscalation { score severity matchedRuleIds } } } }\"}" \
+			"$(GRAPHQL_URL)" | jq .; \
+	done
 
 setup:
 	@echo "Setting up development environment..."

@@ -216,6 +216,52 @@ the full subcommand catalog.
 Violation = token waste (same severity as §0.6). If you catch yourself
 running raw, STOP and re-run wrapped.
 
+#### Rationalisation trip-wires — STOP, do not justify (added 2026-05-25)
+
+If ANY of these phrases (or near-equivalents) appears in your reasoning
+while writing a Bash command, STOP. Do not emit the planned tool call.
+Re-write the command with `rtk` prefixed on every supported segment.
+
+- "the hook will catch it" — hook only wraps the leading command of a
+  single invocation; anything past `&&` / `||` / `;` / `|` / `$(…)` /
+  backticks runs raw.
+- "it's a tiny diagnostic" / "just `cargo --version`" / "just `which X`" —
+  RTK.md has no small-command exemption. Today's tiny diagnostic
+  becomes tomorrow's `&& cargo build` chain.
+- "I'll pipe to tail/head, that minimizes" — `tail` trims what reaches
+  your context, not what passes through shell/hooks/tee. `rtk err <cmd>`
+  short-circuits at source — a different category of saving.
+- "background output doesn't go to context" — every `tail` / `cat` /
+  `Read` of the background output file later DOES pull it into context,
+  often at the worst moment.
+- "I'll wrap next time" / "just this once" — same rationalisation as
+  the §1.5 stub-code incidents. Completion-pressure-driven exceptions
+  destroy the rule.
+- "the output isn't that big" — you don't know until after you run it.
+  The wrap is cheaper than the measurement.
+
+#### Chained-command pre-flight (mechanical, not judgment)
+
+Before ANY chained Bash invocation (anything containing `&&` / `||` /
+`;` / `|` / `$(…)` / backticks):
+
+1. Count chain operators.
+2. For each segment, identify the leading command word.
+3. If that word appears in the rtk-supported list (see `~/.claude/RTK.md`
+   — `git` / `gh` / `cargo` / `go` / `npm` / `pnpm` / `make` / `kubectl`
+   / `docker` / `aws` / `psql` / `pytest` / `ruff` / `mypy` / `npx` /
+   `jest` / `vitest` / `tsc` / `lint` / `prettier` / `next` / `prisma` /
+   `playwright` / `find` / `grep` / `ls` / `tree` / `read` / `wc` /
+   `diff` / `wget` / `curl` / `dotnet` / `cargo zigbuild`, etc.):
+   prefix `rtk ` on that segment.
+4. Test commands → prefer `rtk err <cmd>` over `<cmd> | tail` — kills
+   noise at source, not in your context.
+
+This is a mechanical checklist, not a "use judgment" rule. The PostToolUse
+hook (`.claude/hooks/rtk-discipline.cjs`, added 2026-05-25) emits a
+next-turn system-reminder on unwrapped-chained-supported-command
+violations so the feedback loop is no longer "remember to run `rtk gain`."
+
 ### §0.10 Context-mode for large-output tools (HARD)
 
 > **HARD POLICY. Same severity as §0.9 RTK. Both rules attack the same failure mode: raw tool output flooding context.**
@@ -452,6 +498,39 @@ For each phase:
 **"Sub-agent reports DONE + tests pass" is NOT sufficient evidence
 that the code works.** The orchestrator must verify the production
 code path, not just the test path.
+
+### §1.7 Sub-agent model tier — project override (HARD)
+
+> **Overrides the global haiku-floor policy from `~/.claude/CLAUDE.md` for this project.** Added 2026-05-25 after repeated haiku dispatches on this codebase shipped DONE reports without satisfying the §1.5 live-verify gate (Rust + AWS SDK + multi-account routing + K8s deploy + GraphQL verification proved too cross-file for haiku's window). When dispatching, the orchestrator MUST say "overriding global haiku default — using sonnet for cross-file Rust slice" (or equivalent) so the choice is auditable per the global policy.
+
+#### Tier policy for this project
+
+- **`"model": "sonnet"` — DEFAULT FLOOR.** Sonnet 4.6 holds the project floor because almost every slice here is cross-file Rust (workspace crates: `activable-schema` / `activable-graph` / `activable-ingest` / `activable-graphql` / `activable-risk`) with AWS SDK config plumbing, AGE/Postgres round-trips, FFI surfaces, or K8s deploy verification. Empirically these slices have failed under haiku — the structure compiles but the live-verify gate fails. Use sonnet for: any edit to `crates/*/src/**.rs`, ingester/enricher work, GraphQL resolver work, deploy-manifest changes that need rollout+verify, any slice whose live-verify needs hitting a running cluster.
+
+- **`"model": "haiku"` — ESCALATION DOWN (only when crystal-clear).** Haiku is allowed only when ALL of the following hold:
+  - Single file, ≤ 50 LOC change, no cross-crate touch.
+  - No AWS SDK, no AGE/Postgres, no FFI, no K8s deploy.
+  - Pure text/config edit OR mechanical refactor with a clear pattern (rename, lint fix, doc typo, sub-agent token-count rollup).
+  - Live-verify is trivially "the file parses" / "the doc renders" — no running service involved.
+  - Examples that qualify: markdown doc edits under `plans/` or `docs/`, a single-line `Cargo.toml` version bump, a typo in `seed-adversarial.sh`, regex-driven find-and-replace across docs.
+  - Examples that DO NOT qualify: anything in `crates/*/src/`, anything that ends with `kubectl rollout`, anything that needs `cargo zigbuild`.
+
+- **`"model": "opus"` — ARCHITECTURE + 1M-CONTEXT WORK.** Use `claude-opus-4-7` (1M context window) for:
+  - Cross-cutting architectural changes that span ≥ 3 crates (e.g., reshape the IngestRuntime trait, change the schema's edge-type registry, refactor the FFI surface).
+  - Long-context audits where the agent must read 20+ files in one pass to reason correctly (e.g., end-of-phase red-team review across the whole detection-engine plan, post-incident root-cause across crates + deploy + GraphQL).
+  - Ambiguous specs needing exploration before a plan exists — `/ck:plan` for a new phase that spans multiple subsystems.
+  - Anything where sonnet has stalled twice on the same slice (re-dispatch up, not sideways).
+  - Justify the upgrade in the dispatch description: `opus: cross-cutting refactor of ingest trait (1M ctx)`.
+
+#### Re-dispatch heuristic
+
+If a sonnet run produces obvious gaps (skipped live-verify, left files dirty, missed a manifest update), re-dispatch the same slice on sonnet with a tighter brief rather than escalating to opus — most gaps are brief-clarity issues, not capability issues. Escalate to opus only when the second sonnet run also stalls, or when the slice is genuinely architectural.
+
+If a haiku run on a "crystal-clear" slice surprises you with cross-file edits or a failed verify, that proves the slice was NOT crystal-clear — re-dispatch on sonnet and update the haiku-qualification checklist above with the new counter-example.
+
+#### Always pass `"model"` explicitly
+
+Same as the global rule: every `Agent` tool call MUST include `"model"`. Omitting it falls back to the agent definition's frontmatter or the parent's tier, which often contradicts this override.
 
 ### §1.6 Commit message convention (HARD)
 
