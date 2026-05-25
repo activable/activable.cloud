@@ -259,6 +259,7 @@ pub struct GqlFederationRisks {
     pub risk_score: f64,
     pub severity: risk::GqlSeverity,
     pub notice: Option<String>,
+    pub is_trust_boundary: bool,
 }
 
 // Re-export risk types for convenient access via `use crate::types::*;`

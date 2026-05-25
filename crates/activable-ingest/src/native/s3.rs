@@ -36,7 +36,16 @@ impl NativeEnricher for S3Enricher {
         pool: &Arc<Pool>,
         graph_name: &str,
     ) -> Result<EnrichmentStats, IngestError> {
-        let client = aws_sdk_s3::Client::new(&self.config);
+        // LocalStack does not serve the virtual-hosted/s3express endpoint the SDK resolves by default;
+        // force path-style addressing when using a custom endpoint to ensure compatibility.
+        let client = if std::env::var("AWS_ENDPOINT_URL").is_ok() {
+            let s3_conf = aws_sdk_s3::config::Builder::from(&self.config)
+                .force_path_style(true)
+                .build();
+            aws_sdk_s3::Client::from_conf(s3_conf)
+        } else {
+            aws_sdk_s3::Client::new(&self.config)
+        };
 
         debug!("Starting S3 enrichment");
 
@@ -190,10 +199,10 @@ impl NativeEnricher for S3Enricher {
                     {
                         debug!(bucket = %bucket_name_str, "No bucket policy configured (expected)");
                     } else {
-                        debug!(
+                        warn!(
                             bucket = %bucket_name_str,
-                            error = %error_message,
-                            "Failed to fetch bucket policy"
+                            error = %e,
+                            "get_bucket_policy failed"
                         );
                     }
                 }

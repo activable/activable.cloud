@@ -35,6 +35,22 @@ pub async fn resource_policy_risks(
     }
 }
 
+/// Convert a Policy.document agtype value to a JSON string.
+/// The document property may decode from AGE as either a JSON string (quoted scalar)
+/// or a JSON object (map), depending on how it was stored. Normalize to the policy JSON
+/// string either way so the parser receives valid input.
+fn policy_value_to_json(v: &serde_json::Value) -> Option<String> {
+    if let Some(s) = v.as_str() {
+        // Already a string — use it directly
+        Some(s.to_string())
+    } else if v.is_object() || v.is_array() {
+        // Object or array — serialize to JSON string
+        Some(v.to_string())
+    } else {
+        None
+    }
+}
+
 /// Query and analyze bucket policy risks.
 async fn query_bucket_policy(
     graph: &GraphClient,
@@ -70,7 +86,8 @@ async fn query_bucket_policy(
         .map(|s| s.to_string())
         .unwrap_or_else(|| format!("arn:aws:s3:::{}", bucket_name));
 
-    let policy_doc = first[1].as_str();
+    let policy_doc_owned = policy_value_to_json(&first[1]);
+    let policy_doc = policy_doc_owned.as_deref();
     let consuming_accounts: Vec<String> = first[2]
         .as_array()
         .map(|arr| {
@@ -124,7 +141,8 @@ async fn query_key_policy(
         .map(|s| s.to_string())
         .unwrap_or_else(|| format!("arn:aws:kms:us-east-1:000000000000:key/{}", key_id));
 
-    let policy_doc = first[1].as_str();
+    let policy_doc_owned = policy_value_to_json(&first[1]);
+    let policy_doc = policy_doc_owned.as_deref();
     let consuming_accounts: Vec<String> = first[2]
         .as_array()
         .map(|arr| {
@@ -215,13 +233,22 @@ fn parse_resource_statement(stmt: &serde_json::Value) -> Option<GqlResourcePolic
         })
         .unwrap_or_else(|| "*".to_string());
 
+    // Extract condition keys from nested operator objects (StringEquals, StringLike, etc.)
+    // Condition: { "StringEquals": { "aws:PrincipalOrgID": "value", ... }, ... }
+    // We need the inner keys (aws:PrincipalOrgID, etc.), not the operator names
     let condition_keys: Vec<String> = stmt
         .get("Condition")
         .and_then(|v| v.as_object())
-        .map(|obj| obj.keys().cloned().collect())
+        .map(|condition_obj| {
+            condition_obj
+                .values()
+                .filter_map(|operator_val| operator_val.as_object())
+                .flat_map(|operator_obj| operator_obj.keys().cloned())
+                .collect()
+        })
         .unwrap_or_default();
 
-    let is_trust_boundary = evaluate_trust_boundary(&principal, &condition_keys);
+    let is_trust_boundary = evaluate_trust_boundary(&principal, &condition_keys[..]);
 
     Some(GqlResourcePolicyStatement {
         effect,
@@ -232,8 +259,15 @@ fn parse_resource_statement(stmt: &serde_json::Value) -> Option<GqlResourcePolic
 }
 
 /// Evaluate if a principal is a trust boundary.
-/// True ONLY if principal is arn:aws:iam::<12-digit-account>:role/<role-name> with no wildcards.
-fn evaluate_trust_boundary(principal: &str, _condition_keys: &Vec<String>) -> bool {
+/// True ONLY if principal is arn:aws:iam::<12-digit-account>:role/<role-name> with no wildcards
+/// AND no condition keys are present. Conditions (PrincipalOrgID, SourceArn, aud/sub, etc.)
+/// make the grant conditional and require runtime evaluation, so they are not static trust boundaries.
+fn evaluate_trust_boundary(principal: &str, condition_keys: &[String]) -> bool {
+    // If ANY condition key is present, the grant is conditional, not a static boundary.
+    if !condition_keys.is_empty() {
+        return false;
+    }
+
     // Pattern: arn:aws:iam::123456789012:role/rolename
     // Must be exact role ARN with specific account, no wildcards
     if principal.contains('*') || principal == "*" {
@@ -375,20 +409,20 @@ mod tests {
     fn trust_boundary_specific_role_arn() {
         assert!(evaluate_trust_boundary(
             "arn:aws:iam::123456789012:role/MyRole",
-            &vec![]
+            &[]
         ));
     }
 
     #[test]
     fn trust_boundary_false_wildcard_principal() {
-        assert!(!evaluate_trust_boundary("*", &vec![]));
+        assert!(!evaluate_trust_boundary("*", &[]));
     }
 
     #[test]
     fn trust_boundary_false_wildcard_in_role() {
         assert!(!evaluate_trust_boundary(
             "arn:aws:iam::123456789012:role/Role*",
-            &vec![]
+            &[]
         ));
     }
 
@@ -396,7 +430,42 @@ mod tests {
     fn trust_boundary_false_root_principal() {
         assert!(!evaluate_trust_boundary(
             "arn:aws:iam::123456789012:root",
-            &vec![]
+            &[]
+        ));
+    }
+
+    #[test]
+    fn trust_boundary_false_with_principal_org_id_condition() {
+        // org-ID condition makes the grant conditional, not an ownership boundary
+        let condition_keys = vec!["aws:PrincipalOrgID".to_string()];
+        assert!(!evaluate_trust_boundary(
+            "arn:aws:iam::123456789012:role/MyRole",
+            &condition_keys
+        ));
+    }
+
+    #[test]
+    fn trust_boundary_false_with_any_condition() {
+        // Any condition present (SourceArn, aud, sub, etc.) makes it non-static
+        let conditions = vec![
+            vec!["aws:SourceArn".to_string()],
+            vec!["aud".to_string()],
+            vec!["sub".to_string()],
+        ];
+        for cond_keys in conditions {
+            assert!(!evaluate_trust_boundary(
+                "arn:aws:iam::123456789012:role/MyRole",
+                &cond_keys
+            ));
+        }
+    }
+
+    #[test]
+    fn trust_boundary_true_only_unconditioned_role_arn() {
+        // Must be a role ARN with no conditions to be a static trust boundary
+        assert!(evaluate_trust_boundary(
+            "arn:aws:iam::999999999999:role/SafeRole",
+            &[]
         ));
     }
 
@@ -477,5 +546,161 @@ mod tests {
     #[test]
     fn score_to_severity_maps_info() {
         assert_eq!(score_to_severity(0.05), GqlSeverity::Info);
+    }
+
+    #[test]
+    fn parse_real_seed_org_shared_data_bucket_policy() {
+        // Real bucket policy from deploy/scripts/seed-adversarial.sh (org-shared-data bucket)
+        // Principal: "*", Effect: Allow, Condition: StringEquals aws:PrincipalOrgID = "o-myorg"
+        let policy_json = r#"{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AllowOrgWideRead",
+      "Effect": "Allow",
+      "Principal": "*",
+      "Action": [
+        "s3:GetObject",
+        "s3:ListBucket"
+      ],
+      "Resource": [
+        "arn:aws:s3:::org-shared-data",
+        "arn:aws:s3:::org-shared-data/*"
+      ],
+      "Condition": {
+        "StringEquals": {
+          "aws:PrincipalOrgID": "o-myorg"
+        }
+      }
+    }
+  ]
+}"#;
+
+        // Parse the policy
+        let statements = parse_resource_policy(policy_json)
+            .expect("policy should parse successfully");
+
+        // Verify: exactly 1 statement
+        assert_eq!(statements.len(), 1, "should have exactly 1 statement");
+
+        let stmt = &statements[0];
+        // Principal should be "*" (string form, not array)
+        assert_eq!(stmt.principal, "*", "principal should be wildcard");
+        // Effect should be "Allow"
+        assert_eq!(stmt.effect, "Allow", "effect should be Allow");
+        // Condition keys should contain the org-ID constraint
+        assert!(
+            !stmt.condition_keys.is_empty(),
+            "condition_keys should not be empty (got: {:?})",
+            stmt.condition_keys
+        );
+        assert!(
+            stmt.condition_keys.iter().any(|k| k.contains("PrincipalOrgID")),
+            "should extract PrincipalOrgID condition key from {:?}",
+            stmt.condition_keys
+        );
+        // With condition keys present, trust boundary should be false
+        assert!(
+            !stmt.is_trust_boundary,
+            "principal with condition should NOT be a trust boundary"
+        );
+    }
+
+    #[test]
+    fn policy_value_to_json_handles_string_document() {
+        // Policy document already as a JSON string (quoted scalar)
+        let json_string = serde_json::json!(
+            r#"{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":"*"}]}"#
+        );
+        let result = policy_value_to_json(&json_string);
+        assert!(result.is_some(), "should handle string value");
+        let s = result.unwrap();
+        assert!(s.contains("Version"), "should preserve document content");
+    }
+
+    #[test]
+    fn policy_value_to_json_handles_object_document() {
+        // Policy document as a JSON object (maps from agtype)
+        // This is the actual bug case: AGE returns document as object instead of string
+        let json_obj = serde_json::json!({
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Effect": "Allow",
+                    "Principal": "*",
+                    "Action": "s3:*",
+                    "Resource": "arn:aws:s3:::bucket/*"
+                }
+            ]
+        });
+        let result = policy_value_to_json(&json_obj);
+        assert!(result.is_some(), "should handle object value");
+        let s = result.unwrap();
+        // Serialize the object to JSON and parse it back to verify structure is intact
+        let reparsed: serde_json::Value = serde_json::from_str(&s)
+            .expect("serialized object should parse back");
+        assert!(reparsed.is_object(), "reparsed should be an object");
+        assert_eq!(
+            reparsed.get("Version").and_then(|v| v.as_str()),
+            Some("2012-10-17")
+        );
+    }
+
+    #[test]
+    fn policy_value_to_json_rejects_null() {
+        let null_value = serde_json::Value::Null;
+        let result = policy_value_to_json(&null_value);
+        assert!(result.is_none(), "should return None for null value");
+    }
+
+    #[test]
+    fn policy_value_to_json_handles_array_document() {
+        // Edge case: if document is somehow an array (unlikely but possible)
+        let json_array = serde_json::json!([
+            {"Effect": "Allow", "Principal": "*"}
+        ]);
+        let result = policy_value_to_json(&json_array);
+        assert!(result.is_some(), "should handle array value");
+        let s = result.unwrap();
+        let reparsed: serde_json::Value = serde_json::from_str(&s)
+            .expect("serialized array should parse back");
+        assert!(reparsed.is_array(), "reparsed should be an array");
+    }
+
+    #[test]
+    fn policy_value_to_json_roundtrip_with_parser() {
+        // Integration: parse a policy document extracted as object (real bug case)
+        let policy_obj = serde_json::json!({
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Sid": "AllowOrgWideRead",
+                    "Effect": "Allow",
+                    "Principal": "*",
+                    "Action": ["s3:GetObject"],
+                    "Condition": {
+                        "StringEquals": {
+                            "aws:PrincipalOrgID": "o-myorg"
+                        }
+                    }
+                }
+            ]
+        });
+
+        // Simulate the fix: convert object to string
+        let policy_string = policy_value_to_json(&policy_obj)
+            .expect("should convert object to string");
+
+        // Then parse it like the real resolver does
+        let statements = parse_resource_policy(&policy_string)
+            .expect("should parse the converted document");
+
+        // Verify the structure came through
+        assert_eq!(statements.len(), 1, "should have 1 statement");
+        assert_eq!(statements[0].principal, "*");
+        assert!(
+            statements[0].condition_keys.iter().any(|k| k.contains("PrincipalOrgID")),
+            "should extract condition key from nested object"
+        );
     }
 }
