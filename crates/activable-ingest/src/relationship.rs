@@ -103,6 +103,23 @@ pub async fn apply_relationships(
     Ok(stats)
 }
 
+/// Build a Cypher MERGE query for a relationship rule.
+///
+/// Constructs a SQL/Cypher statement that pushes the join to the database
+/// for O(n log n) execution via indexes. Each clause (MATCH, WHERE, MERGE,
+/// RETURN) is properly space-separated to avoid token fusion.
+fn build_relationship_cypher(graph_name: &str, rule: &RelationshipRule) -> String {
+    format!(
+        "SELECT * FROM cypher('{}', $$MATCH (f:{} ), (t:{} ) WHERE f.{} = t.{} MERGE (f)-[:{}]->(t) RETURN count(*) as edge_count$$) AS (edge_count agtype)",
+        graph_name,
+        rule.from_label,
+        rule.to_label,
+        rule.from_property,
+        rule.to_property,
+        rule.edge_type,
+    )
+}
+
 /// Apply a single relationship rule by executing a Cypher MERGE query.
 ///
 /// The query pushes the join to the database, leveraging indexes for efficiency.
@@ -121,20 +138,7 @@ async fn apply_single_rule(
 
     // Build Cypher MERGE query that pushes the join to the database.
     // This is O(n log n) via DB indexes, not O(n²) in application code.
-    let cypher = format!(
-        "SELECT * FROM cypher('{}', $$\
-            MATCH (f:{} ), (t:{} )\
-            WHERE f.{} = t.{}\
-            MERGE (f)-[:{}]->(t)\
-            RETURN count(*) as edge_count\
-        $$) AS (edge_count agtype)",
-        graph_name,
-        rule.from_label,
-        rule.to_label,
-        rule.from_property,
-        rule.to_property,
-        rule.edge_type,
-    );
+    let cypher = build_relationship_cypher(graph_name, rule);
 
     let rows = conn
         .query(&cypher, &[])
@@ -249,5 +253,65 @@ mod tests {
         assert!(validate_property_name("prop.name").is_err());
         assert!(validate_property_name("prop[0]").is_err());
         assert!(validate_property_name("prop name").is_err());
+    }
+
+    #[test]
+    fn test_build_relationship_cypher_whitespace_correctness() {
+        // Test that Cypher string does not have fused tokens from backslash
+        // line continuations. Each clause must be properly space-separated.
+        let rule = RelationshipRule {
+            name: "test-rule".to_string(),
+            from_label: "Resource".to_string(),
+            to_label: "Principal".to_string(),
+            edge_type: "AssumedBy".to_string(),
+            from_property: "role_arn".to_string(),
+            to_property: "id".to_string(),
+        };
+
+        let cypher = build_relationship_cypher("test_graph", &rule);
+
+        // Assert that problematic token fusions DO NOT exist.
+        // These are the specific bugs from the backslash-continuation issue.
+        assert!(
+            !cypher.contains(")WHERE"),
+            "cypher must not have fused ')WHERE' token"
+        );
+        assert!(
+            !cypher.contains("t.idMERGE"),
+            "cypher must not have fused 't.idMERGE' token"
+        );
+        assert!(
+            !cypher.contains(")MERGE"),
+            "cypher must not have fused ')MERGE' token"
+        );
+        assert!(
+            !cypher.contains(")RETURN"),
+            "cypher must not have fused ')RETURN' token"
+        );
+
+        // Assert that proper spacing and clause order exist.
+        assert!(
+            cypher.contains("WHERE f.role_arn = t.id"),
+            "cypher must contain properly-spaced WHERE clause"
+        );
+        assert!(
+            cypher.contains("MERGE (f)-[:AssumedBy]->(t)"),
+            "cypher must contain properly-spaced MERGE clause with edge type"
+        );
+        assert!(
+            cypher.contains("RETURN count(*) as edge_count"),
+            "cypher must contain properly-spaced RETURN clause"
+        );
+
+        // Verify the clauses appear in correct order.
+        let match_pos = cypher.find("MATCH").expect("MATCH must be present");
+        let where_pos = cypher.find("WHERE").expect("WHERE must be present");
+        let merge_pos = cypher.find("MERGE").expect("MERGE must be present");
+        let return_pos = cypher.find("RETURN").expect("RETURN must be present");
+
+        assert!(
+            match_pos < where_pos && where_pos < merge_pos && merge_pos < return_pos,
+            "clauses must appear in order: MATCH, WHERE, MERGE, RETURN"
+        );
     }
 }
