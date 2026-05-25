@@ -63,6 +63,7 @@ environment:
   AWS_ACCESS_KEY_ID: "test"
   AWS_SECRET_ACCESS_KEY: "test"
   AWS_DEFAULT_REGION: "us-east-1"
+  INGEST_ACCOUNT_IDS: "111111111111,222222222222,333333333333,444444444444"
 
 # Disable security context for local dev (AGE image runs as root)
 securityContext: {}

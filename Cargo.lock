@@ -56,6 +56,7 @@ dependencies = [
  "activable-schema",
  "async-trait",
  "aws-config",
+ "aws-credential-types",
  "aws-sdk-cloudcontrol",
  "aws-sdk-ec2",
  "aws-sdk-iam",

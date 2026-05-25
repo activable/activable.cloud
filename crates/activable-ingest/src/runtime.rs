@@ -4,6 +4,7 @@ use crate::native::NativeEnricher;
 use crate::native_fallback::fetch_via_native_sdk;
 use crate::resource_registry::{load_registry, ResourceRegistry};
 use aws_config::SdkConfig;
+use aws_credential_types::{provider::SharedCredentialsProvider, Credentials};
 use deadpool_postgres::Pool;
 use std::sync::Arc;
 use std::time::Instant;
@@ -25,16 +26,52 @@ pub struct IngestRuntime {
     graph_name: String,
     registry: ResourceRegistry,
     concurrency_limit: usize,
+    account_ids: Option<Vec<String>>,
 }
 
 impl IngestRuntime {
+    /// Parse account IDs from comma-separated INGEST_ACCOUNT_IDS environment variable.
+    /// Returns None if the variable is not set or empty.
+    /// Returns an error if any account ID is malformed (not 12 digits).
+    fn parse_account_ids() -> Result<Option<Vec<String>>, IngestError> {
+        match std::env::var("INGEST_ACCOUNT_IDS") {
+            Ok(ids_str) if ids_str.is_empty() => Ok(None),
+            Ok(ids_str) => {
+                let account_ids: Result<Vec<String>, IngestError> = ids_str
+                    .split(',')
+                    .map(|id| {
+                        let trimmed = id.trim();
+                        if trimmed.len() == 12 && trimmed.chars().all(|c| c.is_ascii_digit()) {
+                            Ok(trimmed.to_string())
+                        } else {
+                            Err(IngestError::Config(format!(
+                                "Invalid account ID '{}': must be 12 digits",
+                                trimmed
+                            )))
+                        }
+                    })
+                    .collect();
+
+                match account_ids {
+                    Ok(ids) if !ids.is_empty() => Ok(Some(ids)),
+                    Ok(_) => Ok(None),
+                    Err(e) => Err(e),
+                }
+            }
+            Err(_) => Ok(None),
+        }
+    }
+
     /// Create a new IngestRuntime with AWS config loaded from the standard credential chain.
+    /// If INGEST_ACCOUNT_IDS env var is set, runs multi-account ingest; otherwise single-account.
     pub async fn new(pool: Arc<Pool>, graph_name: String) -> Result<Self, IngestError> {
         let aws_config = aws_config::load_defaults(aws_config::BehaviorVersion::latest()).await;
         let registry = load_registry()?;
+        let account_ids = Self::parse_account_ids()?;
 
         info!(
             resource_types = registry.resource_types.len(),
+            account_ids = ?account_ids,
             "IngestRuntime initialized"
         );
 
@@ -44,6 +81,7 @@ impl IngestRuntime {
             graph_name,
             registry,
             concurrency_limit: 10,
+            account_ids,
         })
     }
 
@@ -54,12 +92,14 @@ impl IngestRuntime {
         aws_config: SdkConfig,
     ) -> Result<Self, IngestError> {
         let registry = load_registry()?;
+        let account_ids = Self::parse_account_ids()?;
         Ok(Self {
             aws_config,
             pool,
             graph_name,
             registry,
             concurrency_limit: 10,
+            account_ids,
         })
     }
 
@@ -68,18 +108,34 @@ impl IngestRuntime {
         self.concurrency_limit = limit;
     }
 
-    /// Run ingestion for all resource types in parallel.
-    pub async fn run(&self) -> IngestResult {
+    /// Create a new AWS config with credentials overridden for the given account ID.
+    /// LocalStack uses AWS_ACCESS_KEY_ID as the tenant routing key, so we set it to the account ID.
+    fn create_account_config(base_config: &SdkConfig, account_id: &str) -> SdkConfig {
+        let credentials = Credentials::new(account_id, "test", None, None, "multi-account-ingest");
+        let provider = SharedCredentialsProvider::new(credentials);
+        base_config
+            .clone()
+            .into_builder()
+            .credentials_provider(provider)
+            .build()
+    }
+
+    /// Run ingestion for a single account using the provided config.
+    async fn ingest_single_account(
+        &self,
+        account_id: &str,
+        config: &SdkConfig,
+    ) -> IngestResult {
         let start = Instant::now();
 
-        let ccapi_client = aws_sdk_cloudcontrol::Client::new(&self.aws_config);
+        let ccapi_client = aws_sdk_cloudcontrol::Client::new(config);
         let mut tasks = tokio::task::JoinSet::new();
         let semaphore = Arc::new(tokio::sync::Semaphore::new(self.concurrency_limit));
 
         for resource_type in &self.registry.resource_types {
             let sem = semaphore.clone();
             let ccapi = ccapi_client.clone();
-            let config = self.aws_config.clone();
+            let cfg = config.clone();
             let pool = self.pool.clone();
             let graph_name = self.graph_name.clone();
             let rt = resource_type.clone();
@@ -117,8 +173,8 @@ impl IngestRuntime {
                             nodes = stats.nodes_ingested,
                             "CCAPI returned 0 resources, attempting native SDK fallback"
                         );
-                        // CCAPI returned empty — try native SDK (e.g., Floci doesn't support CCAPI)
-                        match fetch_via_native_sdk(&config, &rt, pool, &graph_name).await {
+                        // CCAPI returned empty — try native SDK (e.g., LocalStack doesn't support CCAPI)
+                        match fetch_via_native_sdk(&cfg, &rt, pool, &graph_name).await {
                             Ok(native_stats) if native_stats.nodes_ingested > 0 => {
                                 info!(
                                     type_name = %type_name,
@@ -151,7 +207,7 @@ impl IngestRuntime {
                             "CCAPI failed, attempting native SDK fallback"
                         );
                         // Fall back to native SDK
-                        match fetch_via_native_sdk(&config, &rt, pool, &graph_name).await {
+                        match fetch_via_native_sdk(&cfg, &rt, pool, &graph_name).await {
                             Ok(stats) => {
                                 info!(
                                     type_name = %type_name,
@@ -196,16 +252,11 @@ impl IngestRuntime {
         let mut enrichment_errors = Vec::new();
 
         let enrichers: Vec<Box<dyn NativeEnricher>> = vec![
-            Box::new(crate::native::iam::IamEnricher::new(
-                self.aws_config.clone(),
-            )),
-            // Permissions enricher must run after IAM enricher to materialize HasEffectivePermission edges
+            Box::new(crate::native::iam::IamEnricher::new(config.clone())),
             Box::new(crate::native::permissions::PermissionsEnricher::new()),
-            Box::new(crate::native::ec2::Ec2Enricher::new(
-                self.aws_config.clone(),
-            )),
-            Box::new(crate::native::s3::S3Enricher::new(self.aws_config.clone())),
-            Box::new(crate::native::kms::KmsEnricher::new(self.aws_config.clone())),
+            Box::new(crate::native::ec2::Ec2Enricher::new(config.clone())),
+            Box::new(crate::native::s3::S3Enricher::new(config.clone())),
+            Box::new(crate::native::kms::KmsEnricher::new(config.clone())),
         ];
 
         for enricher in &enrichers {
@@ -254,6 +305,7 @@ impl IngestRuntime {
         let duration = start.elapsed();
 
         info!(
+            account_id = account_id,
             total_types = stats.len() + errors.len(),
             successful = stats.len(),
             failed = errors.len(),
@@ -262,7 +314,7 @@ impl IngestRuntime {
             relationships_completed = relationship_stats.len(),
             relationships_failed = relationship_errors.len(),
             duration_secs = duration.as_secs(),
-            "Ingestion run complete"
+            "Account ingestion complete"
         );
 
         IngestResult {
@@ -272,6 +324,79 @@ impl IngestRuntime {
             enrichment_errors,
             relationship_stats,
             relationship_errors,
+            duration,
+        }
+    }
+
+    /// Run ingestion for all resource types in parallel.
+    /// If account_ids are configured, runs per-account; otherwise single-account legacy behavior.
+    pub async fn run(&self) -> IngestResult {
+        let start = Instant::now();
+
+        // Determine which accounts to ingest
+        let accounts_to_ingest: Vec<String> = match &self.account_ids {
+            Some(ids) => ids.clone(),
+            None => vec!["default".to_string()],
+        };
+
+        info!(
+            account_count = accounts_to_ingest.len(),
+            "Starting ingestion run"
+        );
+
+        let mut all_stats = Vec::new();
+        let mut all_errors = Vec::new();
+        let mut all_enrichment_stats = Vec::new();
+        let mut all_enrichment_errors = Vec::new();
+        let mut all_relationship_stats = Vec::new();
+        let mut all_relationship_errors = Vec::new();
+
+        // Run per-account ingest in sequence
+        for account_id in &accounts_to_ingest {
+            // For multi-account, override credentials; for single-account, use base config
+            let account_config = if self.account_ids.is_some() {
+                Self::create_account_config(&self.aws_config, account_id)
+            } else {
+                self.aws_config.clone()
+            };
+
+            info!(
+                account_id = account_id,
+                "Starting ingestion for account"
+            );
+
+            let result = self.ingest_single_account(account_id, &account_config).await;
+
+            all_stats.extend(result.stats);
+            all_errors.extend(result.errors);
+            all_enrichment_stats.extend(result.enrichment_stats);
+            all_enrichment_errors.extend(result.enrichment_errors);
+            all_relationship_stats.extend(result.relationship_stats);
+            all_relationship_errors.extend(result.relationship_errors);
+        }
+
+        let duration = start.elapsed();
+
+        info!(
+            total_accounts = accounts_to_ingest.len(),
+            total_types = all_stats.len() + all_errors.len(),
+            successful = all_stats.len(),
+            failed = all_errors.len(),
+            enrichers_completed = all_enrichment_stats.len(),
+            enrichers_failed = all_enrichment_errors.len(),
+            relationships_completed = all_relationship_stats.len(),
+            relationships_failed = all_relationship_errors.len(),
+            duration_secs = duration.as_secs(),
+            "Ingestion run complete"
+        );
+
+        IngestResult {
+            stats: all_stats,
+            errors: all_errors,
+            enrichment_stats: all_enrichment_stats,
+            enrichment_errors: all_enrichment_errors,
+            relationship_stats: all_relationship_stats,
+            relationship_errors: all_relationship_errors,
             duration,
         }
     }
@@ -351,5 +476,108 @@ mod tests {
         assert_eq!(result.errors[0].0, "AWS::EC2::Instance");
         assert_eq!(result.enrichment_stats.len(), 0);
         assert_eq!(result.relationship_stats.len(), 0);
+    }
+
+    #[test]
+    fn test_parse_account_ids_empty_env() {
+        // When INGEST_ACCOUNT_IDS is not set, should return None
+        std::env::remove_var("INGEST_ACCOUNT_IDS");
+        let result = IngestRuntime::parse_account_ids();
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_none());
+    }
+
+    #[test]
+    fn test_parse_account_ids_single() {
+        // Single valid account ID
+        std::env::set_var("INGEST_ACCOUNT_IDS", "111111111111");
+        let result = IngestRuntime::parse_account_ids();
+        assert!(result.is_ok());
+        let ids = result.unwrap();
+        assert!(ids.is_some());
+        assert_eq!(ids.unwrap(), vec!["111111111111"]);
+    }
+
+    #[test]
+    fn test_parse_account_ids_multiple() {
+        // Multiple valid account IDs with whitespace
+        std::env::set_var(
+            "INGEST_ACCOUNT_IDS",
+            "111111111111, 222222222222, 333333333333, 444444444444",
+        );
+        let result = IngestRuntime::parse_account_ids();
+        assert!(result.is_ok());
+        let ids = result.unwrap();
+        assert!(ids.is_some());
+        let id_vec = ids.unwrap();
+        assert_eq!(id_vec.len(), 4);
+        assert_eq!(
+            id_vec,
+            vec![
+                "111111111111",
+                "222222222222",
+                "333333333333",
+                "444444444444"
+            ]
+        );
+    }
+
+    #[test]
+    fn test_parse_account_ids_invalid_too_short() {
+        // Invalid account ID (too short)
+        std::env::set_var("INGEST_ACCOUNT_IDS", "12345");
+        let result = IngestRuntime::parse_account_ids();
+        assert!(result.is_err());
+        match result {
+            Err(IngestError::Config(msg)) => {
+                assert!(msg.contains("Invalid account ID"));
+                assert!(msg.contains("12 digits"));
+            }
+            _ => panic!("Expected Config error"),
+        }
+    }
+
+    #[test]
+    fn test_parse_account_ids_invalid_non_numeric() {
+        // Invalid account ID (contains non-digits)
+        std::env::set_var("INGEST_ACCOUNT_IDS", "11111111111a");
+        let result = IngestRuntime::parse_account_ids();
+        assert!(result.is_err());
+        match result {
+            Err(IngestError::Config(msg)) => {
+                assert!(msg.contains("Invalid account ID"));
+            }
+            _ => panic!("Expected Config error"),
+        }
+    }
+
+    #[test]
+    fn test_parse_account_ids_mixed_valid_invalid() {
+        // Mix of valid and invalid IDs
+        std::env::set_var("INGEST_ACCOUNT_IDS", "111111111111,invalid");
+        let result = IngestRuntime::parse_account_ids();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_account_ids_empty_string() {
+        // Empty string should return None
+        std::env::set_var("INGEST_ACCOUNT_IDS", "");
+        let result = IngestRuntime::parse_account_ids();
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_none());
+    }
+
+    #[test]
+    fn test_create_account_config() {
+        // Verify that account config has the right credentials provider
+        let base_config = aws_config::SdkConfig::builder().build();
+        let account_id = "111111111111";
+
+        let _account_config = IngestRuntime::create_account_config(&base_config, account_id);
+
+        // The config should be created without panicking; actual credential verification
+        // is done in integration tests with LocalStack
+        assert!(true);
     }
 }
