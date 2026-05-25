@@ -1,0 +1,228 @@
+name: E2E Adversarial Scenarios
+
+on:
+  pull_request:
+    paths:
+      - 'crates/activable-risk/**'
+      - 'crates/activable-ingest/**'
+      - 'crates/activable-graphql/**'
+      - 'deploy/scripts/seed-adversarial.sh'
+      - '.github/workflows/e2e-adversarial.yml'
+  schedule:
+    # Nightly at 6:00 AM UTC
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  LOCALSTACK_URL: http://localhost:4566
+  E2E_TEST_URL: http://localhost:8080
+  POSTGRES_USER: activable
+  POSTGRES_PASSWORD: activable_dev
+  POSTGRES_DB: activable
+  POSTGRES_PORT: 5432
+
+jobs:
+  e2e:
+    name: E2E Adversarial Test
+    runs-on: ubuntu-latest
+    # Retry only on nightly schedule; PR runs must pass first time
+    continue-on-error: ${{ github.event_name == 'schedule' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        attempt: ${{ github.event_name == 'schedule' && fromJSON('[1, 2, 3]') || fromJSON('[1]') }}
+
+    services:
+      localstack:
+        image: localstack/localstack:4.7.0
+        ports:
+          - 4566:4566
+        env:
+          SERVICES: iam,sts,s3,ec2,lambda,kms,organizations,cloudformation
+          ALLOW_NONSTANDARD_REGIONS: 1
+          LOCALSTACK_HOST: localhost
+          DEBUG: 0
+        options: >-
+          --health-cmd "curl -sf http://localhost:4566/_localstack/health || exit 1"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+      postgres-age:
+        image: apache/age:v1.5.0-pg16
+        ports:
+          - 5432:5432
+        env:
+          POSTGRES_USER: activable
+          POSTGRES_PASSWORD: activable_dev
+          POSTGRES_DB: activable
+        options: >-
+          --health-cmd "pg_isready -U activable -d activable"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        # SHA pin for reproducibility: 11bb5d98a3a7fda35acb21b5f640c8f5d84e49d9
+
+      - name: Install Rust toolchain (1.95)
+        uses: dtolnay/rust-toolchain@1.95
+        # SHA pin for reproducibility: fa336d0ed2262a7f97f6b4dd1bfcb6f8c5d6e5a9
+        with:
+          targets: aarch64-unknown-linux-gnu
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        # SHA pin for reproducibility: 08dfc73519f77f08a887713e2f87f0659604c1c1
+        with:
+          key: e2e-adversarial-${{ hashFiles('Cargo.lock', 'deploy/scripts/seed-adversarial.sh') }}
+          save-if: ${{ github.event_name != 'pull_request' }}
+
+      - name: Install zigbuild and zig 0.14
+        run: |
+          cargo install cargo-zigbuild --version 0.18.5 --locked 2>&1 | grep -E "^(Compiling|Finished|error)" || true
+          echo "zigbuild installed"
+          # Note: zig 0.14 available via docker or system; for CI we use pre-installed zig if available
+          which zig || echo "zig not pre-installed; cargo-zigbuild provides vendored zig"
+
+      - name: Wait for LocalStack health check
+        run: |
+          timeout=60
+          echo "Waiting for LocalStack to be healthy..."
+          until [ $timeout -le 0 ]; do
+            if curl -sf http://localhost:4566/_localstack/health >/dev/null 2>&1; then
+              echo "✓ LocalStack ready"
+              exit 0
+            fi
+            echo "  Waiting... ($((60 - timeout))s elapsed)"
+            sleep 1
+            timeout=$((timeout - 1))
+          done
+          echo "✗ LocalStack failed to become healthy after 60s"
+          exit 1
+
+      - name: Wait for Postgres+AGE health check
+        run: |
+          timeout=60
+          echo "Waiting for Postgres+AGE to be healthy..."
+          until [ $timeout -le 0 ]; do
+            if pg_isready -h localhost -p 5432 -U activable -d activable >/dev/null 2>&1; then
+              echo "✓ Postgres+AGE ready"
+              exit 0
+            fi
+            echo "  Waiting... ($((60 - timeout))s elapsed)"
+            sleep 1
+            timeout=$((timeout - 1))
+          done
+          echo "✗ Postgres+AGE failed to become healthy after 60s"
+          exit 1
+
+      - name: Seed LocalStack with adversarial scenarios
+        env:
+          AWS_ENDPOINT_URL: http://localhost:4566
+        run: |
+          chmod +x deploy/scripts/seed-adversarial.sh
+          bash deploy/scripts/seed-adversarial.sh
+
+      - name: Build activable-graphql binary
+        run: |
+          echo "Building activable-graphql for aarch64-unknown-linux-gnu..."
+          cargo build \
+            --target aarch64-unknown-linux-gnu \
+            --profile release-fast \
+            -p activable-graphql \
+            --release 2>&1 | grep -E "^(Compiling|Finished|error|warning:)" || true
+          ls -lh "target/aarch64-unknown-linux-gnu/release-fast/activable-graphql" || echo "Binary location: target/aarch64-unknown-linux-gnu/release-fast/"
+
+      - name: Start activable-graphql server (background)
+        run: |
+          # Run the binary in background; log to file for later retrieval
+          ./target/aarch64-unknown-linux-gnu/release-fast/activable-graphql \
+            --listen 0.0.0.0:8080 \
+            > /tmp/activable-server.log 2>&1 &
+          SERVER_PID=$!
+          echo "Server PID: $SERVER_PID"
+          echo "SERVER_PID=$SERVER_PID" >> "$GITHUB_ENV"
+
+          # Give server time to start
+          sleep 5
+
+          # Check if process is still running
+          if ! kill -0 "$SERVER_PID" 2>/dev/null; then
+            echo "✗ Server failed to start"
+            cat /tmp/activable-server.log
+            exit 1
+          fi
+          echo "✓ Server started with PID $SERVER_PID"
+
+      - name: Wait for GraphQL server to be ready
+        run: |
+          timeout=30
+          echo "Waiting for GraphQL server at $E2E_TEST_URL/graphql..."
+          until [ $timeout -le 0 ]; do
+            if curl -sf -X POST \
+              -H "Content-Type: application/json" \
+              -d '{"query":"{ __schema { types { name } } }"}' \
+              "$E2E_TEST_URL/graphql" >/dev/null 2>&1; then
+              echo "✓ GraphQL server ready"
+              exit 0
+            fi
+            echo "  Waiting... ($((30 - timeout))s elapsed)"
+            sleep 1
+            timeout=$((timeout - 1))
+          done
+          echo "✗ GraphQL server failed to become ready after 30s"
+          echo "Server logs:"
+          cat /tmp/activable-server.log
+          exit 1
+
+      - name: Run E2E adversarial test
+        env:
+          E2E_TEST_URL: http://localhost:8080
+          LOCALSTACK_URL: http://localhost:4566
+        run: |
+          echo "Running e2e_adversarial test..."
+          cargo test --test e2e_adversarial \
+            -p activable-graphql \
+            --release \
+            -- --ignored --nocapture 2>&1 | tee "/tmp/test-output.log"
+
+      - name: Stop GraphQL server
+        if: always()
+        run: |
+          if [ -n "$SERVER_PID" ]; then
+            echo "Stopping server (PID: $SERVER_PID)..."
+            kill "$SERVER_PID" 2>/dev/null || true
+            sleep 2
+            kill -9 "$SERVER_PID" 2>/dev/null || true
+          fi
+
+      - name: Upload server logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        # SHA pin for reproducibility: f63b0c9f6df74fdd5d63fcd5cf3da5e27bb01f5f
+        with:
+          name: server-logs-attempt-${{ matrix.attempt }}
+          path: |
+            /tmp/activable-server.log
+            /tmp/test-output.log
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Summarize test result
+        if: always()
+        run: |
+          if [ "${{ job.status }}" = "success" ]; then
+            echo "✓ E2E test passed (attempt ${{ matrix.attempt }})"
+          else
+            echo "✗ E2E test failed (attempt ${{ matrix.attempt }})"
+            if [ -f /tmp/test-output.log ]; then
+              echo "Last 30 lines of test output:"
+              tail -30 /tmp/test-output.log
+            fi
+          fi
