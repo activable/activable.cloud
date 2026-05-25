@@ -257,10 +257,18 @@ Before ANY chained Bash invocation (anything containing `&&` / `||` /
 4. Test commands → prefer `rtk err <cmd>` over `<cmd> | tail` — kills
    noise at source, not in your context.
 
-This is a mechanical checklist, not a "use judgment" rule. The PostToolUse
-hook (`.claude/hooks/rtk-discipline.cjs`, added 2026-05-25) emits a
-next-turn system-reminder on unwrapped-chained-supported-command
-violations so the feedback loop is no longer "remember to run `rtk gain`."
+This is a mechanical checklist, not a "use judgment" rule.
+
+> **Optional local-only PostToolUse hook** (`.claude/hooks/rtk-discipline.cjs`,
+> 2026-05-25) emits a next-turn system-reminder on unwrapped-chained-
+> supported-command violations so the feedback loop is no longer
+> "remember to run `rtk gain`." The hook lives under gitignored
+> `.claude/` and does NOT propagate to teammates or sub-agent worktrees
+> by design — it protects the orchestrator only. Teammates who want it
+> can copy the file from this repo's owner's machine and register
+> the `PostToolUse` Bash matcher in their own `.claude/settings.json`.
+> The hook has 14 passing smoke tests covering quote-aware splitting,
+> heredocs, subshells, env-var prefixes, and pipe chains.
 
 ### §0.10 Context-mode for large-output tools (HARD)
 
