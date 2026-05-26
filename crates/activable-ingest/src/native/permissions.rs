@@ -171,10 +171,11 @@ impl NativeEnricher for PermissionsEnricher {
         let mut edge_count = 0u32;
         if !edges.is_empty() {
             debug!(edge_count = edges.len(), "Writing HasEffectivePermission edges with properties");
-            let written =
-                load_edges_with_props(pool.clone(), graph_name, "HasEffectivePermission", &edges, 100)
+            let outcome =
+                load_edges_with_props(pool.clone(), graph_name, "HasEffectivePermission", &edges, 100, false)
                     .await?;
-            edge_count = written as u32;
+            debug!(created = outcome.created, dropped = outcome.dropped, "HasEffectivePermission edges outcome");
+            edge_count = outcome.created as u32;
         }
 
         debug!(

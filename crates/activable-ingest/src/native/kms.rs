@@ -338,41 +338,47 @@ impl NativeEnricher for KmsEnricher {
 
         if !has_key_policy_edges.is_empty() {
             debug!(count = has_key_policy_edges.len(), "Writing HasKeyPolicy edges");
-            let written = load_edges(
+            let outcome = load_edges(
                 pool.clone(),
                 graph_name,
                 "HasKeyPolicy",
                 &has_key_policy_edges,
                 100,
+                false,
             )
             .await?;
-            total_edges += written as u32;
+            debug!(created = outcome.created, dropped = outcome.dropped, "HasKeyPolicy edges outcome");
+            total_edges += outcome.created as u32;
         }
 
         if !allows_access_edges.is_empty() {
             debug!(count = allows_access_edges.len(), "Writing AllowsAccessFrom edges (KMS)");
-            let written = load_edges_with_props(
+            let outcome = load_edges_with_props(
                 pool.clone(),
                 graph_name,
                 "AllowsAccessFrom",
                 &allows_access_edges,
                 100,
+                false,
             )
             .await?;
-            total_edges += written as u32;
+            debug!(created = outcome.created, dropped = outcome.dropped, "AllowsAccessFrom edges outcome");
+            total_edges += outcome.created as u32;
         }
 
         if !kms_grantable_edges.is_empty() {
             debug!(count = kms_grantable_edges.len(), "Writing KmsGrantable edges");
-            let written = load_edges_with_props(
+            let outcome = load_edges_with_props(
                 pool.clone(),
                 graph_name,
                 "KmsGrantable",
                 &kms_grantable_edges,
                 100,
+                false,
             )
             .await?;
-            total_edges += written as u32;
+            debug!(created = outcome.created, dropped = outcome.dropped, "KmsGrantable edges outcome");
+            total_edges += outcome.created as u32;
         }
 
         Ok(EnrichmentStats {

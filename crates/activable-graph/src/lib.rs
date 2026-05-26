@@ -14,7 +14,7 @@ pub mod types;
 // Re-export public API
 pub use client::{parse_agtype_scalar, GraphClient};
 pub use error::GraphError;
-pub use loader::EdgeLoadOutcome;
+pub use loader::{load_edges, load_edges_with_props, load_nodes, EdgeLoadOutcome};
 pub use pool::GraphPool;
 pub use query_builder::{escape_cypher, escape_sql_literal, validate_label};
 pub use types::{Direction, Node, NodeId, NodeRef, Path, Subgraph};

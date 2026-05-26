@@ -3,8 +3,18 @@
 use crate::error::GraphError;
 use crate::query_builder::escape_sql_literal;
 use deadpool_postgres::Pool;
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing;
+
+/// Outcome of an edge-load operation: tracks created edges and dropped edges (missing endpoints).
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct EdgeLoadOutcome {
+    /// Number of edges actually created (endpoints both present).
+    pub created: u64,
+    /// Number of edges dropped due to missing endpoints.
+    pub dropped: u64,
+}
 
 /// Load nodes into the graph from a JSON array.
 ///
@@ -111,16 +121,26 @@ pub async fn load_nodes(
 /// Load edges into the graph from a list of (from_id, to_id) pairs.
 ///
 /// Performs batched inserts within explicit BEGIN/COMMIT transaction blocks.
-/// Pre-validates that the target nodes exist via a SELECT before attempting INSERT.
+/// Returns [`EdgeLoadOutcome`] with accurate counts: an edge increments `created` only if both
+/// endpoints exist and the edge was merged. If an endpoint is missing:
+/// - **lenient mode** (default): increments `dropped`, logs a structured warning with from_id/to_id/edge_label
+/// - **strict mode**: returns `Err(GraphError)` naming the missing endpoint
+///
+/// # Arguments
+/// * `strict` - if true, missing endpoint → Err; if false, missing endpoint → warn + dropped counter
 pub async fn load_edges(
     pool: Arc<Pool>,
     graph_name: &str,
     edge_label: &str,
     edges: &[(String, String)],
     batch_size: usize,
-) -> Result<u64, GraphError> {
+    strict: bool,
+) -> Result<EdgeLoadOutcome, GraphError> {
     if edges.is_empty() {
-        return Ok(0);
+        return Ok(EdgeLoadOutcome {
+            created: 0,
+            dropped: 0,
+        });
     }
 
     let conn = pool
@@ -143,13 +163,15 @@ pub async fn load_edges(
         .await
         .map_err(|e| GraphError::Query(format!("Failed to start transaction: {}", e)))?;
 
-    let mut count = 0u64;
+    let mut created = 0u64;
+    let mut dropped = 0u64;
 
     for chunk in edges.chunks(batch_size) {
         // AGE doesn't support UNWIND with tuple destructuring — use individual MATCH+MERGE
         for (from_id, to_id) in chunk {
             let cypher = format!(
                 "MATCH (a {{id: '{}'}}), (b {{id: '{}'}}) MERGE (a)-[:{}]->(b) RETURN id(a), id(b)",
+                // AGE Cypher has no bound-parameter support; escape_sql_literal is the injection defense — do NOT remove.
                 escape_sql_literal(from_id),
                 escape_sql_literal(to_id),
                 edge_label
@@ -160,12 +182,39 @@ pub async fn load_edges(
                 graph_name, cypher
             );
 
-            // Edge creation may fail if source/target nodes don't exist — MATCH returns 0 rows, not an error
-            // Real errors (syntax, transaction abort, etc.) should propagate
-            match conn.execute(&sql, &[]).await {
-                Ok(_) => count += 1,
+            // Use query() to check if the edge was actually created.
+            // MATCH finds 0 rows if an endpoint is missing; MERGE never runs and returns 0 rows.
+            // query() returns an empty Vec if no rows, allowing us to distinguish "created" from "missing endpoint".
+            match conn.query(&sql, &[]).await {
+                Ok(rows) => {
+                    if !rows.is_empty() {
+                        // Edge was created (both endpoints matched and merged)
+                        created += 1;
+                    } else {
+                        // MATCH found no endpoints — edge not created
+                        dropped += 1;
+                        if strict {
+                            // Commit and exit before returning error (to clean up the transaction state)
+                            conn.batch_execute("COMMIT;")
+                                .await
+                                .map_err(|e| GraphError::Query(format!("Failed to commit transaction: {}", e)))?;
+                            return Err(GraphError::Query(format!(
+                                "Strict mode: missing endpoint in edge {} -> {}",
+                                from_id, to_id
+                            )));
+                        } else {
+                            // Lenient mode: warn and continue
+                            tracing::warn!(
+                                from_id = %from_id,
+                                to_id = %to_id,
+                                edge_label = %edge_label,
+                                "Edge not created due to missing endpoint"
+                            );
+                        }
+                    }
+                }
                 Err(e) => {
-                    // Log the error and propagate — this indicates a real problem, not just missing nodes
+                    // Real error (syntax, transaction abort, etc.) — propagate
                     tracing::warn!("Edge insert failed for ({} -> {}): {}", from_id, to_id, e);
                     return Err(GraphError::Query(format!(
                         "Failed to insert edge from {} to {}: {}",
@@ -181,7 +230,7 @@ pub async fn load_edges(
         .await
         .map_err(|e| GraphError::Query(format!("Failed to commit transaction: {}", e)))?;
 
-    Ok(count)
+    Ok(EdgeLoadOutcome { created, dropped })
 }
 
 /// Load edges with properties into the graph.
@@ -189,15 +238,26 @@ pub async fn load_edges(
 /// Each edge is created with a set of properties (e.g., action, resource).
 /// Properties are passed as a JSON object and set on the relationship.
 /// Performs batched inserts within explicit BEGIN/COMMIT transaction blocks.
+/// Returns [`EdgeLoadOutcome`] with accurate counts: an edge increments `created` only if both
+/// endpoints exist and the edge was merged. If an endpoint is missing:
+/// - **lenient mode** (default): increments `dropped`, logs a structured warning with from_id/to_id/edge_label
+/// - **strict mode**: returns `Err(GraphError)` naming the missing endpoint
+///
+/// # Arguments
+/// * `strict` - if true, missing endpoint → Err; if false, missing endpoint → warn + dropped counter
 pub async fn load_edges_with_props(
     pool: Arc<Pool>,
     graph_name: &str,
     edge_label: &str,
     edges: &[(String, String, serde_json::Value)],
     batch_size: usize,
-) -> Result<u64, GraphError> {
+    strict: bool,
+) -> Result<EdgeLoadOutcome, GraphError> {
     if edges.is_empty() {
-        return Ok(0);
+        return Ok(EdgeLoadOutcome {
+            created: 0,
+            dropped: 0,
+        });
     }
 
     let conn = pool
@@ -220,7 +280,8 @@ pub async fn load_edges_with_props(
         .await
         .map_err(|e| GraphError::Query(format!("Failed to start transaction: {}", e)))?;
 
-    let mut count = 0u64;
+    let mut created = 0u64;
+    let mut dropped = 0u64;
 
     for chunk in edges.chunks(batch_size) {
         for (from_id, to_id, props) in chunk {
@@ -253,6 +314,7 @@ pub async fn load_edges_with_props(
 
             let cypher = format!(
                 "MATCH (a {{id: '{}'}}), (b {{id: '{}'}}) MERGE (a)-[r:{}]->(b){}  RETURN id(a), id(b)",
+                // AGE Cypher has no bound-parameter support; escape_sql_literal is the injection defense — do NOT remove.
                 escape_sql_literal(from_id),
                 escape_sql_literal(to_id),
                 edge_label,
@@ -264,8 +326,35 @@ pub async fn load_edges_with_props(
                 graph_name, cypher
             );
 
-            match conn.execute(&sql, &[]).await {
-                Ok(_) => count += 1,
+            // Use query() to check if the edge was actually created (same as load_edges).
+            match conn.query(&sql, &[]).await {
+                Ok(rows) => {
+                    if !rows.is_empty() {
+                        // Edge was created (both endpoints matched and merged)
+                        created += 1;
+                    } else {
+                        // MATCH found no endpoints — edge not created
+                        dropped += 1;
+                        if strict {
+                            // Commit and exit before returning error
+                            conn.batch_execute("COMMIT;")
+                                .await
+                                .map_err(|e| GraphError::Query(format!("Failed to commit transaction: {}", e)))?;
+                            return Err(GraphError::Query(format!(
+                                "Strict mode: missing endpoint in edge {} -> {}",
+                                from_id, to_id
+                            )));
+                        } else {
+                            // Lenient mode: warn and continue
+                            tracing::warn!(
+                                from_id = %from_id,
+                                to_id = %to_id,
+                                edge_label = %edge_label,
+                                "Edge not created due to missing endpoint"
+                            );
+                        }
+                    }
+                }
                 Err(e) => {
                     tracing::warn!("Edge insert with props failed for ({} -> {}): {}", from_id, to_id, e);
                     return Err(GraphError::Query(format!(
@@ -282,7 +371,7 @@ pub async fn load_edges_with_props(
         .await
         .map_err(|e| GraphError::Query(format!("Failed to commit transaction: {}", e)))?;
 
-    Ok(count)
+    Ok(EdgeLoadOutcome { created, dropped })
 }
 
 #[cfg(test)]

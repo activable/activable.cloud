@@ -190,22 +190,25 @@ impl NativeEnricher for IamEnricher {
         // Write HasOidcProvider edges
         if !has_oidc_provider_edges.is_empty() {
             debug!(count = has_oidc_provider_edges.len(), "Writing HasOidcProvider edges");
-            let written = load_edges(
+            let outcome = load_edges(
                 pool.clone(),
                 graph_name,
                 "HasOidcProvider",
                 &has_oidc_provider_edges,
                 100,
+                false,
             )
             .await?;
-            edge_count += written as u32;
+            debug!(created = outcome.created, dropped = outcome.dropped, "HasOidcProvider edges outcome");
+            edge_count += outcome.created as u32;
         }
 
         // Write CanAssume edges in batches
         if !edges.is_empty() {
             debug!(edge_count = edges.len(), "Writing CanAssume edges");
-            let written = load_edges(pool.clone(), graph_name, "CanAssume", &edges, 100).await?;
-            edge_count += written as u32;
+            let outcome = load_edges(pool.clone(), graph_name, "CanAssume", &edges, 100, false).await?;
+            debug!(created = outcome.created, dropped = outcome.dropped, "CanAssume edges outcome");
+            edge_count += outcome.created as u32;
         }
 
         Ok(EnrichmentStats {
