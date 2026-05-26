@@ -5,7 +5,70 @@ use crate::query_builder::CypherBuilder;
 use crate::types::{Direction, HydrationQuery, Node, NodeId, NodeRef, Path, Subgraph};
 use deadpool_postgres::Pool;
 use futures::stream::{self, Stream};
+use std::str::FromStr;
 use std::sync::Arc;
+
+/// Parse an agtype scalar value (number, boolean, string) to a typed result.
+///
+/// AGE returns agtype values as strings via `::text` cast. This helper handles:
+/// - Bare numbers: "5" → 5
+/// - Quoted strings: "\"hello\"" → stripped to "hello"
+/// - JSON Object forms: "{...}" → parsed accordingly
+///
+/// The caller is responsible for casting the agtype column to `::text` in the SQL
+/// to ensure the value arrives as a string rather than raw agtype OID.
+///
+/// # Examples
+/// ```ignore
+/// let raw: String = row.try_get(0)?;
+/// let count: u32 = parse_agtype_scalar::<u32>(&raw)?;
+/// ```
+pub fn parse_agtype_scalar<T: FromStr>(raw: &str) -> Result<T, GraphError>
+where
+    T::Err: std::fmt::Display,
+{
+    let trimmed = raw.trim();
+
+    // Case 1: bare number (most common from count(*), arithmetic)
+    if let Ok(val) = trimmed.parse::<T>() {
+        return Ok(val);
+    }
+
+    // Case 2: quoted string — strip outer quotes and parse again
+    if (trimmed.starts_with('"') && trimmed.ends_with('"')) ||
+       (trimmed.starts_with('\'') && trimmed.ends_with('\'')) {
+        let inner = &trimmed[1..trimmed.len() - 1];
+        if let Ok(val) = inner.trim().parse::<T>() {
+            return Ok(val);
+        }
+    }
+
+    // Case 3: JSON Object form (e.g., count(*) as agtype might return {...})
+    // Try to extract a numeric or boolean value from the object if it looks like JSON
+    if trimmed.starts_with('{') && trimmed.ends_with('}') {
+        // For robustness, attempt to deserialize as JSON and extract first numeric field
+        if let Ok(obj) = serde_json::from_str::<serde_json::Map<String, serde_json::Value>>(trimmed) {
+            // Try the common field names first
+            for field_name in &["value", "result", "count", "count(*)"] {
+                if let Some(val) = obj.get(*field_name) {
+                    if let Some(num) = val.as_i64() {
+                        if let Ok(parsed) = format!("{}", num).parse::<T>() {
+                            return Ok(parsed);
+                        }
+                    }
+                }
+            }
+            // Fall through to error below
+        }
+    }
+
+    // No parse succeeded; return structured error
+    Err(GraphError::Parse(format!(
+        "Failed to parse agtype scalar to {}: '{}'",
+        std::any::type_name::<T>(),
+        raw
+    )))
+}
 
 /// Main graph client for querying the AGE graph.
 ///

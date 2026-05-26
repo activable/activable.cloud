@@ -7,6 +7,7 @@
 //! O(n log n) performance via indexes, not O(n²) in-memory joins.
 
 use crate::error::IngestError;
+use activable_graph::parse_agtype_scalar;
 use deadpool_postgres::Pool;
 use serde::Deserialize;
 use std::sync::Arc;
@@ -35,6 +36,8 @@ pub struct RelationshipRule {
 pub struct RelationshipStats {
     pub rule_name: String,
     pub edges_created: u32,
+    /// Rules that failed to execute; populated only if the rule itself errors.
+    pub skipped_rules: Vec<String>,
 }
 
 /// Complete relationship config loaded from YAML.
@@ -84,6 +87,7 @@ pub async fn apply_relationships(
                 stats.push(RelationshipStats {
                     rule_name: rule.name.clone(),
                     edges_created: count,
+                    skipped_rules: Vec::new(),
                 });
             }
             Err(e) => {
@@ -95,6 +99,7 @@ pub async fn apply_relationships(
                 stats.push(RelationshipStats {
                     rule_name: rule.name.clone(),
                     edges_created: 0,
+                    skipped_rules: vec![format!("{}: {}", rule.name, e)],
                 });
             }
         }
@@ -108,9 +113,12 @@ pub async fn apply_relationships(
 /// Constructs a SQL/Cypher statement that pushes the join to the database
 /// for O(n log n) execution via indexes. Each clause (MATCH, WHERE, MERGE,
 /// RETURN) is properly space-separated to avoid token fusion.
+///
+/// The `count(*)::text` cast ensures the result is deterministically a text
+/// integer rather than an agtype Object, avoiding Object/String decoding fragility.
 fn build_relationship_cypher(graph_name: &str, rule: &RelationshipRule) -> String {
     format!(
-        "SELECT * FROM cypher('{}', $$MATCH (f:{} ), (t:{} ) WHERE f.{} = t.{} MERGE (f)-[:{}]->(t) RETURN count(*) as edge_count$$) AS (edge_count agtype)",
+        "SELECT * FROM cypher('{}', $$MATCH (f:{} ), (t:{} ) WHERE f.{} = t.{} MERGE (f)-[:{}]->(t) RETURN count(*)::text as edge_count$$) AS (edge_count text)",
         graph_name,
         rule.from_label,
         rule.to_label,
@@ -145,20 +153,19 @@ async fn apply_single_rule(
         .await
         .map_err(|e| IngestError::Graph(format!("relationship query failed: {}", e)))?;
 
-    // Extract count from AGE agtype result.
-    // AGE returns agtype values as strings; parse the count.
+    // Extract count from the text result.
+    // The cypher query casts count(*) to ::text, so we get a bare number string.
+    // Use the shared parse_agtype_scalar helper to handle both bare numbers and
+    // edge cases (quoted, Object form); propagate errors instead of silently defaulting.
     let count = if rows.is_empty() {
         0u32
     } else {
         let raw: String = rows[0]
             .try_get(0)
-            .map_err(|e| IngestError::Graph(format!("parse agtype failed: {}", e)))?;
+            .map_err(|e| IngestError::Graph(format!("failed to read count column: {}", e)))?;
 
-        // AGE agtype for integers serializes as bare numbers.
-        raw.trim().parse::<u32>().unwrap_or_else(|_| {
-            tracing::warn!(raw_value = %raw, "failed to parse AGE count, defaulting to 0");
-            0u32
-        })
+        parse_agtype_scalar::<u32>(&raw)
+            .map_err(|e| IngestError::Graph(format!("failed to parse relationship count: {}", e)))?
     };
 
     Ok(count)
@@ -299,8 +306,8 @@ mod tests {
             "cypher must contain properly-spaced MERGE clause with edge type"
         );
         assert!(
-            cypher.contains("RETURN count(*) as edge_count"),
-            "cypher must contain properly-spaced RETURN clause"
+            cypher.contains("RETURN count(*)::text as edge_count"),
+            "cypher must contain properly-spaced RETURN clause with ::text cast"
         );
 
         // Verify the clauses appear in correct order.
