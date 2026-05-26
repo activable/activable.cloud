@@ -99,7 +99,7 @@ fn test_fixture_node_with_property_number() {
 fn test_fixture_node_with_property_bool() {
     let node = node_with_property("test3", "active", Value::Bool(true));
     assert_eq!(node["id"].as_str().unwrap(), "test3");
-    assert_eq!(node["active"].as_bool().unwrap(), true);
+    assert!(node["active"].as_bool().unwrap());
 }
 
 #[test]
@@ -168,7 +168,7 @@ async fn test_agtype_roundtrip_string() {
 
     // Write a node with a string property
     let original = node_with_property("test_str", "text", Value::String("hello world".to_string()));
-    let written = loader::load_nodes(pool.clone(), graph_name, "Test", &[original.clone()], 1)
+    let written = loader::load_nodes(pool.clone(), graph_name, "Test", std::slice::from_ref(&original), 1)
         .await
         .expect("failed to write node");
     assert_eq!(written, 1, "should write 1 node");
@@ -279,7 +279,7 @@ async fn test_agtype_roundtrip_bool() {
 
     assert!(!results.is_empty());
     let value = &results[0][0];
-    assert_eq!(value.as_bool().unwrap(), true, "bool property should round-trip");
+    assert!(value.as_bool().unwrap(), "bool property should round-trip");
 }
 
 #[tokio::test]
@@ -463,7 +463,7 @@ async fn test_agtype_roundtrip_unicode() {
         "text",
         Value::String("値 emoji 🚨 test".to_string()),
     );
-    let written = loader::load_nodes(pool.clone(), graph_name, "Test", &[original.clone()], 1)
+    let written = loader::load_nodes(pool.clone(), graph_name, "Test", std::slice::from_ref(&original), 1)
         .await
         .expect("failed to write node");
     assert_eq!(written, 1);
@@ -517,7 +517,7 @@ async fn test_agtype_roundtrip_quoted_strings() {
         "text",
         Value::String("it's a \"test\" with \\ backslash".to_string()),
     );
-    let written = loader::load_nodes(pool.clone(), graph_name, "Test", &[original.clone()], 1)
+    let written = loader::load_nodes(pool.clone(), graph_name, "Test", std::slice::from_ref(&original), 1)
         .await
         .expect("failed to write node");
     assert_eq!(written, 1);
@@ -706,7 +706,7 @@ async fn regression_bug03_unicode_survives() {
         "description",
         Value::String("テスト日本語 🚀 emoji".to_string()),
     );
-    let bytes_before = original["description"].as_str().unwrap().as_bytes().len();
+    let bytes_before = original["description"].as_str().unwrap().len();
     let written = loader::load_nodes(pool.clone(), graph_name, "Test", &[original], 1)
         .await
         .expect("failed to write node");
@@ -722,7 +722,7 @@ async fn regression_bug03_unicode_survives() {
 
     assert!(!results.is_empty());
     let value = &results[0][0];
-    let bytes_after = value.as_str().unwrap().as_bytes().len();
+    let bytes_after = value.as_str().unwrap().len();
     assert_eq!(
         bytes_before, bytes_after,
         "Bug-3 regression: unicode byte-length must match (no truncation)"

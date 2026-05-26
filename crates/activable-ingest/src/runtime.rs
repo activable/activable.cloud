@@ -576,8 +576,9 @@ mod tests {
 
         let _account_config = IngestRuntime::create_account_config(&base_config, account_id);
 
-        // The config should be created without panicking; actual credential verification
-        // is done in integration tests with LocalStack
-        assert!(true);
+        // The config should be created without panicking and should be a valid SdkConfig;
+        // actual credential verification is done in integration tests with LocalStack.
+        // Just verify the account ID is not empty (fixture validation).
+        assert!(!account_id.is_empty());
     }
 }

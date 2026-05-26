@@ -164,21 +164,21 @@ fn test_parse_invalid_json() {
 fn test_parse_bool_true_bare() {
     let result = parse_agtype_scalar::<bool>("true");
     assert!(result.is_ok(), "bare true should parse");
-    assert_eq!(result.unwrap(), true);
+    assert!(result.unwrap());
 }
 
 #[test]
 fn test_parse_bool_false_bare() {
     let result = parse_agtype_scalar::<bool>("false");
     assert!(result.is_ok(), "bare false should parse");
-    assert_eq!(result.unwrap(), false);
+    assert!(!result.unwrap());
 }
 
 #[test]
 fn test_parse_bool_quoted_true() {
     let result = parse_agtype_scalar::<bool>("\"true\"");
     assert!(result.is_ok(), "quoted true should parse");
-    assert_eq!(result.unwrap(), true);
+    assert!(result.unwrap());
 }
 
 #[test]

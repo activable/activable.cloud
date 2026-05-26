@@ -375,8 +375,8 @@ fn test_edge_load_outcome_counts() {
     assert_eq!(outcome.created, 42);
     assert_eq!(outcome.dropped, 7);
 
-    // Verify Clone
-    let outcome2 = outcome.clone();
+    // Verify Copy semantics
+    let outcome2 = outcome;
     assert_eq!(outcome2.created, 42);
     assert_eq!(outcome2.dropped, 7);
 
