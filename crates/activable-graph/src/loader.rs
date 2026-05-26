@@ -253,6 +253,30 @@ pub async fn load_edges_with_props(
     batch_size: usize,
     strict: bool,
 ) -> Result<EdgeLoadOutcome, GraphError> {
+    load_edges_with_props_identifying(pool, graph_name, edge_label, edges, batch_size, strict, &[]).await
+}
+
+/// Load edges with properties, specifying which properties are part of the MERGE identifying key.
+///
+/// For edges where distinct property combinations must be preserved (e.g., `HasEffectivePermission`
+/// with different (action, resource) pairs), pass the identifying property names in `identifying_keys`.
+/// The MERGE will include these properties in the relationship pattern, preventing property-only
+/// variations from collapsing into one edge.
+///
+/// If `identifying_keys` is empty, behavior is identical to `load_edges_with_props` (MERGE on
+/// `(from, to, edge_label)` only).
+///
+/// # Arguments
+/// * `identifying_keys` - property names that are part of the MERGE key (e.g., vec!["action", "resource"])
+pub async fn load_edges_with_props_identifying(
+    pool: Arc<Pool>,
+    graph_name: &str,
+    edge_label: &str,
+    edges: &[(String, String, serde_json::Value)],
+    batch_size: usize,
+    strict: bool,
+    identifying_keys: &[&str],
+) -> Result<EdgeLoadOutcome, GraphError> {
     if edges.is_empty() {
         return Ok(EdgeLoadOutcome {
             created: 0,
@@ -285,39 +309,31 @@ pub async fn load_edges_with_props(
 
     for chunk in edges.chunks(batch_size) {
         for (from_id, to_id, props) in chunk {
-            // Convert properties object to SET format: {key: value, ...}
-            // Cypher SET syntax for edge properties: SET r += {action: 'value', resource: 'value'}
-            let props_str = if let serde_json::Value::Object(map) = props {
-                let pairs: Vec<String> = map
-                    .iter()
-                    .filter_map(|(k, v)| {
-                        match v {
-                            serde_json::Value::String(s) => {
-                                Some(format!("{}: '{}'", k, escape_sql_literal(s)))
-                            }
-                            serde_json::Value::Number(n) => Some(format!("{}: {}", k, n)),
-                            serde_json::Value::Bool(b) => Some(format!("{}: {}", k, b)),
-                            _ => None, // Skip arrays/objects/nulls
-                        }
-                    })
-                    .collect();
-                format!("{{{}}}", pairs.join(", "))
+            // Partition properties: identifying vs. settable
+            let (identifying_props, settable_props) = partition_properties(props, identifying_keys);
+
+            // Build MERGE clause: include identifying properties in the relationship pattern
+            let merge_clause = if identifying_props.is_empty() {
+                // No identifying props: simple MERGE (backward compatible)
+                format!("(a)-[r:{}]->(b)", edge_label)
             } else {
-                String::new()
+                // Include identifying props in MERGE pattern
+                format!("(a)-[r:{} {{{}}}]->(b)", edge_label, identifying_props)
             };
 
-            let set_clause = if props_str.is_empty() {
+            // Build SET clause: only for non-identifying properties
+            let set_clause = if settable_props.is_empty() {
                 String::new()
             } else {
-                format!(" SET r += {}", props_str)
+                format!(" SET r += {}", settable_props)
             };
 
             let cypher = format!(
-                "MATCH (a {{id: '{}'}}), (b {{id: '{}'}}) MERGE (a)-[r:{}]->(b){}  RETURN id(a), id(b)",
+                "MATCH (a {{id: '{}'}}), (b {{id: '{}'}}) MERGE {}{}  RETURN id(a), id(b)",
                 // AGE Cypher has no bound-parameter support; escape_sql_literal is the injection defense — do NOT remove.
                 escape_sql_literal(from_id),
                 escape_sql_literal(to_id),
-                edge_label,
+                merge_clause,
                 set_clause
             );
 
@@ -372,6 +388,51 @@ pub async fn load_edges_with_props(
         .map_err(|e| GraphError::Query(format!("Failed to commit transaction: {}", e)))?;
 
     Ok(EdgeLoadOutcome { created, dropped })
+}
+
+/// Partition properties into identifying and settable groups.
+///
+/// Properties listed in `identifying_keys` are returned as a comma-separated
+/// key-value string suitable for a MERGE pattern: `action: 'value', resource: 'value'`.
+/// All other properties are returned as a settable map `{key: value, ...}` for SET clauses.
+fn partition_properties(
+    props: &serde_json::Value,
+    identifying_keys: &[&str],
+) -> (String, String) {
+    let map = match props.as_object() {
+        Some(m) => m,
+        None => return (String::new(), String::new()),
+    };
+
+    let mut identifying_parts = Vec::new();
+    let mut settable_parts = Vec::new();
+
+    for (k, v) in map {
+        let is_identifying = identifying_keys.contains(&k.as_str());
+        let value_str = match v {
+            serde_json::Value::String(s) => Some(format!("'{}'", escape_sql_literal(s))),
+            serde_json::Value::Number(n) => Some(format!("{}", n)),
+            serde_json::Value::Bool(b) => Some(format!("{}", b)),
+            _ => None, // Skip arrays/objects/nulls
+        };
+
+        if let Some(val) = value_str {
+            if is_identifying {
+                identifying_parts.push(format!("{}: {}", k, val));
+            } else {
+                settable_parts.push(format!("{}: {}", k, val));
+            }
+        }
+    }
+
+    let identifying_str = identifying_parts.join(", ");
+    let settable_str = if settable_parts.is_empty() {
+        String::new()
+    } else {
+        format!("{{{}}}", settable_parts.join(", "))
+    };
+
+    (identifying_str, settable_str)
 }
 
 #[cfg(test)]

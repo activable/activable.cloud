@@ -9,7 +9,7 @@
 
 use crate::error::IngestError;
 use crate::native::{EnrichmentStats, NativeEnricher};
-use activable_graph::loader::{load_nodes, load_edges_with_props};
+use activable_graph::loader::{load_nodes, load_edges_with_props_identifying};
 use async_trait::async_trait;
 use deadpool_postgres::Pool;
 use serde_json::json;
@@ -168,12 +168,21 @@ impl NativeEnricher for PermissionsEnricher {
         }
 
         // Insert HasEffectivePermission edges with properties
+        // Note: HasEffectivePermission is a multi-edge type where action+resource discriminate distinct permissions.
+        // MERGE on (from,to,action,resource) to preserve distinct permission edges on re-ingest.
         let mut edge_count = 0u32;
         if !edges.is_empty() {
             debug!(edge_count = edges.len(), "Writing HasEffectivePermission edges with properties");
-            let outcome =
-                load_edges_with_props(pool.clone(), graph_name, "HasEffectivePermission", &edges, 100, false)
-                    .await?;
+            let outcome = load_edges_with_props_identifying(
+                pool.clone(),
+                graph_name,
+                "HasEffectivePermission",
+                &edges,
+                100,
+                false,
+                &["action", "resource"],
+            )
+            .await?;
             debug!(created = outcome.created, dropped = outcome.dropped, "HasEffectivePermission edges outcome");
             edge_count = outcome.created as u32;
         }
