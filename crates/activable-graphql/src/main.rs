@@ -15,6 +15,7 @@ mod graph_adapter;
 mod graph_client_adapter;
 mod resolvers;
 mod schema;
+mod telemetry;
 mod types;
 
 use schema::{AppSchema, MutationRoot, QueryRoot};
