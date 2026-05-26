@@ -582,10 +582,10 @@ async fn regression_bug01_edge_write_count() {
 
     // Write 100 edges
     let edges = edges_for_batch_test();
-    let written_edges = loader::load_edges(pool.clone(), graph_name, "CanAssume", &edges, 10)
+    let written_edges = loader::load_edges(pool.clone(), graph_name, "CanAssume", &edges, 10, false)
         .await
         .expect("failed to write edges");
-    assert_eq!(written_edges, 100, "should write 100 edges");
+    assert_eq!(written_edges.created, 100, "should write 100 edges");
 
     // Count edges via cypher
     let client = GraphClient::new(pool.clone(), graph_name);
