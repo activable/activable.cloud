@@ -16,6 +16,7 @@ activable-graph = { path = "../activable-graph" }
 activable-ingest = { path = "../activable-ingest" }
 activable-risk = { path = "../activable-risk" }
 activable-ingest-iam = { path = "../activable-ingest-iam" }
+activable-scheduler = { path = "../activable-scheduler" }
 async-graphql = "=8.0.0-rc.5"
 async-graphql-axum = "=8.0.0-rc.5"
 async-trait = "0.1"
@@ -33,6 +34,8 @@ futures = "0.3"
 anyhow = "1"
 thiserror = "1"
 time = { version = "0.3", features = ["serde"] }
+aws-config = "1"
+uuid = { version = "1", features = ["v4", "serde"] }
 
 [dev-dependencies]
 reqwest = { version = "0.12", features = ["json"] }

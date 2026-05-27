@@ -66,13 +66,22 @@ impl QueryRoot {
         resolvers::subgraph::subgraph(ctx, center, radius).await
     }
 
-    /// Get the status of a previous ingest run.
+    /// Get the status of a previous ingest run (job).
     async fn ingest_status(
         &self,
         ctx: &Context<'_>,
-        run_id: String,
+        job_id: String,
     ) -> async_graphql::Result<Option<GqlIngestRun>> {
-        resolvers::ingest::ingest_status(ctx, run_id).await
+        resolvers::ingest::ingest_status(ctx, job_id).await
+    }
+
+    /// List ingestion jobs with optional filters.
+    async fn ingest_jobs(
+        &self,
+        ctx: &Context<'_>,
+        filter: Option<GqlIngestJobFilter>,
+    ) -> async_graphql::Result<Vec<GqlIngestRun>> {
+        resolvers::ingest::ingest_jobs(ctx, filter).await
     }
 
     /// Check the health of the GraphQL server and database.
@@ -142,14 +151,18 @@ pub struct MutationRoot;
 
 #[Object]
 impl MutationRoot {
-    /// Trigger a new ingestion run.
+    /// Trigger a new ingestion run (enqueues per-account jobs).
     async fn trigger_ingest(
         &self,
         ctx: &Context<'_>,
         provider: String,
         regions: Vec<String>,
-    ) -> async_graphql::Result<GqlIngestRun> {
-        resolvers::ingest::trigger_ingest(ctx, provider, regions).await
+        #[graphql(
+            desc = "List of AWS account IDs to ingest (12-digit strings). If omitted, uses configured default accounts."
+        )]
+        account_ids: Option<Vec<String>>,
+    ) -> async_graphql::Result<Vec<String>> {
+        resolvers::ingest::trigger_ingest(ctx, provider, regions, account_ids).await
     }
 
     /// Refresh (re-score) a principal's risk assessment.

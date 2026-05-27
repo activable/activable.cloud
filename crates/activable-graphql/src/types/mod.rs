@@ -2,7 +2,7 @@
 
 pub mod risk;
 
-use async_graphql::SimpleObject;
+use async_graphql::{InputObject, SimpleObject};
 
 /// GraphQL representation of a node reference.
 #[derive(SimpleObject, Clone, Debug)]
@@ -109,13 +109,48 @@ pub struct GqlIngestService {
     pub error: Option<String>,
 }
 
+/// GraphQL representation of ingest statistics.
+/// Parsed from the `jobs.result` jsonb field (activable_ingest::IngestRunStats).
+#[derive(SimpleObject, Clone, Debug)]
+pub struct GqlIngestStats {
+    pub total_nodes: i32,
+    pub total_edges: i32,
+    pub duration_secs: i64,
+}
+
 /// GraphQL representation of an ingest run.
+/// Maps a `jobs` table row to the existing GraphQL schema.
+/// Field-mapping table (for code review clarity):
+/// | `jobs` table | GQL `IngestRun` | Notes |
+/// |---|---|---|
+/// | `id` | `id` | Job UUID |
+/// | `status` (pending/running/completed/failed) | `status` (map to old enum: pending→"RUNNING", running→"RUNNING", completed→"COMPLETED", failed→"FAILED") | Map to old enum for client compat |
+/// | `result` (jsonb IngestRunStats) | `stats` (parse node/edge/duration fields) | Deserialize from jsonb |
+/// | `claimed_by` | `worker_id` | Which worker claimed it |
+/// | `created_at` | `created_at` | Job creation time |
+/// | `finished_at` | `completed_at` | Job completion (null if pending/running) |
+/// | `last_error` | `error` | Failure message |
 #[derive(SimpleObject, Clone, Debug)]
 pub struct GqlIngestRun {
     pub id: String,
     pub status: String,
-    pub started_at: String,
-    pub services: Vec<GqlIngestService>,
+    pub created_at: String,
+    pub completed_at: Option<String>,
+    pub worker_id: Option<String>,
+    pub stats: Option<GqlIngestStats>,
+    pub error: Option<String>,
+    // Deprecated fields (kept for backward compat with existing clients)
+    pub started_at: Option<String>,
+    pub services: Option<Vec<GqlIngestService>>,
+}
+
+/// Input filter for ingestJobs query.
+#[derive(InputObject, Clone, Debug)]
+pub struct GqlIngestJobFilter {
+    /// Filter by account ID (AWS 12-digit account).
+    pub account_id: Option<String>,
+    /// Filter by job status (pending, running, completed, failed).
+    pub status: Option<String>,
 }
 
 /// GraphQL representation of a key policy statement

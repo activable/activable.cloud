@@ -28,11 +28,13 @@ dependencies = [
  "activable-ingest",
  "activable-ingest-iam",
  "activable-risk",
+ "activable-scheduler",
  "activable-schema",
  "anyhow",
  "async-graphql",
  "async-graphql-axum",
  "async-trait",
+ "aws-config",
  "axum",
  "deadpool-postgres",
  "futures",
@@ -47,6 +49,7 @@ dependencies = [
  "tower-http",
  "tracing",
  "tracing-subscriber",
+ "uuid",
 ]
 
 [[package]]

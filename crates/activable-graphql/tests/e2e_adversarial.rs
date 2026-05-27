@@ -134,19 +134,26 @@ impl E2eEnvironment {
             return Err(format!("GraphQL error: {}", errors).into());
         }
 
-        let run_id = body["data"]["triggerIngest"]["id"]
-            .as_str()
-            .ok_or("missing run id")?
+        // New contract: triggerIngest returns Vec<String> (job IDs).
+        let job_ids = body["data"]["triggerIngest"]
+            .as_array()
+            .ok_or("missing jobIds array")?;
+
+        let run_id = job_ids
+            .first()
+            .and_then(|v| v.as_str())
+            .ok_or("no job IDs returned")?
             .to_string();
 
-        tracing::info!(run_id = %run_id, "ingest triggered");
+        tracing::info!(job_id = %run_id, "ingest triggered");
         Ok(run_id)
     }
 
     /// Poll ingest_status until completion (timeout: 90 seconds).
+    /// New contract: ingestStatus now uses jobId instead of runId.
     async fn wait_for_ingest_complete(
         &self,
-        run_id: &str,
+        job_id: &str,
         timeout_secs: u64,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let client = reqwest::Client::new();
@@ -156,14 +163,14 @@ impl E2eEnvironment {
             let query = format!(
                 r#"
                 query {{
-                    ingestStatus(runId: "{}") {{
+                    ingestStatus(jobId: "{}") {{
                         id
                         status
-                        startedAt
+                        createdAt
                     }}
                 }}
             "#,
-                run_id
+                job_id
             );
 
             let response = client
@@ -183,7 +190,7 @@ impl E2eEnvironment {
                 .unwrap_or("unknown");
 
             if status == "completed" || status == "COMPLETED" {
-                tracing::info!(run_id = %run_id, "ingest completed");
+                tracing::info!(job_id = %job_id, "ingest completed");
                 return Ok(());
             }
 
