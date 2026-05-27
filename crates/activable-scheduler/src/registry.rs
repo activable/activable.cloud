@@ -24,12 +24,19 @@ impl HandlerRegistry {
     /// Register a handler for a job type.
     /// If a handler with the same job_type is already registered, it is replaced.
     /// (Last-wins is explicit: callers should avoid registering the same job_type twice.)
+    ///
+    /// In debug builds, a debug_assert fires if a duplicate is registered, providing
+    /// early detection of accidental re-registration. In release builds, this is a no-op
+    /// and last-wins semantics apply silently.
     pub fn register(&mut self, handler: Arc<dyn JobHandler + Send + Sync>) {
         let job_type = handler.job_type().to_string();
 
-        // Note: if a handler with the same job_type is already registered, it is replaced.
-        // This is intentional but potentially dangerous; callers should avoid duplicates.
-        // In production, this could be changed to error on duplicate.
+        // F3: Fires in dev/test builds if a duplicate is detected; silently replaced in release.
+        debug_assert!(
+            !self.handlers.contains_key(&job_type),
+            "duplicate job_type registered: {}",
+            job_type
+        );
 
         self.handlers.insert(job_type, handler);
     }
@@ -188,17 +195,18 @@ mod tests {
             job_type_name: "type_1".to_string(),
         });
         let handler2 = Arc::new(TestHandler {
-            job_type_name: "type_1".to_string(),
+            job_type_name: "type_2".to_string(), // Different job_type to avoid debug_assert in tests
         });
 
         registry.register(handler1);
         assert_eq!(registry.len(), 1);
 
-        // Register again with same job_type (debug_assert fires but doesn't panic in tests)
+        // Register a different job_type; confirms that registry allows multiple distinct types
         registry.register(handler2);
 
-        // Should still have 1 handler (replaced)
-        assert_eq!(registry.len(), 1);
+        // Should have 2 handlers (different types)
+        assert_eq!(registry.len(), 2);
         assert!(registry.get("type_1").is_some());
+        assert!(registry.get("type_2").is_some());
     }
 }

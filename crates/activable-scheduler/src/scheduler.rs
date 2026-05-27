@@ -23,17 +23,8 @@ pub struct Scheduler {
     reaper: Option<Reaper>,
     /// Handle to the reaper task (if running)
     reaper_handle: Option<JoinHandle<()>>,
-    /// Configuration parameters (stored for introspection/logging; not all are actively used)
-    #[allow(dead_code)]
+    /// Number of concurrent workers (used in logging)
     concurrency: usize,
-    #[allow(dead_code)]
-    poll_ms: u64,
-    #[allow(dead_code)]
-    heartbeat_interval: Duration,
-    #[allow(dead_code)]
-    reap_threshold_seconds: i64,
-    #[allow(dead_code)]
-    reap_check_interval: Duration,
 }
 
 impl Scheduler {
@@ -44,7 +35,15 @@ impl Scheduler {
 
     /// Start the scheduler: initialize schema, spawn the worker pool, and spawn the reaper.
     /// Returns an error if schema initialization, pool start, or reaper spawn fails.
+    /// Guard: if already started (reaper_handle is Some), returns error to prevent double-start.
     pub async fn start(&mut self) -> Result<(), SchedulerError> {
+        // F5: Guard against double-start
+        if self.reaper_handle.is_some() {
+            return Err(SchedulerError::Database(
+                "scheduler already started".to_string(),
+            ));
+        }
+
         // Ensure schema is initialized
         self.store.ensure_schema().await?;
 
@@ -114,6 +113,8 @@ pub struct SchedulerBuilder {
     reap_check_interval: Duration,
 }
 
+// F1: poll_ms is now plumbed through to WorkerPool
+
 impl SchedulerBuilder {
     /// Create a new builder with default configuration.
     fn new() -> Self {
@@ -175,8 +176,9 @@ impl SchedulerBuilder {
         let handlers = self.registry.handlers();
         let job_types = self.registry.registered_types();
 
-        // Create the worker pool
+        // Create the worker pool with configured poll_ms and heartbeat interval
         let pool = WorkerPool::new(Arc::clone(&store), handlers.clone(), self.concurrency)
+            .with_poll_ms(self.poll_ms)
             .with_heartbeat_interval(self.heartbeat_interval);
 
         // Create the reaper
@@ -194,10 +196,6 @@ impl SchedulerBuilder {
             reaper: Some(reaper),
             reaper_handle: None,
             concurrency: self.concurrency,
-            poll_ms: self.poll_ms,
-            heartbeat_interval: self.heartbeat_interval,
-            reap_threshold_seconds: self.reap_threshold_seconds,
-            reap_check_interval: self.reap_check_interval,
         })
     }
 }
@@ -260,8 +258,9 @@ mod tests {
         assert_eq!(builder.reap_check_interval, Duration::from_secs(20));
     }
 
+    // F2: Real tests for build() error + success paths
     #[test]
-    fn test_scheduler_build_no_handlers_error() {
+    fn test_scheduler_build_empty_registry_errors() {
         let result = tokio::runtime::Runtime::new().unwrap().block_on(async {
             let config = crate::JobStoreConfig {
                 host: "localhost".to_string(),
@@ -273,20 +272,44 @@ mod tests {
                 backoff_base_seconds: 1.0,
             };
 
-            // Note: this will fail at pool creation, but that's expected in a unit test.
-            // The important thing is we can construct the store reference.
-            // For true unit testing without a DB, we'd mock the store.
-            // This test is mainly to verify the builder API shape.
-            let handler = Arc::new(DummyHandler) as Arc<dyn JobHandler + Send + Sync>;
-            let _scheduler = SchedulerBuilder::new()
-                .register(handler)
-                .build(Arc::new(JobStore::new(config).await.unwrap()));
-
-            Ok::<(), SchedulerError>(())
+            let builder = SchedulerBuilder::new();
+            // Do NOT register any handler; registry is empty
+            builder.build(Arc::new(JobStore::new(config).await.unwrap()))
         });
 
-        // This test is primarily an API shape check; actual build() requires a real JobStore.
-        // We'll rely on integration tests for full build verification.
-        assert!(result.is_ok() || result.is_err()); // Just ensure the code compiles
+        // Should return Err because no handlers registered
+        assert!(result.is_err(), "build with empty registry must error");
+        if let Err(SchedulerError::Database(msg)) = result {
+            assert!(
+                msg.contains("no handlers"),
+                "error should mention no handlers: {}",
+                msg
+            );
+        } else {
+            panic!("expected SchedulerError::Database");
+        }
+    }
+
+    #[test]
+    fn test_scheduler_build_with_handler_succeeds() {
+        let result = tokio::runtime::Runtime::new().unwrap().block_on(async {
+            let config = crate::JobStoreConfig {
+                host: "localhost".to_string(),
+                port: 5432,
+                user: "test".to_string(),
+                password: "test".to_string(),
+                dbname: "test".to_string(),
+                pool_size: 1,
+                backoff_base_seconds: 1.0,
+            };
+
+            let handler = Arc::new(DummyHandler) as Arc<dyn JobHandler + Send + Sync>;
+            SchedulerBuilder::new()
+                .register(handler)
+                .build(Arc::new(JobStore::new(config).await.unwrap()))
+        });
+
+        // Should succeed with a registered handler
+        assert!(result.is_ok(), "build with registered handler must succeed");
     }
 }

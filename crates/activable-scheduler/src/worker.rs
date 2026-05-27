@@ -290,11 +290,14 @@ pub struct WorkerPool {
     /// Interval for heartbeat refresh during job execution (default 5s).
     /// Must be ≪ reaper threshold (e.g., 5s heartbeat, 60s threshold).
     heartbeat_interval: Duration,
+    /// Polling interval for unclaimed jobs (milliseconds). Default 100ms.
+    /// F1: Now configurable via with_poll_ms().
+    poll_ms: u64,
 }
 
 impl WorkerPool {
     /// Create a new WorkerPool with the given store, handlers, and concurrency level.
-    /// Polling interval for unclaimed jobs is fixed at 100ms.
+    /// Polling interval for unclaimed jobs defaults to 100ms (configurable via with_poll_ms).
     /// Heartbeat interval defaults to 5 seconds (configurable via with_heartbeat_interval).
     pub fn new(
         store: Arc<JobStore>,
@@ -308,6 +311,7 @@ impl WorkerPool {
             shutdown: Arc::new(AtomicBool::new(false)),
             worker_handles: tokio::sync::Mutex::new(Vec::new()),
             heartbeat_interval: Duration::from_secs(5),
+            poll_ms: 100, // F1: default 100ms, configurable via with_poll_ms
         }
     }
 
@@ -316,6 +320,14 @@ impl WorkerPool {
     /// Returns self for builder pattern.
     pub fn with_heartbeat_interval(mut self, interval: Duration) -> Self {
         self.heartbeat_interval = interval;
+        self
+    }
+
+    /// Set the polling interval for unclaimed jobs (in milliseconds).
+    /// Default is 100ms. Returns self for builder pattern.
+    /// F1: Makes poll_ms configurable per the SchedulerBuilder API.
+    pub fn with_poll_ms(mut self, ms: u64) -> Self {
+        self.poll_ms = ms;
         self
     }
 
@@ -334,8 +346,10 @@ impl WorkerPool {
                 self.heartbeat_interval,
             );
 
+            // F1: Pass self.poll_ms instead of hardcoded 100
+            let poll_ms = self.poll_ms;
             let handle = tokio::spawn(async move {
-                worker.run(100).await;
+                worker.run(poll_ms).await;
             });
 
             handles.push(handle);
