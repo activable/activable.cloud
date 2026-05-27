@@ -334,6 +334,12 @@ impl JobStore {
             run_at,
         })
     }
+
+    /// Provide access to the underlying Postgres pool.
+    /// Intended for testing. Do not use in production code.
+    pub fn pool(&self) -> &Arc<Pool> {
+        &self.pool
+    }
 }
 
 #[cfg(test)]
