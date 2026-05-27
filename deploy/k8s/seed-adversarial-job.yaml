@@ -1,0 +1,57 @@
+# Adversarial Seed Job for LocalStack
+#
+# This Job runs the adversarial scenario seeding script against LocalStack.
+# The script is mounted from a ConfigMap that is generated dynamically by
+# scripts/e2e/seed.sh from the standalone source: deploy/scripts/seed-adversarial.sh
+#
+# Single-source reconciliation:
+# - The standalone source is deploy/scripts/seed-adversarial.sh (one truth)
+# - seed.sh generates the ConfigMap from this file at apply time
+# - The Job mounts the ConfigMap; no embedded script copy (avoids drift)
+#
+# Usage:
+#   # seed.sh handles all creation + ConfigMap generation
+#   ./scripts/e2e/seed.sh
+#
+#   # Or manual apply (requires ConfigMap to exist):
+#   kubectl create configmap localstack-seed-adversarial-script \
+#     --from-file=seed-adversarial.sh=deploy/scripts/seed-adversarial.sh
+#   kubectl apply -f deploy/k8s/seed-adversarial-job.yaml
+#
+
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: localstack-seed-adversarial
+  namespace: default
+spec:
+  backoffLimit: 0
+  template:
+    metadata:
+      name: localstack-seed-adversarial
+    spec:
+      restartPolicy: Never
+      serviceAccountName: default
+      containers:
+      - name: seed-localstack
+        image: amazon/aws-cli:2.13.0
+        imagePullPolicy: IfNotPresent
+        command:
+        - /bin/bash
+        - -c
+        - |
+          set -e
+          cp /scripts/seed-adversarial.sh /tmp/seed-adversarial.sh
+          chmod +x /tmp/seed-adversarial.sh
+          /tmp/seed-adversarial.sh
+        env:
+        - name: AWS_ENDPOINT_URL
+          value: "http://activable-localstack:4566"
+        volumeMounts:
+        - name: seed-script
+          mountPath: /scripts
+      volumes:
+      - name: seed-script
+        configMap:
+          name: localstack-seed-adversarial-script
+          defaultMode: 0755
