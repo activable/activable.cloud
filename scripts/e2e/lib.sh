@@ -190,8 +190,11 @@ log_fail() {
 }
 
 # ============================================================================
-# summary() — Print total pass/fail counts
+# summary() — Print total pass/fail counts and exit with appropriate code
 # ============================================================================
+# IMPORTANT: This function EXITS the script. Do NOT use in subshells.
+# Scenarios MUST call this as the final step to propagate pass/fail to shell.
+#
 summary() {
     echo ""
     echo "========================================"
@@ -200,9 +203,9 @@ summary() {
     echo "========================================"
 
     if (( TESTS_FAILED > 0 )); then
-        return 1
+        exit 1
     fi
-    return 0
+    exit 0
 }
 
 # ============================================================================

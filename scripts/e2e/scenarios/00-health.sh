@@ -60,14 +60,23 @@ fi
 assert_json_eq "$RESPONSE" '.data.__schema.queryType.name' 'QueryRoot' \
     "Schema queryType name"
 
-# Test 2: Verify other query types exist (higher-order check)
+# Test 2: Verify types array exists and is non-empty
 echo ""
 echo "Test 2: Query types enumeration"
-QUERY_NAMES=$(echo "$RESPONSE" | jq -r '.data.__schema.types[].name' | head -5)
-if [[ -n "$QUERY_NAMES" ]]; then
-    log_pass "GraphQL schema contains types"
+# Fetch a fresh introspection response that includes types array
+RESPONSE_WITH_TYPES=$(gql '{ __schema { types { name } } }')
+
+# Check response is valid JSON
+if echo "$RESPONSE_WITH_TYPES" | jq empty 2>/dev/null; then
+    # Guard against null: verify types array exists and has length > 0
+    TYPES_COUNT=$(echo "$RESPONSE_WITH_TYPES" | jq '.data.__schema.types | length // 0')
+    if (( TYPES_COUNT > 0 )); then
+        log_pass "GraphQL schema types array contains $TYPES_COUNT types"
+    else
+        log_fail "GraphQL schema types array is null or empty"
+    fi
 else
-    log_fail "GraphQL schema has no types"
+    log_fail "GraphQL introspection response is not valid JSON"
 fi
 
 echo ""

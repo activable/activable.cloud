@@ -80,8 +80,9 @@ fi
 echo ""
 echo "Test 2: Response shape validation"
 
-# Check that .data.findNode exists (null or object is ok; missing is not)
-if echo "$RESPONSE" | jq -e '.data.findNode' >/dev/null 2>&1; then
+# Check that .data.findNode key exists (null value is acceptable; missing key is not)
+# Use jq 'has()' to check for key presence, not value truthiness
+if echo "$RESPONSE" | jq -e '.data | has("findNode")' >/dev/null 2>&1; then
     log_pass "Response contains .data.findNode field"
 else
     log_fail "Response missing .data.findNode field"
