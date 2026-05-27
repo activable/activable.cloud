@@ -9,6 +9,7 @@ use tracing::{error, info};
 /// and re-queues them respecting max_attempts.
 /// HA-safe: multiple reaper instances are independent; Postgres isolation via WHERE status='running'
 /// and atomic fail() prevents double-reclaiming (if fail() gets NotFound, that reaper's work is done).
+#[derive(Clone)]
 pub struct Reaper {
     store: Arc<JobStore>,
     /// Job types to monitor for stale heartbeat.
