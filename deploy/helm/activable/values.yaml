@@ -14,16 +14,11 @@ service:
   port: 8080
   targetPort: 8080
 
-ingress:
+route:
   enabled: false
-  className: "nginx"
-  annotations: {}
-  hosts:
-    - host: activable.example.com
-      paths:
-        - path: /
-          pathType: Prefix
-  tls: []
+  gatewayName: "activable-gateway"
+  gatewayNamespace: "envoy-gateway-system"
+  hostname: "activable.example.com"
 
 resources:
   limits:

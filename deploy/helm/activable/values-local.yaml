@@ -17,6 +17,12 @@ service:
   targetPort: 8080
   nodePort: 30080
 
+route:
+  enabled: true
+  gatewayName: "activable-gateway"
+  gatewayNamespace: "envoy-gateway-system"
+  hostname: "activable.localtest.me"
+
 # Database points to K8s-internal Postgres service
 database:
   host: "activable-postgres"
