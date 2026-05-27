@@ -166,19 +166,30 @@ verify_loadbalancer() {
         exit 1
     fi
 
-    # Verify Gateway Programmed=True
-    echo "Verifying Gateway Programmed condition..."
-    local gw_programmed
-    gw_programmed=$(kubectl -n "${GATEWAY_NAMESPACE}" get gateway "${GATEWAY_NAME}" \
-        -o jsonpath='{.status.conditions[?(@.type=="Programmed")].status}' 2>/dev/null || echo "")
+    # Verify Gateway Programmed=True with polling (envoy data-plane pod may take 20-30s to start)
+    echo "Verifying Gateway Programmed condition (max 120s)..."
+    local max_programmed_wait=120
+    local programmed_waited=0
 
-    if [[ "${gw_programmed}" != "True" ]]; then
-        echo "ERROR: Gateway ${GATEWAY_NAME} is not Programmed. Status:" >&2
-        kubectl -n "${GATEWAY_NAMESPACE}" describe gateway "${GATEWAY_NAME}" >&2
-        exit 1
-    fi
+    while [[ $programmed_waited -lt $max_programmed_wait ]]; do
+        local gw_programmed
+        gw_programmed=$(kubectl -n "${GATEWAY_NAMESPACE}" get gateway "${GATEWAY_NAME}" \
+            -o jsonpath='{.status.conditions[?(@.type=="Programmed")].status}' 2>/dev/null || echo "")
 
-    echo "Gateway ${GATEWAY_NAME} is Programmed=True. LoadBalancer verification passed."
+        if [[ "${gw_programmed}" == "True" ]]; then
+            echo "Gateway ${GATEWAY_NAME} is Programmed=True. LoadBalancer verification passed."
+            return
+        fi
+
+        echo "  (${programmed_waited}s) Gateway not yet Programmed (status: ${gw_programmed}). Waiting..."
+        sleep 3
+        ((programmed_waited += 3))
+    done
+
+    # Timeout: print diagnostic and exit
+    echo "ERROR: Gateway ${GATEWAY_NAME} did not become Programmed within ${max_programmed_wait}s." >&2
+    kubectl -n "${GATEWAY_NAMESPACE}" describe gateway "${GATEWAY_NAME}" >&2
+    exit 1
 }
 
 # === Main ===

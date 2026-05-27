@@ -74,6 +74,18 @@ generate_cert() {
     echo "Certificate generated at ${CERT_FILE}"
 }
 
+# === Ensure namespace exists ===
+ensure_namespace() {
+    echo "Ensuring namespace ${NAMESPACE} exists..."
+
+    # Idempotently create the namespace via --dry-run=client + apply
+    kubectl create namespace "${NAMESPACE}" \
+        --dry-run=client \
+        -o yaml | kubectl apply -f -
+
+    echo "Namespace ${NAMESPACE} ready."
+}
+
 # === Create/update Kubernetes TLS secret ===
 create_k8s_secret() {
     echo "Creating/updating Kubernetes TLS secret ${SECRET_NAME} in namespace ${NAMESPACE}..."
@@ -95,6 +107,7 @@ main() {
     echo "=== Generate Local TLS Certificate ==="
     preflight_check
     generate_cert
+    ensure_namespace
     create_k8s_secret
     echo "=== TLS Certificate Ready ==="
     echo ""
