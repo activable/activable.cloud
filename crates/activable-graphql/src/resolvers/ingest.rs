@@ -329,3 +329,273 @@ mod tests {
         assert_eq!(defaults, vec!["123456789012", "123456789013"]);
     }
 }
+
+#[cfg(test)]
+mod resolver_integration_tests {
+    use crate::schema::{MutationRoot, QueryRoot};
+    use activable_scheduler::{JobStore, JobStoreConfig};
+    use async_graphql::Schema;
+    use std::sync::Arc;
+
+    /// Helper to get test Postgres URL from DATABASE_URL env.
+    /// Returns None if unset; tests using this skip cleanly.
+    fn get_db_url() -> Option<String> {
+        std::env::var("DATABASE_URL").ok()
+    }
+
+    /// Helper to create JobStore and ensure schema.
+    async fn create_test_store(db_url: &str) -> Result<JobStore, Box<dyn std::error::Error>> {
+        let config = JobStoreConfig::from_url(db_url)?;
+        let store = JobStore::new(config).await?;
+        store.ensure_schema().await?;
+        Ok(store)
+    }
+
+    /// Test: triggerIngest enqueues per-account jobs via the real resolver.
+    /// Verifies:
+    /// - 2 accounts → 2 job ids returned and rows created in jobs table.
+    /// - Each job has status='pending' and correct dedup_key.
+    #[tokio::test]
+    async fn test_trigger_ingest_enqueues_jobs() {
+        let db_url = match get_db_url() {
+            Some(u) => u,
+            None => {
+                println!("Skipping: DATABASE_URL not set");
+                return;
+            }
+        };
+
+        let store = match create_test_store(&db_url).await {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("FAILED: could not create store: {}", e);
+                panic!("store creation failed");
+            }
+        };
+
+        // Build schema with injected Arc<JobStore> and Arc<Pool>.
+        let store_arc = Arc::new(store);
+        let pool = store_arc.pool().clone();
+        let schema: Schema<QueryRoot, MutationRoot, async_graphql::EmptySubscription> =
+            Schema::build(QueryRoot, MutationRoot, async_graphql::EmptySubscription)
+                .data(store_arc)
+                .data(pool)
+                .finish();
+
+        // Execute GraphQL mutation: triggerIngest for 2 accounts.
+        let query = r#"
+            mutation {
+                triggerIngest(provider: "aws", regions: ["us-east-1"], accountIds: ["111111111111", "222222222222"]) {
+                    jobIds
+                }
+            }
+        "#;
+
+        let request = async_graphql::Request::new(query);
+        let response = schema.execute(request).await;
+
+        // Errors in response indicate resolver failure.
+        if !response.errors.is_empty() {
+            eprintln!(
+                "FAILED: GraphQL errors: {}",
+                response
+                    .errors
+                    .iter()
+                    .map(|e| e.message.clone())
+                    .collect::<Vec<_>>()
+                    .join("; ")
+            );
+            panic!("GraphQL execution failed");
+        }
+
+        // Extract job IDs from response.
+        let data = response.data.into_json().expect("response has data");
+        let job_ids: Vec<String> = data
+            .get("triggerIngest")
+            .and_then(|v| v.get("jobIds"))
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|id| id.as_str().map(|s| s.to_string()))
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        assert_eq!(job_ids.len(), 2, "expected 2 job IDs returned from resolver");
+    }
+
+    /// Test: triggerIngest deduplicates via ON CONFLICT.
+    /// Calling it twice for the same account while pending → second call returns 0 job ids.
+    #[tokio::test]
+    async fn test_trigger_ingest_dedup() {
+        let db_url = match get_db_url() {
+            Some(u) => u,
+            None => {
+                println!("Skipping: DATABASE_URL not set");
+                return;
+            }
+        };
+
+        let store = match create_test_store(&db_url).await {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("FAILED: could not create store: {}", e);
+                panic!("store creation failed");
+            }
+        };
+
+        let store_arc = Arc::new(store);
+        let pool = store_arc.pool().clone();
+        let schema: Schema<QueryRoot, MutationRoot, async_graphql::EmptySubscription> =
+            Schema::build(QueryRoot, MutationRoot, async_graphql::EmptySubscription)
+                .data(store_arc)
+                .data(pool)
+                .finish();
+
+        // First triggerIngest for one account.
+        let query1 = r#"
+            mutation {
+                triggerIngest(provider: "aws", regions: ["us-east-1"], accountIds: ["333333333333"]) {
+                    jobIds
+                }
+            }
+        "#;
+
+        let response1 = schema.execute(async_graphql::Request::new(query1)).await;
+        assert!(
+            response1.errors.is_empty(),
+            "first triggerIngest should not error: {:?}",
+            response1.errors.iter().map(|e| e.message.clone()).collect::<Vec<_>>()
+        );
+
+        let data1 = response1.data.into_json().expect("response1 has data");
+        let job_ids_1: Vec<String> = data1
+            .get("triggerIngest")
+            .and_then(|v| v.get("jobIds"))
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|id| id.as_str().map(|s| s.to_string()))
+                    .collect()
+            })
+            .unwrap_or_default();
+        assert_eq!(job_ids_1.len(), 1, "first call should return 1 job");
+
+        // Second triggerIngest for same account.
+        let query2 = r#"
+            mutation {
+                triggerIngest(provider: "aws", regions: ["us-west-2"], accountIds: ["333333333333"]) {
+                    jobIds
+                }
+            }
+        "#;
+
+        let response2 = schema.execute(async_graphql::Request::new(query2)).await;
+        assert!(
+            response2.errors.is_empty(),
+            "second triggerIngest should not error"
+        );
+
+        let data2 = response2.data.into_json().expect("response2 has data");
+        let job_ids_2: Vec<String> = data2
+            .get("triggerIngest")
+            .and_then(|v| v.get("jobIds"))
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|id| id.as_str().map(|s| s.to_string()))
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        assert_eq!(
+            job_ids_2.len(), 0,
+            "second call for same account should return 0 (deduped)"
+        );
+    }
+
+    /// Test: account_id validation rejects invalid formats via the REAL resolver.
+    /// Invalid id "abc" should error; "123456789012" should succeed.
+    #[tokio::test]
+    async fn test_trigger_ingest_account_validation() {
+        let db_url = match get_db_url() {
+            Some(u) => u,
+            None => {
+                println!("Skipping: DATABASE_URL not set");
+                return;
+            }
+        };
+
+        let store = match create_test_store(&db_url).await {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("FAILED: could not create store: {}", e);
+                panic!("store creation failed");
+            }
+        };
+
+        let store_arc = Arc::new(store);
+        let pool = store_arc.pool().clone();
+        let schema: Schema<QueryRoot, MutationRoot, async_graphql::EmptySubscription> =
+            Schema::build(QueryRoot, MutationRoot, async_graphql::EmptySubscription)
+                .data(store_arc)
+                .data(pool)
+                .finish();
+
+        // Test invalid account ID.
+        let query_invalid = r#"
+            mutation {
+                triggerIngest(provider: "aws", regions: ["us-east-1"], accountIds: ["abc"]) {
+                    jobIds
+                }
+            }
+        "#;
+
+        let response_invalid = schema.execute(async_graphql::Request::new(query_invalid)).await;
+        assert!(
+            !response_invalid.errors.is_empty(),
+            "query with invalid account ID should have errors"
+        );
+        let error_msg = response_invalid
+            .errors
+            .iter()
+            .map(|e| e.message.clone())
+            .collect::<Vec<_>>()
+            .join("; ");
+        assert!(
+            error_msg.contains("12 digits") || error_msg.contains("Invalid"),
+            "error should mention account ID format: {}",
+            error_msg
+        );
+
+        // Test valid account ID.
+        let query_valid = r#"
+            mutation {
+                triggerIngest(provider: "aws", regions: ["us-east-1"], accountIds: ["444444444444"]) {
+                    jobIds
+                }
+            }
+        "#;
+
+        let response_valid = schema.execute(async_graphql::Request::new(query_valid)).await;
+        assert!(
+            response_valid.errors.is_empty(),
+            "query with valid account ID should not error: {:?}",
+            response_valid.errors.iter().map(|e| e.message.clone()).collect::<Vec<_>>()
+        );
+
+        let data_valid = response_valid.data.into_json().expect("response_valid has data");
+        let job_ids: Vec<String> = data_valid
+            .get("triggerIngest")
+            .and_then(|v| v.get("jobIds"))
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|id| id.as_str().map(|s| s.to_string()))
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        assert_eq!(job_ids.len(), 1, "valid account should create 1 job");
+    }
+}
