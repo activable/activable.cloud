@@ -54,6 +54,7 @@ name = "activable-ingest"
 version = "0.1.0"
 dependencies = [
  "activable-graph",
+ "activable-scheduler",
  "activable-schema",
  "async-trait",
  "aws-config",
@@ -73,6 +74,7 @@ dependencies = [
  "sha2 0.10.9",
  "thiserror 1.0.69",
  "tokio",
+ "tokio-postgres",
  "tracing",
  "url",
  "urlencoding",

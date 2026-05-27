@@ -32,8 +32,13 @@ pub struct IngestRunStats {
     pub total_nodes: u32,
     /// Total edges created (from enrichers + relationships).
     pub total_edges: u32,
-    /// Edges that were dropped during load (from honest EdgeLoadOutcome tracking).
-    pub dropped_edges: u32,
+    /// Edges that were dropped during load.
+    /// None = per-load drop counts are not surfaced by the enricher/relationship stat types yet;
+    /// the honest EdgeLoadOutcome drop accounting is internally logged by loaders when
+    /// edges are dropped (e.g., due to missing endpoints or failures), but this count is not
+    /// aggregated into the per-enricher EnrichmentStats or RelationshipStats structs.
+    /// Some(n) = when enricher traits are updated to surface drop counts, will be wired here.
+    pub dropped_edges: Option<u32>,
     /// Rules that failed to execute (skipped during relationship inference).
     pub skipped_rules: Vec<String>,
     /// Duration of the full ingest pipeline.
@@ -264,9 +269,10 @@ pub async fn ingest_account(
             .map(|s| s.edges_created)
             .sum::<u32>();
 
-    // TODO: dropped_edges wiring (Phase 6 carry-item if not surfaced by enrichers).
-    // For now, we report 0 with a documentation note.
-    let dropped_edges = 0u32;
+    // dropped_edges accounting: loaders internally track dropped edges (via EdgeLoadOutcome)
+    // but do not surface the counts through EnrichmentStats or RelationshipStats yet.
+    // When those traits are extended to include drop counts, wire them here.
+    let dropped_edges = None;
 
     let skipped_rules: Vec<String> = relationship_stats
         .iter()
@@ -332,7 +338,7 @@ mod tests {
             ],
             total_nodes: 8,
             total_edges: 12,
-            dropped_edges: 0,
+            dropped_edges: None,
             skipped_rules: vec![],
             duration_secs: 10,
             errors: vec![],
@@ -342,6 +348,7 @@ mod tests {
         assert_eq!(stats.total_edges, 12);
         assert_eq!(stats.per_type.len(), 2);
         assert_eq!(stats.duration_secs, 10);
+        assert_eq!(stats.dropped_edges, None);
     }
 
     #[test]
@@ -350,7 +357,7 @@ mod tests {
             per_type: vec![("AWS::IAM::User".to_string(), 5)],
             total_nodes: 5,
             total_edges: 3,
-            dropped_edges: 0,
+            dropped_edges: None,
             skipped_rules: vec!["some_rule".to_string()],
             duration_secs: 5,
             errors: vec!["some_error".to_string()],
@@ -360,5 +367,6 @@ mod tests {
         assert!(json.is_object());
         assert_eq!(json["total_nodes"], 5);
         assert_eq!(json["total_edges"], 3);
+        assert_eq!(json["dropped_edges"], serde_json::Value::Null);
     }
 }
