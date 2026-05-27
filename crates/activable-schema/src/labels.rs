@@ -39,6 +39,7 @@ pub enum NodeLabel {
     Bucket,
     Policy,
     WildcardPrincipal,
+    Secret,
     /// Escape hatch for types not yet in the v1 schema.
     Custom(String),
 }
@@ -62,6 +63,7 @@ impl NodeLabel {
             Self::Bucket => "Bucket",
             Self::Policy => "Policy",
             Self::WildcardPrincipal => "WildcardPrincipal",
+            Self::Secret => "Secret",
             Self::Custom(s) => s.as_str(),
         }
     }
@@ -97,6 +99,7 @@ impl FromStr for NodeLabel {
             "Bucket" => Self::Bucket,
             "Policy" => Self::Policy,
             "WildcardPrincipal" => Self::WildcardPrincipal,
+            "Secret" => Self::Secret,
             other => Self::Custom(other.to_string()),
         })
     }
@@ -141,6 +144,8 @@ pub enum EdgeType {
     AllowsAccessFrom,
     KmsGrantable,
     EnforcesScp,
+    EncryptedBy,
+    ActsOn,
     /// Escape hatch for relationship types not yet in the v1 schema.
     Custom(String),
 }
@@ -165,6 +170,8 @@ impl EdgeType {
             Self::AllowsAccessFrom => "AllowsAccessFrom",
             Self::KmsGrantable => "KmsGrantable",
             Self::EnforcesScp => "EnforcesScp",
+            Self::EncryptedBy => "EncryptedBy",
+            Self::ActsOn => "ActsOn",
             Self::Custom(s) => s.as_str(),
         }
     }
@@ -201,6 +208,8 @@ impl FromStr for EdgeType {
             "AllowsAccessFrom" => Self::AllowsAccessFrom,
             "KmsGrantable" => Self::KmsGrantable,
             "EnforcesScp" => Self::EnforcesScp,
+            "EncryptedBy" => Self::EncryptedBy,
+            "ActsOn" => Self::ActsOn,
             other => Self::Custom(other.to_string()),
         })
     }
@@ -459,6 +468,47 @@ mod tests {
         assert_eq!(
             "GovernedBy".parse::<EdgeType>().unwrap().as_str(),
             "GovernedBy"
+        );
+    }
+
+    #[test]
+    fn secret_node_label() {
+        assert_eq!(NodeLabel::Secret.as_str(), "Secret");
+        assert_eq!("Secret".parse::<NodeLabel>().unwrap().as_str(), "Secret");
+    }
+
+    #[test]
+    fn encrypted_by_edge() {
+        assert_eq!(EdgeType::EncryptedBy.as_str(), "EncryptedBy");
+        assert_eq!(
+            "EncryptedBy".parse::<EdgeType>().unwrap().as_str(),
+            "EncryptedBy"
+        );
+    }
+
+    #[test]
+    fn acts_on_edge() {
+        assert_eq!(EdgeType::ActsOn.as_str(), "ActsOn");
+        assert_eq!("ActsOn".parse::<EdgeType>().unwrap().as_str(), "ActsOn");
+    }
+
+    #[test]
+    fn reused_edges_still_resolve() {
+        assert_eq!(EdgeType::AllowsAccessFrom.as_str(), "AllowsAccessFrom");
+        assert_eq!(
+            "AllowsAccessFrom".parse::<EdgeType>().unwrap().as_str(),
+            "AllowsAccessFrom"
+        );
+        assert_eq!(
+            EdgeType::HasEffectivePermission.as_str(),
+            "HasEffectivePermission"
+        );
+        assert_eq!(
+            "HasEffectivePermission"
+                .parse::<EdgeType>()
+                .unwrap()
+                .as_str(),
+            "HasEffectivePermission"
         );
     }
 }
