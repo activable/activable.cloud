@@ -293,7 +293,12 @@ async fn main() -> anyhow::Result<()> {
     // processing jobs until the process is terminated.
     let result = server_task.await;
 
-    tracing::info!("Server shut down gracefully");
+    tracing::info!("Server shut down gracefully, draining scheduler");
+
+    // Drain the scheduler: stop workers + reaper cleanly on shutdown.
+    scheduler.shutdown().await?;
+    tracing::info!("Scheduler drained");
+
     Ok(result?)
 }
 
