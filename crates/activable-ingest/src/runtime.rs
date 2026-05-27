@@ -30,13 +30,14 @@ pub struct IngestRuntime {
 }
 
 impl IngestRuntime {
-    /// Parse account IDs from comma-separated INGEST_ACCOUNT_IDS environment variable.
-    /// Returns None if the variable is not set or empty.
+    /// Pure parsing helper: validates account IDs from a raw string.
+    /// Returns None if the string is None or empty.
     /// Returns an error if any account ID is malformed (not 12 digits).
-    fn parse_account_ids() -> Result<Option<Vec<String>>, IngestError> {
-        match std::env::var("INGEST_ACCOUNT_IDS") {
-            Ok(ids_str) if ids_str.is_empty() => Ok(None),
-            Ok(ids_str) => {
+    fn parse_account_ids_from(ids_str: Option<String>) -> Result<Option<Vec<String>>, IngestError> {
+        match ids_str {
+            None => Ok(None),
+            Some(ref s) if s.is_empty() => Ok(None),
+            Some(ids_str) => {
                 let account_ids: Result<Vec<String>, IngestError> = ids_str
                     .split(',')
                     .map(|id| {
@@ -58,8 +59,15 @@ impl IngestRuntime {
                     Err(e) => Err(e),
                 }
             }
-            Err(_) => Ok(None),
         }
+    }
+
+    /// Parse account IDs from comma-separated INGEST_ACCOUNT_IDS environment variable.
+    /// Returns None if the variable is not set or empty.
+    /// Returns an error if any account ID is malformed (not 12 digits).
+    fn parse_account_ids() -> Result<Option<Vec<String>>, IngestError> {
+        let ids_str = std::env::var("INGEST_ACCOUNT_IDS").ok();
+        Self::parse_account_ids_from(ids_str)
     }
 
     /// Create a new IngestRuntime with AWS config loaded from the standard credential chain.
@@ -476,8 +484,7 @@ mod tests {
     #[test]
     fn test_parse_account_ids_empty_env() {
         // When INGEST_ACCOUNT_IDS is not set, should return None
-        std::env::remove_var("INGEST_ACCOUNT_IDS");
-        let result = IngestRuntime::parse_account_ids();
+        let result = IngestRuntime::parse_account_ids_from(None);
         assert!(result.is_ok());
         assert!(result.unwrap().is_none());
     }
@@ -485,8 +492,7 @@ mod tests {
     #[test]
     fn test_parse_account_ids_single() {
         // Single valid account ID
-        std::env::set_var("INGEST_ACCOUNT_IDS", "111111111111");
-        let result = IngestRuntime::parse_account_ids();
+        let result = IngestRuntime::parse_account_ids_from(Some("111111111111".to_string()));
         assert!(result.is_ok());
         let ids = result.unwrap();
         assert!(ids.is_some());
@@ -496,11 +502,9 @@ mod tests {
     #[test]
     fn test_parse_account_ids_multiple() {
         // Multiple valid account IDs with whitespace
-        std::env::set_var(
-            "INGEST_ACCOUNT_IDS",
-            "111111111111, 222222222222, 333333333333, 444444444444",
-        );
-        let result = IngestRuntime::parse_account_ids();
+        let result = IngestRuntime::parse_account_ids_from(Some(
+            "111111111111, 222222222222, 333333333333, 444444444444".to_string(),
+        ));
         assert!(result.is_ok());
         let ids = result.unwrap();
         assert!(ids.is_some());
@@ -520,8 +524,7 @@ mod tests {
     #[test]
     fn test_parse_account_ids_invalid_too_short() {
         // Invalid account ID (too short)
-        std::env::set_var("INGEST_ACCOUNT_IDS", "12345");
-        let result = IngestRuntime::parse_account_ids();
+        let result = IngestRuntime::parse_account_ids_from(Some("12345".to_string()));
         assert!(result.is_err());
         match result {
             Err(IngestError::Config(msg)) => {
@@ -535,8 +538,7 @@ mod tests {
     #[test]
     fn test_parse_account_ids_invalid_non_numeric() {
         // Invalid account ID (contains non-digits)
-        std::env::set_var("INGEST_ACCOUNT_IDS", "11111111111a");
-        let result = IngestRuntime::parse_account_ids();
+        let result = IngestRuntime::parse_account_ids_from(Some("11111111111a".to_string()));
         assert!(result.is_err());
         match result {
             Err(IngestError::Config(msg)) => {
@@ -549,16 +551,14 @@ mod tests {
     #[test]
     fn test_parse_account_ids_mixed_valid_invalid() {
         // Mix of valid and invalid IDs
-        std::env::set_var("INGEST_ACCOUNT_IDS", "111111111111,invalid");
-        let result = IngestRuntime::parse_account_ids();
+        let result = IngestRuntime::parse_account_ids_from(Some("111111111111,invalid".to_string()));
         assert!(result.is_err());
     }
 
     #[test]
     fn test_parse_account_ids_empty_string() {
         // Empty string should return None
-        std::env::set_var("INGEST_ACCOUNT_IDS", "");
-        let result = IngestRuntime::parse_account_ids();
+        let result = IngestRuntime::parse_account_ids_from(Some("".to_string()));
         assert!(result.is_ok());
         assert!(result.unwrap().is_none());
     }
