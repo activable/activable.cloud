@@ -9,6 +9,7 @@ description = "AWS Cloud Control API + native SDK dual-mode ingester for activab
 [dependencies]
 activable-graph = { path = "../activable-graph" }
 activable-schema = { path = "../activable-schema" }
+activable-scheduler = { path = "../activable-scheduler" }
 aws-sdk-cloudcontrol = "1"
 aws-sdk-iam = "1"
 aws-sdk-ec2 = "1"
@@ -33,6 +34,7 @@ url = "2"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["full"] }
+tokio-postgres = { version = "0.7", features = ["runtime"] }
 
 [lints]
 workspace = true

@@ -64,12 +64,10 @@ async fn e2e_full_pipeline_ingest_score_query() {
     let client = GraphQLClient::new(&graphql_endpoint);
 
     // Step 1: Trigger ingestion
+    // New contract: triggerIngest returns array of job IDs.
     let trigger_mutation = r#"
         mutation {
-            triggerIngest(provider: AWS) {
-                runId
-                status
-            }
+            triggerIngest(provider: "AWS", regions: ["us-east-1"])
         }
     "#;
 
@@ -146,12 +144,10 @@ async fn e2e_ingest_completes_successfully() {
         env::var("GRAPHQL_ENDPOINT").unwrap_or("http://localhost:8080/graphql".to_string());
     let client = GraphQLClient::new(&graphql_endpoint);
 
+    // New contract: triggerIngest returns array of job IDs.
     let mutation = r#"
         mutation {
-            triggerIngest(provider: AWS) {
-                runId
-                status
-            }
+            triggerIngest(provider: "AWS", regions: ["us-east-1"])
         }
     "#;
 
@@ -342,11 +338,10 @@ async fn e2e_full_pipeline_performance() {
     let start = std::time::Instant::now();
 
     // Trigger ingest
+    // New contract: triggerIngest returns array of job IDs.
     let mutation = r#"
         mutation {
-            triggerIngest(provider: AWS) {
-                runId
-            }
+            triggerIngest(provider: "AWS", regions: ["us-east-1"])
         }
     "#;
 

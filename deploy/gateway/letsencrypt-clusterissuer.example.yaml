@@ -1,0 +1,35 @@
+---
+# letsencrypt-clusterissuer.example.yaml
+#
+# INACTIVE EXAMPLE — This file documents the production TLS issuer configuration.
+# Do NOT apply this locally (Let's Encrypt requires a public domain + DNS validation).
+#
+# For production deployment, replace the local mkcert cert generation with:
+# 1. Install cert-manager (if not already present).
+# 2. Apply this ClusterIssuer manifest (with valid email + domain).
+# 3. Update the Gateway listener `certificateRefs` to point to a Secret managed by cert-manager.
+# 4. cert-manager will automatically provision and renew certificates via ACME/Let's Encrypt.
+#
+# This is the "prod swap" referenced in the plan's success criteria.
+#
+---
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-prod
+spec:
+  acme:
+    # Production Let's Encrypt endpoint
+    server: https://acme-v02.api.letsencrypt.org/directory
+    email: ops+letsencrypt@activable.io  # Replace with actual email
+    privateKeySecretRef:
+      name: letsencrypt-prod-key
+    solvers:
+      # HTTP-01 challenge (common for public domains)
+      - http01:
+          ingress:
+            class: nginx  # or envoy-gateway class once supported
+        selector:
+          dnsNames:
+            - activable.io
+            - "*.activable.io"  # Adjust for actual prod domain

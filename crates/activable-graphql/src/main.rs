@@ -3,10 +3,10 @@
 use activable_graph::pool::GraphPool;
 use activable_graph::GraphClient;
 use activable_risk::{load_rules_from_embedded, RiskConfig};
+use activable_scheduler::{JobStore, JobStoreConfig, Scheduler};
 use async_graphql::Schema;
 use axum::{extract::DefaultBodyLimit, routing::get, Json, Router};
 use std::net::SocketAddr;
-use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -61,7 +61,7 @@ async fn main() -> anyhow::Result<()> {
         "Initializing database pool"
     );
 
-    // Build the connection pool
+    // Build the connection pool (used by graph + scheduler)
     let pool = GraphPool::build(
         &db_host,
         db_port,
@@ -81,26 +81,6 @@ async fn main() -> anyhow::Result<()> {
         .await
         .map_err(|e| anyhow::anyhow!("Database connectivity check failed: {}", e))?;
     tracing::info!("Database connectivity verified");
-
-    // Initialize ingest_runs table
-    {
-        let conn = pool.get().await.map_err(|e| {
-            anyhow::anyhow!("Failed to get connection for table initialization: {}", e)
-        })?;
-        conn.batch_execute(
-            "CREATE TABLE IF NOT EXISTS ingest_runs (
-                run_id TEXT PRIMARY KEY,
-                started_at TEXT NOT NULL,
-                completed_at TEXT,
-                status TEXT NOT NULL DEFAULT 'running',
-                error_message TEXT,
-                stats JSONB
-            )",
-        )
-        .await
-        .map_err(|e| anyhow::anyhow!("Failed to create ingest_runs table: {}", e))?;
-        tracing::info!("ingest_runs table initialized");
-    }
 
     // Create the GraphClient
     let client = GraphClient::new(pool.clone(), &graph_name);
@@ -140,14 +120,58 @@ async fn main() -> anyhow::Result<()> {
         tracing::info!("index migrations complete");
     }
 
-    // Create the IngestRuntime
-    let ingest_runtime =
-        activable_ingest::IngestRuntime::new(pool.clone(), graph_name.clone()).await?;
-    let ingest_runtime = Arc::new(ingest_runtime);
-    tracing::info!("IngestRuntime initialized");
+    // Initialize the scheduler (JobStore + WorkerPool + Reaper).
+    // Build JobStoreConfig from the same env as the graph pool to share the Postgres connection.
+    let job_store_config = JobStoreConfig {
+        host: db_host.clone(),
+        port: db_port,
+        user: db_user.clone(),
+        password: db_password.clone(),
+        dbname: db_name.clone(),
+        pool_size: max_connections,
+        backoff_base_seconds: 2.0,
+    };
 
-    // Create atomic flag for concurrent run prevention
-    let ingest_active = Arc::new(AtomicBool::new(false));
+    let job_store = Arc::new(
+        JobStore::new(job_store_config)
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to create JobStore: {}", e))?,
+    );
+
+    // Initialize the scheduler's schema (jobs table, indexes).
+    job_store
+        .ensure_schema()
+        .await
+        .map_err(|e| anyhow::anyhow!("Failed to initialize scheduler schema: {}", e))?;
+    tracing::info!("Scheduler schema initialized");
+
+    // Build the Scheduler with AccountIngestHandler.
+    // The handler manages AWS ingestion per account.
+    let aws_config = aws_config::defaults(aws_config::BehaviorVersion::latest())
+        .region(aws_config::Region::new("us-east-1"))
+        .load()
+        .await;
+
+    let ingest_handler =
+        activable_ingest::AccountIngestHandler::new(aws_config, pool.clone(), graph_name.clone())
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to create AccountIngestHandler: {}", e))?;
+
+    let mut scheduler = Scheduler::builder()
+        .register(Arc::new(ingest_handler))
+        .concurrency(4)
+        .reap_threshold_seconds(300)
+        .reap_check_interval(std::time::Duration::from_secs(30))
+        .build(job_store.clone())
+        .map_err(|e| anyhow::anyhow!("Failed to build scheduler: {}", e))?;
+
+    // Start the scheduler (spawns worker pool + reaper).
+    scheduler
+        .start()
+        .await
+        .map_err(|e| anyhow::anyhow!("Failed to start scheduler: {}", e))?;
+
+    tracing::info!("Scheduler started with 4 workers");
 
     // Initialize risk configuration
     let risk_config = RiskConfig::default();
@@ -179,8 +203,7 @@ async fn main() -> anyhow::Result<()> {
         Schema::build(QueryRoot, MutationRoot, async_graphql::EmptySubscription)
             .data(client)
             .data(pool.clone())
-            .data(ingest_runtime)
-            .data(ingest_active.clone())
+            .data(job_store.clone())
             .data(risk_config)
             .data(graph_service)
             .limit_complexity(500)
@@ -264,12 +287,19 @@ async fn main() -> anyhow::Result<()> {
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
 
-    axum::serve(listener, app)
-        .with_graceful_shutdown(shutdown_signal())
-        .await?;
+    let server_task = axum::serve(listener, app).with_graceful_shutdown(shutdown_signal());
 
-    tracing::info!("Server shut down gracefully");
-    Ok(())
+    // Run the server. The scheduler runs in the background and will continue
+    // processing jobs until the process is terminated.
+    let result = server_task.await;
+
+    tracing::info!("Server shut down gracefully, draining scheduler");
+
+    // Drain the scheduler: stop workers + reaper cleanly on shutdown.
+    scheduler.shutdown().await?;
+    tracing::info!("Scheduler drained");
+
+    Ok(result?)
 }
 
 /// Listen for SIGTERM and graceful shutdown signal.
