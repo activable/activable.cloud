@@ -70,7 +70,9 @@ async fn record_run_start(
 ///
 /// # Arguments
 /// * `stats` - serialized telemetry as a serde_json::Value (if provided, must be valid JSON).
-///   Uses proper JSON binding via serde_json::to_value for the JSONB column.
+///   The value is converted to a JSON string via to_string(), then bound to the JSONB column
+///   with a server-side `::jsonb` cast. NOTE: this JSONB bind path requires live-Postgres
+///   verification (covered by the Phase-4 integration harness) — not exercised by unit tests.
 async fn record_run_complete(
     pool: Arc<Pool>,
     run_id: &str,
@@ -80,8 +82,8 @@ async fn record_run_complete(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let conn = pool.get().await?;
 
-    // Serialize the stats value to a string for binding to JSONB column.
-    // tokio_postgres can handle JSON as a string when using the ::jsonb cast.
+    // Convert stats JSON value to string (via Value::to_string), then bind with server-side ::jsonb cast.
+    // The server-side cast handles JSON parsing; tokio_postgres binds the string parameter.
     let stats_str = stats.map(|v| v.to_string());
 
     conn.execute(
