@@ -83,7 +83,7 @@ Deploy the Envoy Gateway controller and the shared Gateway:
 This:
 - Installs the Envoy Gateway Helm chart in `envoy-gateway-system`.
 - Waits for the controller Deployment to be ready.
-- Applies `gatewayclass.yaml`, `gateway.yaml`, and `referencegrant.yaml`.
+- Applies `gatewayclass.yaml` and `gateway.yaml`.
 - **Verifies the LoadBalancer Service address is reachable** (critical gate).
 - Confirms the Gateway `Programmed=True` condition.
 
@@ -95,7 +95,7 @@ Installing Envoy Gateway v1.2.0 in namespace envoy-gateway-system...
 Envoy Gateway helm chart installed.
 Waiting for Envoy Gateway controller Deployment to be ready (max 180s)...
 Envoy Gateway controller is ready.
-Applying GatewayClass, Gateway, and ReferenceGrant...
+Applying GatewayClass and Gateway...
 Manifests applied.
 Verifying Gateway LoadBalancer Service address...
 LoadBalancer address found: ...
@@ -143,16 +143,28 @@ kubectl -n envoy-gateway-system get secret activable-tls -o jsonpath='{.data.tls
 
 ## Attaching Services
 
-To attach a service to the Gateway, create an `HTTPRoute` resource in your service's namespace:
+To attach a service to the Gateway, create an `HTTPRoute` resource in your service's namespace and label the namespace.
+
+### Step 1: Label the Namespace
+
+The `activable` namespace (or any namespace hosting HTTPRoutes) MUST be labeled with `gateway.activable.io/expose=true` to allow its HTTPRoute resources to attach to the shared Gateway:
+
+```bash
+kubectl label namespace activable gateway.activable.io/expose=true
+```
+
+This label is matched by the Gateway's `allowedRoutes.namespaces.from: Selector` and is the mechanism that scopes route attachment.
+
+### Step 2: Create the HTTPRoute
+
+Create an `HTTPRoute` resource in your service's namespace:
 
 ```yaml
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
   name: my-service-route
-  namespace: default  # Your service namespace
-  labels:
-    gateway.activable.io/expose: "true"  # Matches Gateway allowedRoutes selector
+  namespace: activable  # Labeled with gateway.activable.io/expose=true
 spec:
   parentRefs:
     - name: activable-gateway
@@ -164,9 +176,9 @@ spec:
 ```
 
 **Key points:**
-- The HTTPRoute must have the label `gateway.activable.io/expose: "true"` (matched by the Gateway's `allowedRoutes` selector).
+- The namespace MUST be labeled `gateway.activable.io/expose=true` — this is the only requirement for HTTPRoute→Gateway attachment.
 - The `parentRef` points to the shared `activable-gateway` in `envoy-gateway-system`.
-- Cross-namespace attachment is governed by the `ReferenceGrant` in `envoy-gateway-system`.
+- The Gateway's `allowedRoutes.namespaces.from: Selector` (in `gateway.yaml`) enforces this namespace label requirement.
 
 ## Troubleshooting
 
@@ -361,8 +373,7 @@ See `letsencrypt-clusterissuer.example.yaml` for the issuer configuration.
 - `install-envoy-gateway.sh` — Helm install + preflight + LoadBalancer verification (F2 critical gate).
 - `gen-local-cert.sh` — mkcert cert generation + TLS secret creation.
 - `gatewayclass.yaml` — Envoy Gateway GatewayClass definition.
-- `gateway.yaml` — Shared Gateway with HTTP/HTTPS listeners.
-- `referencegrant.yaml` — Cross-namespace access control (ReferenceGrant).
+- `gateway.yaml` — Shared Gateway with HTTP/HTTPS listeners and namespace label selector.
 - `letsencrypt-clusterissuer.example.yaml` — Production cert-manager issuer (inactive locally).
 
 ## See Also

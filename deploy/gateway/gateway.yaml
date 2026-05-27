@@ -17,6 +17,10 @@ spec:
       port: 80
       hostname: activable.localtest.me
       allowedRoutes:
+        # HTTPRoute→Gateway attachment is governed ONLY by this Selector.
+        # HTTPRoute resources in a namespace can attach to this Gateway
+        # if and only if the namespace is labeled: gateway.activable.io/expose=true
+        # Apply via: kubectl label namespace <name> gateway.activable.io/expose=true
         namespaces:
           from: Selector
           selector:
@@ -34,6 +38,10 @@ spec:
           - name: activable-tls
             namespace: envoy-gateway-system
       allowedRoutes:
+        # HTTPRoute→Gateway attachment is governed ONLY by this Selector.
+        # HTTPRoute resources in a namespace can attach to this Gateway
+        # if and only if the namespace is labeled: gateway.activable.io/expose=true
+        # Apply via: kubectl label namespace <name> gateway.activable.io/expose=true
         namespaces:
           from: Selector
           selector:

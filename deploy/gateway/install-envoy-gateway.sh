@@ -7,7 +7,7 @@
 # - Validates preflight (kubectl, helm, cluster connectivity, DNS)
 # - Installs Envoy Gateway controller in envoy-gateway-system namespace
 # - Waits for the controller Deployment to be ready
-# - Applies GatewayClass, Gateway, and ReferenceGrant manifests
+# - Applies GatewayClass and Gateway manifests
 # - Verifies the Gateway's LoadBalancer Service address is localhost-reachable
 #
 # Usage:
@@ -111,11 +111,11 @@ wait_controller_ready() {
     fi
 }
 
-# === Apply GatewayClass, Gateway, ReferenceGrant ===
+# === Apply GatewayClass and Gateway ===
 apply_manifests() {
-    echo "Applying GatewayClass, Gateway, and ReferenceGrant..."
+    echo "Applying GatewayClass and Gateway..."
 
-    for manifest in gatewayclass.yaml gateway.yaml referencegrant.yaml; do
+    for manifest in gatewayclass.yaml gateway.yaml; do
         if [[ ! -f "$(dirname "${BASH_SOURCE[0]}")/${manifest}" ]]; then
             echo "ERROR: ${manifest} not found in $(dirname "${BASH_SOURCE[0]}")/" >&2
             exit 1
