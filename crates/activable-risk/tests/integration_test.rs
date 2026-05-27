@@ -47,5 +47,12 @@ description: "A principal can create a new policy version with admin perms"
     assert_eq!(rule.category, "self-escalation");
     assert_eq!(rule.severity_tier, 1);
     assert_eq!(rule.boost, 0.15);
-    assert_eq!(rule.permissions_required.len(), 1);
+    // Verify that permissions field is Some and contains 1 requirement in AllOf
+    assert!(rule.permissions.is_some(), "permissions field should not be None");
+    match rule.permissions.as_ref().unwrap() {
+        activable_risk::types::RuleRequirement::AllOf { all_of } => {
+            assert_eq!(all_of.len(), 1, "Expected 1 permission in AllOf");
+        }
+        _ => panic!("Expected permissions to be wrapped in AllOf"),
+    }
 }
