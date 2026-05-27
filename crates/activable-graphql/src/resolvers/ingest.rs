@@ -438,7 +438,11 @@ mod resolver_integration_tests {
             })
             .unwrap_or_default();
 
-        assert_eq!(job_ids.len(), 2, "expected 2 job IDs returned from resolver");
+        assert_eq!(
+            job_ids.len(),
+            2,
+            "expected 2 job IDs returned from resolver"
+        );
     }
 
     /// Test: triggerIngest deduplicates via ON CONFLICT.
@@ -485,7 +489,11 @@ mod resolver_integration_tests {
         assert!(
             response1.errors.is_empty(),
             "first triggerIngest should not error: {:?}",
-            response1.errors.iter().map(|e| e.message.clone()).collect::<Vec<_>>()
+            response1
+                .errors
+                .iter()
+                .map(|e| e.message.clone())
+                .collect::<Vec<_>>()
         );
 
         let data1 = response1.data.into_json().expect("response1 has data");
@@ -525,7 +533,8 @@ mod resolver_integration_tests {
             .unwrap_or_default();
 
         assert_eq!(
-            job_ids_2.len(), 0,
+            job_ids_2.len(),
+            0,
             "second call for same account should return 0 (deduped)"
         );
     }
@@ -570,7 +579,9 @@ mod resolver_integration_tests {
             }
         "#;
 
-        let response_invalid = schema.execute(async_graphql::Request::new(query_invalid)).await;
+        let response_invalid = schema
+            .execute(async_graphql::Request::new(query_invalid))
+            .await;
         assert!(
             !response_invalid.errors.is_empty(),
             "query with invalid account ID should have errors"
@@ -594,14 +605,23 @@ mod resolver_integration_tests {
             }
         "#;
 
-        let response_valid = schema.execute(async_graphql::Request::new(query_valid)).await;
+        let response_valid = schema
+            .execute(async_graphql::Request::new(query_valid))
+            .await;
         assert!(
             response_valid.errors.is_empty(),
             "query with valid account ID should not error: {:?}",
-            response_valid.errors.iter().map(|e| e.message.clone()).collect::<Vec<_>>()
+            response_valid
+                .errors
+                .iter()
+                .map(|e| e.message.clone())
+                .collect::<Vec<_>>()
         );
 
-        let data_valid = response_valid.data.into_json().expect("response_valid has data");
+        let data_valid = response_valid
+            .data
+            .into_json()
+            .expect("response_valid has data");
         let job_ids: Vec<String> = data_valid
             .get("triggerIngest")
             .and_then(|v| v.as_array())
@@ -736,11 +756,17 @@ mod resolver_integration_tests {
             "status should be COMPLETED"
         );
         assert!(
-            status_obj.get("createdAt").and_then(|v| v.as_str()).is_some(),
+            status_obj
+                .get("createdAt")
+                .and_then(|v| v.as_str())
+                .is_some(),
             "createdAt should be non-empty (proves ::text cast works)"
         );
         assert!(
-            status_obj.get("completedAt").and_then(|v| v.as_str()).is_some(),
+            status_obj
+                .get("completedAt")
+                .and_then(|v| v.as_str())
+                .is_some(),
             "completedAt should be non-empty"
         );
 
@@ -847,7 +873,10 @@ mod resolver_integration_tests {
             .map(|arr| arr.to_vec())
             .unwrap_or_default();
 
-        assert!(!jobs.is_empty(), "should have at least 1 job for account 666666666666");
+        assert!(
+            !jobs.is_empty(),
+            "should have at least 1 job for account 666666666666"
+        );
 
         // Verify status field is present (exercises the ::text cast on list path).
         let first_job = jobs.first().expect("should have at least one job");
@@ -873,7 +902,11 @@ mod resolver_integration_tests {
         assert!(
             response_status.errors.is_empty(),
             "status filter query should not error: {:?}",
-            response_status.errors.iter().map(|e| e.message.clone()).collect::<Vec<_>>()
+            response_status
+                .errors
+                .iter()
+                .map(|e| e.message.clone())
+                .collect::<Vec<_>>()
         );
 
         let data_status = response_status.data.into_json().expect("response has data");
