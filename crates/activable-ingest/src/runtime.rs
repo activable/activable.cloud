@@ -551,7 +551,8 @@ mod tests {
     #[test]
     fn test_parse_account_ids_mixed_valid_invalid() {
         // Mix of valid and invalid IDs
-        let result = IngestRuntime::parse_account_ids_from(Some("111111111111,invalid".to_string()));
+        let result =
+            IngestRuntime::parse_account_ids_from(Some("111111111111,invalid".to_string()));
         assert!(result.is_err());
     }
 
