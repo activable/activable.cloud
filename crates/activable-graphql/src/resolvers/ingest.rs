@@ -136,8 +136,8 @@ pub async fn ingest_status(
 
     let rows = conn
         .query(
-            "SELECT id, status, created_at::text, finished_at::text, claimed_by, result, last_error \
-             FROM jobs WHERE id = $1",
+            "SELECT id::text, status, created_at::text, finished_at::text, claimed_by, result::text, last_error \
+             FROM jobs WHERE id = $1::uuid",
             &[&job_id],
         )
         .await
@@ -214,7 +214,7 @@ pub async fn ingest_jobs(
             let account_id = f.account_id.as_ref().unwrap();
             let status = f.status.as_ref().unwrap();
             conn.query(
-                "SELECT id, status, created_at::text, finished_at::text, claimed_by, result, last_error \
+                "SELECT id::text, status, created_at::text, finished_at::text, claimed_by, result::text, last_error \
                  FROM jobs WHERE job_type = 'account_ingest' AND dedup_key = $1 AND status = $2 \
                  ORDER BY created_at DESC LIMIT 100",
                 &[account_id, status],
@@ -224,7 +224,7 @@ pub async fn ingest_jobs(
         Some(f) if f.account_id.is_some() => {
             let account_id = f.account_id.as_ref().unwrap();
             conn.query(
-                "SELECT id, status, created_at::text, finished_at::text, claimed_by, result, last_error \
+                "SELECT id::text, status, created_at::text, finished_at::text, claimed_by, result::text, last_error \
                  FROM jobs WHERE job_type = 'account_ingest' AND dedup_key = $1 \
                  ORDER BY created_at DESC LIMIT 100",
                 &[account_id],
@@ -234,7 +234,7 @@ pub async fn ingest_jobs(
         Some(f) if f.status.is_some() => {
             let status = f.status.as_ref().unwrap();
             conn.query(
-                "SELECT id, status, created_at::text, finished_at::text, claimed_by, result, last_error \
+                "SELECT id::text, status, created_at::text, finished_at::text, claimed_by, result::text, last_error \
                  FROM jobs WHERE job_type = 'account_ingest' AND status = $1 \
                  ORDER BY created_at DESC LIMIT 100",
                 &[status],
@@ -243,7 +243,7 @@ pub async fn ingest_jobs(
         }
         _ => {
             conn.query(
-                "SELECT id, status, created_at::text, finished_at::text, claimed_by, result, last_error \
+                "SELECT id::text, status, created_at::text, finished_at::text, claimed_by, result::text, last_error \
                  FROM jobs WHERE job_type = 'account_ingest' \
                  ORDER BY created_at DESC LIMIT 100",
                 &[],
@@ -402,11 +402,10 @@ mod resolver_integration_tests {
                 .finish();
 
         // Execute GraphQL mutation: triggerIngest for 2 accounts.
+        // Returns Vec<String> directly (no object selection).
         let query = r#"
             mutation {
-                triggerIngest(provider: "aws", regions: ["us-east-1"], accountIds: ["111111111111", "222222222222"]) {
-                    jobIds
-                }
+                triggerIngest(provider: "aws", regions: ["us-east-1"], accountIds: ["111111111111", "222222222222"])
             }
         "#;
 
@@ -427,11 +426,10 @@ mod resolver_integration_tests {
             panic!("GraphQL execution failed");
         }
 
-        // Extract job IDs from response.
+        // Extract job IDs from response (bare array, not nested in object).
         let data = response.data.into_json().expect("response has data");
         let job_ids: Vec<String> = data
             .get("triggerIngest")
-            .and_then(|v| v.get("jobIds"))
             .and_then(|v| v.as_array())
             .map(|arr| {
                 arr.iter()
@@ -479,9 +477,7 @@ mod resolver_integration_tests {
         // First triggerIngest for one account.
         let query1 = r#"
             mutation {
-                triggerIngest(provider: "aws", regions: ["us-east-1"], accountIds: ["333333333333"]) {
-                    jobIds
-                }
+                triggerIngest(provider: "aws", regions: ["us-east-1"], accountIds: ["333333333333"])
             }
         "#;
 
@@ -495,7 +491,6 @@ mod resolver_integration_tests {
         let data1 = response1.data.into_json().expect("response1 has data");
         let job_ids_1: Vec<String> = data1
             .get("triggerIngest")
-            .and_then(|v| v.get("jobIds"))
             .and_then(|v| v.as_array())
             .map(|arr| {
                 arr.iter()
@@ -508,9 +503,7 @@ mod resolver_integration_tests {
         // Second triggerIngest for same account.
         let query2 = r#"
             mutation {
-                triggerIngest(provider: "aws", regions: ["us-west-2"], accountIds: ["333333333333"]) {
-                    jobIds
-                }
+                triggerIngest(provider: "aws", regions: ["us-west-2"], accountIds: ["333333333333"])
             }
         "#;
 
@@ -523,7 +516,6 @@ mod resolver_integration_tests {
         let data2 = response2.data.into_json().expect("response2 has data");
         let job_ids_2: Vec<String> = data2
             .get("triggerIngest")
-            .and_then(|v| v.get("jobIds"))
             .and_then(|v| v.as_array())
             .map(|arr| {
                 arr.iter()
@@ -574,9 +566,7 @@ mod resolver_integration_tests {
         // Test invalid account ID.
         let query_invalid = r#"
             mutation {
-                triggerIngest(provider: "aws", regions: ["us-east-1"], accountIds: ["abc"]) {
-                    jobIds
-                }
+                triggerIngest(provider: "aws", regions: ["us-east-1"], accountIds: ["abc"])
             }
         "#;
 
@@ -600,9 +590,7 @@ mod resolver_integration_tests {
         // Test valid account ID.
         let query_valid = r#"
             mutation {
-                triggerIngest(provider: "aws", regions: ["us-east-1"], accountIds: ["444444444444"]) {
-                    jobIds
-                }
+                triggerIngest(provider: "aws", regions: ["us-east-1"], accountIds: ["444444444444"])
             }
         "#;
 
@@ -616,7 +604,6 @@ mod resolver_integration_tests {
         let data_valid = response_valid.data.into_json().expect("response_valid has data");
         let job_ids: Vec<String> = data_valid
             .get("triggerIngest")
-            .and_then(|v| v.get("jobIds"))
             .and_then(|v| v.as_array())
             .map(|arr| {
                 arr.iter()
@@ -680,25 +667,15 @@ mod resolver_integration_tests {
 
         let job_id_string = job_id.to_string();
 
-        // Mark it completed with real stats via direct pool access.
-        let conn = match pool.get().await {
-            Ok(c) => c,
-            Err(e) => {
-                eprintln!("FAILED: pool.get failed: {}", e);
-                panic!("pool.get failed");
-            }
-        };
-
-        let result_json = r#"{"total_nodes":3,"total_edges":57,"duration_secs":0}"#;
-        if let Err(e) = conn
-            .execute(
-                "UPDATE jobs SET status='completed', finished_at=now(), result=$1::jsonb WHERE id=$2::uuid",
-                &[&result_json, &job_id_string],
-            )
-            .await
-        {
-            eprintln!("FAILED: UPDATE jobs failed: {}", e);
-            panic!("UPDATE jobs failed");
+        // Mark it completed with real stats via store.complete() (handles jsonb serialization correctly).
+        let result_value = serde_json::json!({
+            "total_nodes": 3,
+            "total_edges": 57,
+            "duration_secs": 0
+        });
+        if let Err(e) = store_arc.complete(job_id, &result_value).await {
+            eprintln!("FAILED: store.complete failed: {}", e);
+            panic!("store.complete failed");
         }
 
         // Build schema and execute ingestStatus query.
