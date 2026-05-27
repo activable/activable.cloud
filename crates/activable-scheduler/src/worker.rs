@@ -3,6 +3,7 @@ use crate::model::SchedulerError;
 use crate::store::JobStore;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::task::JoinHandle;
 use tracing::{error, info};
 
@@ -12,21 +13,24 @@ pub struct Worker {
     store: Arc<JobStore>,
     handlers: Arc<Vec<Arc<dyn JobHandler + Send + Sync>>>,
     shutdown: Arc<AtomicBool>,
+    heartbeat_interval: Duration,
 }
 
 impl Worker {
-    /// Create a new worker with the given ID, store, and handlers.
+    /// Create a new worker with the given ID, store, handlers, and heartbeat interval.
     fn new(
         id: String,
         store: Arc<JobStore>,
         handlers: Arc<Vec<Arc<dyn JobHandler + Send + Sync>>>,
         shutdown: Arc<AtomicBool>,
+        heartbeat_interval: Duration,
     ) -> Self {
         Worker {
             id,
             store,
             handlers,
             shutdown,
+            heartbeat_interval,
         }
     }
 
@@ -67,6 +71,29 @@ impl Worker {
                             // runtime" panic from catch_unwind + block_on inside an async context.
                             let handler_clone = Arc::clone(handler);
                             let payload_clone = job.payload.clone();
+
+                            // Spawn a heartbeat refresh task that runs concurrently during handler execution.
+                            // It updates heartbeat_at every heartbeat_interval to prevent the reaper from
+                            // falsely reclaiming this job while it's actively running.
+                            let store_clone = Arc::clone(&self.store);
+                            let job_id = job.id;
+                            let heartbeat_interval = self.heartbeat_interval;
+
+                            let heartbeat_handle = tokio::spawn(async move {
+                                let mut interval = tokio::time::interval(heartbeat_interval);
+                                loop {
+                                    interval.tick().await;
+                                    if let Err(e) = store_clone.update_heartbeat(job_id).await {
+                                        error!(
+                                            job_id = %job_id,
+                                            error = %e,
+                                            "failed to update heartbeat"
+                                        );
+                                        // Continue trying; don't crash the heartbeat task
+                                    }
+                                }
+                            });
+
                             let job_handle =
                                 tokio::spawn(
                                     async move { handler_clone.handle(payload_clone).await },
@@ -74,7 +101,9 @@ impl Worker {
 
                             match job_handle.await {
                                 Ok(Ok(output)) => {
-                                    // Success: complete the job
+                                    // Handler succeeded: abort the heartbeat task and complete the job.
+                                    heartbeat_handle.abort();
+
                                     match self.store.complete(job.id, &output).await {
                                         Ok(_) => {
                                             info!(
@@ -100,7 +129,9 @@ impl Worker {
                                     }
                                 }
                                 Ok(Err(job_error)) => {
-                                    // Handler returned an error
+                                    // Handler returned an error: abort heartbeat and mark failure.
+                                    heartbeat_handle.abort();
+
                                     info!(
                                         worker_id = %self.id,
                                         job_id = %job.id,
@@ -138,7 +169,9 @@ impl Worker {
                                     }
                                 }
                                 Err(join_err) => {
-                                    // Task was cancelled or the handler panicked.
+                                    // Task was cancelled or the handler panicked: abort heartbeat.
+                                    heartbeat_handle.abort();
+
                                     // Use is_panic() to detect if it was a panic.
                                     if join_err.is_panic() {
                                         error!(
@@ -254,11 +287,15 @@ pub struct WorkerPool {
     concurrency: usize,
     shutdown: Arc<AtomicBool>,
     worker_handles: tokio::sync::Mutex<Vec<JoinHandle<()>>>,
+    /// Interval for heartbeat refresh during job execution (default 5s).
+    /// Must be ≪ reaper threshold (e.g., 5s heartbeat, 60s threshold).
+    heartbeat_interval: Duration,
 }
 
 impl WorkerPool {
     /// Create a new WorkerPool with the given store, handlers, and concurrency level.
     /// Polling interval for unclaimed jobs is fixed at 100ms.
+    /// Heartbeat interval defaults to 5 seconds (configurable via with_heartbeat_interval).
     pub fn new(
         store: Arc<JobStore>,
         handlers: Vec<Arc<dyn JobHandler + Send + Sync>>,
@@ -270,7 +307,16 @@ impl WorkerPool {
             concurrency,
             shutdown: Arc::new(AtomicBool::new(false)),
             worker_handles: tokio::sync::Mutex::new(Vec::new()),
+            heartbeat_interval: Duration::from_secs(5),
         }
+    }
+
+    /// Set the heartbeat interval for this worker pool.
+    /// Heartbeat must be ≪ reaper threshold (e.g., 5s heartbeat, 60s reaper threshold).
+    /// Returns self for builder pattern.
+    pub fn with_heartbeat_interval(mut self, interval: Duration) -> Self {
+        self.heartbeat_interval = interval;
+        self
     }
 
     /// Start the worker pool.
@@ -285,6 +331,7 @@ impl WorkerPool {
                 Arc::clone(&self.store),
                 Arc::clone(&self.handlers),
                 Arc::clone(&self.shutdown),
+                self.heartbeat_interval,
             );
 
             let handle = tokio::spawn(async move {

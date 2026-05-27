@@ -15,8 +15,12 @@ pub mod handler;
 /// Worker and WorkerPool for job execution.
 pub mod worker;
 
+/// Reaper for crash recovery: finds jobs with stale heartbeat and re-queues them.
+pub mod reaper;
+
 // Re-export public API
 pub use handler::{JobError, JobHandler};
 pub use model::{Job, JobStatus, SchedulerError};
+pub use reaper::Reaper;
 pub use store::{JobStore, JobStoreConfig};
 pub use worker::WorkerPool;

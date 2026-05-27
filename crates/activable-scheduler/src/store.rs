@@ -335,6 +335,51 @@ impl JobStore {
         })
     }
 
+    /// Update the heartbeat timestamp for a running job.
+    /// Sets heartbeat_at = now() if the job is currently running.
+    /// No-op if job is not running (safe to call when job status changes).
+    /// Uses the idx_jobs_heartbeat index for fast lookup.
+    pub async fn update_heartbeat(&self, id: Uuid) -> Result<(), SchedulerError> {
+        let conn = self.pool.get().await?;
+
+        let query = r#"
+            UPDATE jobs
+            SET heartbeat_at = now()
+            WHERE id = $1 AND status = 'running'
+        "#;
+
+        conn.execute(query, &[&id]).await?;
+
+        Ok(())
+    }
+
+    /// Find all running jobs with stale heartbeat (heartbeat_at < now() - threshold_seconds).
+    /// Returns a list of job IDs for jobs matching the given job_types and stale threshold.
+    /// Uses the idx_jobs_heartbeat index for efficient queries.
+    pub async fn find_stale_running(
+        &self,
+        job_types: &[String],
+        threshold_seconds: i64,
+    ) -> Result<Vec<Uuid>, SchedulerError> {
+        let conn = self.pool.get().await?;
+
+        let query = r#"
+            SELECT id FROM jobs
+            WHERE status = 'running'
+              AND job_type = ANY($1::text[])
+              AND heartbeat_at < now() - make_interval(secs => $2::double precision)
+        "#;
+
+        // tokio_postgres requires proper parameter types; convert to vector of string references
+        let job_types_vec: Vec<&str> = job_types.iter().map(|s| s.as_str()).collect();
+
+        let rows = conn
+            .query(query, &[&job_types_vec, &(threshold_seconds as f64)])
+            .await?;
+
+        Ok(rows.iter().map(|row| row.get(0)).collect())
+    }
+
     /// Provide access to the underlying Postgres pool.
     /// Intended for testing. Do not use in production code.
     pub fn pool(&self) -> &Arc<Pool> {
