@@ -351,6 +351,20 @@ mod resolver_integration_tests {
         Ok(store)
     }
 
+    /// Helper: cleanup test jobs by dedup_key before a test runs.
+    async fn cleanup_test_jobs(
+        pool: &Arc<deadpool_postgres::Pool>,
+        dedup_keys: &[&str],
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let conn = pool.get().await?;
+        conn.execute(
+            "DELETE FROM jobs WHERE dedup_key = ANY($1)",
+            &[&dedup_keys.to_vec()],
+        )
+        .await?;
+        Ok(())
+    }
+
     /// Test: triggerIngest enqueues per-account jobs via the real resolver.
     /// Verifies:
     /// - 2 accounts → 2 job ids returned and rows created in jobs table.
@@ -376,6 +390,11 @@ mod resolver_integration_tests {
         // Build schema with injected Arc<JobStore> and Arc<Pool>.
         let store_arc = Arc::new(store);
         let pool = store_arc.pool().clone();
+
+        // Clean up test data before running
+        let test_keys = vec!["111111111111", "222222222222"];
+        let _ = cleanup_test_jobs(&pool, &test_keys).await;
+
         let schema: Schema<QueryRoot, MutationRoot, async_graphql::EmptySubscription> =
             Schema::build(QueryRoot, MutationRoot, async_graphql::EmptySubscription)
                 .data(store_arc)
@@ -446,6 +465,11 @@ mod resolver_integration_tests {
 
         let store_arc = Arc::new(store);
         let pool = store_arc.pool().clone();
+
+        // Clean up test data before running
+        let test_keys = vec!["333333333333"];
+        let _ = cleanup_test_jobs(&pool, &test_keys).await;
+
         let schema: Schema<QueryRoot, MutationRoot, async_graphql::EmptySubscription> =
             Schema::build(QueryRoot, MutationRoot, async_graphql::EmptySubscription)
                 .data(store_arc)
@@ -536,6 +560,11 @@ mod resolver_integration_tests {
 
         let store_arc = Arc::new(store);
         let pool = store_arc.pool().clone();
+
+        // Clean up test data before running
+        let test_keys = vec!["444444444444"];
+        let _ = cleanup_test_jobs(&pool, &test_keys).await;
+
         let schema: Schema<QueryRoot, MutationRoot, async_graphql::EmptySubscription> =
             Schema::build(QueryRoot, MutationRoot, async_graphql::EmptySubscription)
                 .data(store_arc)
@@ -597,5 +626,289 @@ mod resolver_integration_tests {
             .unwrap_or_default();
 
         assert_eq!(job_ids.len(), 1, "valid account should create 1 job");
+    }
+
+    /// Test: ingestStatus reads completed job and deserializes timestamps + stats.
+    /// CRITICAL: Exercises the ::text cast fix for timestamptz columns.
+    /// Without the cast, String deserialization of created_at/completed_at would panic/error.
+    #[tokio::test]
+    async fn test_ingest_status_maps_completed_job() {
+        let db_url = match get_db_url() {
+            Some(u) => u,
+            None => {
+                println!("Skipping: DATABASE_URL not set");
+                return;
+            }
+        };
+
+        let store = match create_test_store(&db_url).await {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("FAILED: could not create store: {}", e);
+                panic!("store creation failed");
+            }
+        };
+
+        let store_arc = Arc::new(store);
+        let pool = store_arc.pool().clone();
+
+        // Clean up test data
+        let test_keys = vec!["555555555555"];
+        let _ = cleanup_test_jobs(&pool, &test_keys).await;
+
+        // Enqueue a job for a unique dedup_key.
+        let job_id = match store_arc
+            .enqueue(
+                "account_ingest",
+                &serde_json::json!({"account_id": "555555555555"}),
+                Some("555555555555"),
+                1,
+                3,
+            )
+            .await
+        {
+            Ok(Some(id)) => id,
+            Ok(None) => {
+                eprintln!("FAILED: enqueue returned None (deduped unexpectedly)");
+                panic!("enqueue should return job id");
+            }
+            Err(e) => {
+                eprintln!("FAILED: enqueue failed: {}", e);
+                panic!("enqueue failed");
+            }
+        };
+
+        let job_id_string = job_id.to_string();
+
+        // Mark it completed with real stats via direct pool access.
+        let conn = match pool.get().await {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!("FAILED: pool.get failed: {}", e);
+                panic!("pool.get failed");
+            }
+        };
+
+        let result_json = r#"{"total_nodes":3,"total_edges":57,"duration_secs":0}"#;
+        if let Err(e) = conn
+            .execute(
+                "UPDATE jobs SET status='completed', finished_at=now(), result=$1::jsonb WHERE id=$2::uuid",
+                &[&result_json, &job_id_string],
+            )
+            .await
+        {
+            eprintln!("FAILED: UPDATE jobs failed: {}", e);
+            panic!("UPDATE jobs failed");
+        }
+
+        // Build schema and execute ingestStatus query.
+        let schema: Schema<QueryRoot, MutationRoot, async_graphql::EmptySubscription> =
+            Schema::build(QueryRoot, MutationRoot, async_graphql::EmptySubscription)
+                .data(store_arc)
+                .data(pool)
+                .finish();
+
+        let query = format!(
+            r#"
+            query {{
+                ingestStatus(jobId: "{}") {{
+                    id
+                    status
+                    createdAt
+                    completedAt
+                    stats {{
+                        totalNodes
+                        totalEdges
+                        durationSecs
+                    }}
+                }}
+            }}
+            "#,
+            job_id_string
+        );
+
+        let request = async_graphql::Request::new(&query);
+        let response = schema.execute(request).await;
+
+        // CRITICAL: If the ::text cast is missing, this will error on String deserialization of timestamptz.
+        if !response.errors.is_empty() {
+            eprintln!(
+                "FAILED: GraphQL errors (indicates ::text cast missing): {}",
+                response
+                    .errors
+                    .iter()
+                    .map(|e| e.message.clone())
+                    .collect::<Vec<_>>()
+                    .join("; ")
+            );
+            panic!("ingestStatus failed");
+        }
+
+        let data = response.data.into_json().expect("response has data");
+        let status_obj = data.get("ingestStatus").expect("ingestStatus in response");
+
+        // Verify field mapping.
+        assert_eq!(
+            status_obj.get("id").and_then(|v| v.as_str()),
+            Some(job_id_string.as_str()),
+            "job id should match"
+        );
+        assert_eq!(
+            status_obj.get("status").and_then(|v| v.as_str()),
+            Some("COMPLETED"),
+            "status should be COMPLETED"
+        );
+        assert!(
+            status_obj.get("createdAt").and_then(|v| v.as_str()).is_some(),
+            "createdAt should be non-empty (proves ::text cast works)"
+        );
+        assert!(
+            status_obj.get("completedAt").and_then(|v| v.as_str()).is_some(),
+            "completedAt should be non-empty"
+        );
+
+        // Verify stats deserialization.
+        let stats_obj = status_obj
+            .get("stats")
+            .expect("stats should be present")
+            .as_object()
+            .expect("stats should be object");
+        assert_eq!(
+            stats_obj.get("totalNodes").and_then(|v| v.as_i64()),
+            Some(3),
+            "totalNodes should be 3"
+        );
+        assert_eq!(
+            stats_obj.get("totalEdges").and_then(|v| v.as_i64()),
+            Some(57),
+            "totalEdges should be 57"
+        );
+        assert_eq!(
+            stats_obj.get("durationSecs").and_then(|v| v.as_i64()),
+            Some(0),
+            "durationSecs should be 0"
+        );
+    }
+
+    /// Test: ingestJobs lists jobs with optional filters.
+    /// Exercises the ::text cast on the list path and filter semantics.
+    #[tokio::test]
+    async fn test_ingest_jobs_lists_with_filter() {
+        let db_url = match get_db_url() {
+            Some(u) => u,
+            None => {
+                println!("Skipping: DATABASE_URL not set");
+                return;
+            }
+        };
+
+        let store = match create_test_store(&db_url).await {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("FAILED: could not create store: {}", e);
+                panic!("store creation failed");
+            }
+        };
+
+        let store_arc = Arc::new(store);
+        let pool = store_arc.pool().clone();
+
+        // Clean up test data
+        let test_keys = vec!["666666666666", "777777777777"];
+        let _ = cleanup_test_jobs(&pool, &test_keys).await;
+
+        // Enqueue two jobs for different accounts.
+        for account_id in ["666666666666", "777777777777"].iter() {
+            let _ = store_arc
+                .enqueue(
+                    "account_ingest",
+                    &serde_json::json!({"account_id": account_id}),
+                    Some(account_id),
+                    1,
+                    3,
+                )
+                .await;
+        }
+
+        let schema: Schema<QueryRoot, MutationRoot, async_graphql::EmptySubscription> =
+            Schema::build(QueryRoot, MutationRoot, async_graphql::EmptySubscription)
+                .data(store_arc)
+                .data(pool)
+                .finish();
+
+        // Test: query with account_id filter.
+        let query_filtered = r#"
+            query {
+                ingestJobs(filter: {accountId: "666666666666"}) {
+                    id
+                    status
+                }
+            }
+        "#;
+
+        let response = schema
+            .execute(async_graphql::Request::new(query_filtered))
+            .await;
+
+        if !response.errors.is_empty() {
+            eprintln!(
+                "FAILED: GraphQL errors: {}",
+                response
+                    .errors
+                    .iter()
+                    .map(|e| e.message.clone())
+                    .collect::<Vec<_>>()
+                    .join("; ")
+            );
+            panic!("ingestJobs query failed");
+        }
+
+        let data = response.data.into_json().expect("response has data");
+        let jobs: Vec<_> = data
+            .get("ingestJobs")
+            .and_then(|v| v.as_array())
+            .map(|arr| arr.to_vec())
+            .unwrap_or_default();
+
+        assert!(!jobs.is_empty(), "should have at least 1 job for account 666666666666");
+
+        // Verify status field is present (exercises the ::text cast on list path).
+        let first_job = jobs.first().expect("should have at least one job");
+        assert!(
+            first_job.get("status").is_some(),
+            "status should be present (proves ::text cast works on list path)"
+        );
+
+        // Test: query with status filter.
+        let query_by_status = r#"
+            query {
+                ingestJobs(filter: {status: "pending"}) {
+                    id
+                    status
+                }
+            }
+        "#;
+
+        let response_status = schema
+            .execute(async_graphql::Request::new(query_by_status))
+            .await;
+
+        assert!(
+            response_status.errors.is_empty(),
+            "status filter query should not error: {:?}",
+            response_status.errors.iter().map(|e| e.message.clone()).collect::<Vec<_>>()
+        );
+
+        let data_status = response_status.data.into_json().expect("response has data");
+        let jobs_status: Vec<_> = data_status
+            .get("ingestJobs")
+            .and_then(|v| v.as_array())
+            .map(|arr| arr.to_vec())
+            .unwrap_or_default();
+
+        assert!(
+            !jobs_status.is_empty(),
+            "should have at least 1 pending job (enqueued jobs start pending)"
+        );
     }
 }
