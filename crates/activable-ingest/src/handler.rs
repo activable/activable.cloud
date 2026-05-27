@@ -4,8 +4,8 @@
 //! Handles `job_type="account_ingest"` with payload `{account_id, provider, regions}`.
 //! Executes the ported per-account ingest pipeline via executor::ingest_account().
 
-use crate::executor::{create_account_config, ingest_account};
 use crate::error::IngestError;
+use crate::executor::{create_account_config, ingest_account};
 use crate::resource_registry::{load_registry, ResourceRegistry};
 use activable_scheduler::{JobError, JobHandler};
 use async_trait::async_trait;
@@ -73,10 +73,7 @@ impl AccountIngestHandler {
         } else {
             Err(JobError {
                 retryable: false,
-                message: format!(
-                    "Invalid account_id '{}': must be 12 digits",
-                    account_id
-                ),
+                message: format!("Invalid account_id '{}': must be 12 digits", account_id),
             })
         }
     }
@@ -99,9 +96,32 @@ impl AccountIngestHandler {
             IngestError::AwsSdk(msg) if msg.contains("connection") => {
                 (true, format!("Connection error (retryable): {}", msg))
             }
-            IngestError::Graph(msg) if msg.contains("pool error") => {
-                (true, format!("Pool error (retryable): {}", msg))
+            // Graph errors: distinguish transient from permanent.
+            // Transient: network/pool/timeout issues likely to resolve on retry.
+            IngestError::Graph(msg)
+                if msg.contains("pool")
+                    || msg.contains("timeout")
+                    || msg.contains("connection") =>
+            {
+                (true, format!("Graph transient error (retryable): {}", msg))
             }
+            // Permanent: syntax errors, type mismatches, Cypher issues will not resolve on retry.
+            IngestError::Graph(msg)
+                if msg.contains("syntax")
+                    || msg.contains("Cypher")
+                    || msg.contains("type mismatch")
+                    || msg.contains("parse") =>
+            {
+                (
+                    false,
+                    format!("Graph permanent error (non-retryable): {}", msg),
+                )
+            }
+            // Graph errors: unknown origin, default to retryable for safety.
+            IngestError::Graph(msg) => (
+                true,
+                format!("Graph error (retryable, unknown origin): {}", msg),
+            ),
             // Non-retryable: config, validation, parsing.
             IngestError::Config(msg) => (false, format!("Config error: {}", msg)),
             IngestError::YamlParse(msg) => (false, format!("YAML parse error: {}", msg)),
@@ -113,9 +133,6 @@ impl AccountIngestHandler {
                     format!("CloudControl error for {}: {}", type_name, message),
                 )
             }
-            // Graph errors: could be transient (pool full) or permanent (bad Cypher).
-            // Default to retryable for safety.
-            IngestError::Graph(msg) => (true, format!("Graph error (retryable): {}", msg)),
             // Other errors: default to retryable.
             other => (true, format!("Unclassified error (retryable): {:?}", other)),
         };
@@ -127,10 +144,25 @@ impl AccountIngestHandler {
 #[async_trait]
 impl JobHandler for AccountIngestHandler {
     /// Execute a single account ingest job.
+    ///
+    /// Runs the per-account ingest pipeline: fetch resources via CCAPI/AWS SDK, enrich with
+    /// IAM/EC2/S3/KMS data, and apply relationships to build the knowledge graph.
+    ///
+    /// **Partial-failure semantics:** If some resource types fail to fetch or enrichers fail
+    /// to execute, those errors are recorded in `IngestRunStats.errors[]` and the job still
+    /// completes successfully (`Ok(stats)`). The job is marked as completed (not retried).
+    /// This behavior is faithful to the original multi-account `IngestRuntime` semantics,
+    /// which collected per-type errors and completed the run regardless. The graph is left
+    /// in a consistent state (via MERGE-based loaders), but may be partial if some resources
+    /// or enrichments failed.
+    ///
+    /// Whether populated `errors[]` should instead trigger a job retry is a product decision
+    /// for the GraphQL re-point phase. For now, the handler returns `Ok()` to mark the job
+    /// complete, leaving error surfacing and retry logic to GraphQL and downstream phases.
     async fn handle(&self, payload: Value) -> Result<Value, JobError> {
         // Deserialize payload.
-        let account_payload: AccountIngestPayload = serde_json::from_value(payload)
-            .map_err(|e| JobError {
+        let account_payload: AccountIngestPayload =
+            serde_json::from_value(payload).map_err(|e| JobError {
                 retryable: false,
                 message: format!("Malformed payload: {}", e),
             })?;
@@ -234,8 +266,8 @@ mod tests {
             "regions": ["us-east-1"]
         });
 
-        let p: AccountIngestPayload = serde_json::from_value(payload)
-            .expect("Failed to deserialize valid payload");
+        let p: AccountIngestPayload =
+            serde_json::from_value(payload).expect("Failed to deserialize valid payload");
         assert_eq!(p.account_id, "000000000123");
         assert_eq!(p.provider, "aws");
         assert_eq!(p.regions.len(), 1);
@@ -269,6 +301,71 @@ mod tests {
     }
 
     #[test]
+    fn test_error_mapping_graph_transient_pool() {
+        let error = IngestError::Graph("pool error: connection exhausted".to_string());
+        let job_error = AccountIngestHandler::map_ingest_error(error);
+        assert!(job_error.retryable, "pool errors should be retryable");
+        assert!(job_error.message.contains("transient"));
+    }
+
+    #[test]
+    fn test_error_mapping_graph_transient_timeout() {
+        let error = IngestError::Graph("timeout during query execution".to_string());
+        let job_error = AccountIngestHandler::map_ingest_error(error);
+        assert!(job_error.retryable, "timeout errors should be retryable");
+        assert!(job_error.message.contains("transient"));
+    }
+
+    #[test]
+    fn test_error_mapping_graph_transient_connection() {
+        let error = IngestError::Graph("connection refused to graph server".to_string());
+        let job_error = AccountIngestHandler::map_ingest_error(error);
+        assert!(job_error.retryable, "connection errors should be retryable");
+        assert!(job_error.message.contains("transient"));
+    }
+
+    #[test]
+    fn test_error_mapping_graph_permanent_cypher_syntax() {
+        let error = IngestError::Graph("Cypher syntax error: invalid query".to_string());
+        let job_error = AccountIngestHandler::map_ingest_error(error);
+        assert!(
+            !job_error.retryable,
+            "Cypher syntax errors should NOT be retryable"
+        );
+        assert!(job_error.message.contains("permanent"));
+    }
+
+    #[test]
+    fn test_error_mapping_graph_permanent_type_mismatch() {
+        let error = IngestError::Graph("type mismatch: expected number, got string".to_string());
+        let job_error = AccountIngestHandler::map_ingest_error(error);
+        assert!(
+            !job_error.retryable,
+            "type mismatch errors should NOT be retryable"
+        );
+        assert!(job_error.message.contains("permanent"));
+    }
+
+    #[test]
+    fn test_error_mapping_graph_permanent_parse_error() {
+        let error = IngestError::Graph("parse error in query string".to_string());
+        let job_error = AccountIngestHandler::map_ingest_error(error);
+        assert!(!job_error.retryable, "parse errors should NOT be retryable");
+        assert!(job_error.message.contains("permanent"));
+    }
+
+    #[test]
+    fn test_error_mapping_graph_unknown() {
+        let error = IngestError::Graph("unknown graph error occurred".to_string());
+        let job_error = AccountIngestHandler::map_ingest_error(error);
+        assert!(
+            job_error.retryable,
+            "unknown graph errors should default to retryable for safety"
+        );
+        assert!(job_error.message.contains("unknown origin"));
+    }
+
+    #[test]
     fn test_job_type_constant() {
         // Verify the job type string constant.
         let job_type_str = "account_ingest";
@@ -281,5 +378,4 @@ mod tests {
         let max_attempts: i32 = 3;
         assert_eq!(max_attempts, 3);
     }
-
 }

@@ -48,7 +48,7 @@ pub mod runtime;
 pub use cloud_control::IngestStats;
 pub use config::IngestConfig;
 pub use error::IngestError;
-pub use executor::{ingest_account, create_account_config, IngestRunStats};
+pub use executor::{create_account_config, ingest_account, IngestRunStats};
 pub use handler::AccountIngestHandler;
 pub use relationship::{RelationshipRule, RelationshipStats};
 pub use resource_registry::{load_registry, ResourceRegistry, ResourceTypeConfig};

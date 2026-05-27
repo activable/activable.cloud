@@ -114,7 +114,6 @@ impl IngestRuntime {
         self.concurrency_limit = limit;
     }
 
-
     /// Run ingestion for all configured accounts.
     /// THIN DELEGATE: calls the ported executor::ingest_account() for each account.
     /// Kept for GraphQL compatibility (Phase 5 will re-point GraphQL to the scheduler).
@@ -175,7 +174,10 @@ impl IngestRuntime {
 
                     // Extend errors list.
                     for error_msg in &stats.errors {
-                        all_errors.push(("executor".to_string(), IngestError::AwsSdk(error_msg.clone())));
+                        all_errors.push((
+                            "executor".to_string(),
+                            IngestError::AwsSdk(error_msg.clone()),
+                        ));
                     }
 
                     // Note: enrichment_stats and relationship_stats are aggregated in the executor.

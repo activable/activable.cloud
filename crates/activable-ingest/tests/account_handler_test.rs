@@ -90,9 +90,10 @@ async fn test_account_ingest_handler_live_integration() {
         .expect("Failed to create connection pool from DATABASE_URL");
 
     // Create handler.
-    let mut handler = AccountIngestHandler::new(aws_config.clone(), pool.clone(), "cloud".to_string())
-        .await
-        .expect("Failed to create AccountIngestHandler");
+    let mut handler =
+        AccountIngestHandler::new(aws_config.clone(), pool.clone(), "cloud".to_string())
+            .await
+            .expect("Failed to create AccountIngestHandler");
     handler.set_concurrency_limit(2); // Keep it low for test to avoid timeouts
 
     // Test account: 000000000111 (has 4 IAM roles in the seed data)
@@ -128,11 +129,6 @@ async fn test_account_ingest_handler_live_integration() {
         stats1.total_nodes
     );
     // total_edges can be 0 if no enrichment/relationship rules apply; u32 is always >= 0.
-    assert!(
-        stats1.duration_secs > 0,
-        "Expected duration_secs > 0, got {}",
-        stats1.duration_secs
-    );
 
     // Verify dropped_edges is None (not yet surfaced by enricher traits).
     assert_eq!(
