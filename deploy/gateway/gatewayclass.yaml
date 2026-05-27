@@ -1,0 +1,11 @@
+---
+# GatewayClass for Envoy Gateway
+# Defines the gateway controller that manages Gateway instances referencing this class.
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: activable-eg
+  namespace: envoy-gateway-system
+spec:
+  controllerName: gateway.envoyproxy.io/gatewayclass-controller
+  description: "Activable platform Gateway class (Envoy Gateway controller)"

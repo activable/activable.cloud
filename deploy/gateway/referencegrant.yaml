@@ -1,0 +1,28 @@
+---
+# ReferenceGrant: Scope HTTPRoute attachment and TLS secret cross-namespace access (F7 — scoped exposure)
+# Purpose:
+# - Allow HTTPRoute resources in the `activable` namespace to attach to the Gateway
+#   in `envoy-gateway-system` (cross-namespace parentRef).
+# - Allow the Gateway to reference the TLS secret `activable-tls` in `envoy-gateway-system`
+#   (though the secret is in the same namespace, the grant documents the intent).
+#
+# This replaces the over-permissive `allowedRoutes.namespaces.from: All` pattern.
+# Only namespaces with a matching `gateway.activable.io/expose: true` label can attach routes.
+#
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: ReferenceGrant
+metadata:
+  name: activable-gateway-access
+  namespace: envoy-gateway-system
+spec:
+  # From: HTTPRoute in the activable namespace
+  from:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      namespace: activable
+
+  # To: the activable-gateway Gateway in this namespace
+  to:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: activable-gateway

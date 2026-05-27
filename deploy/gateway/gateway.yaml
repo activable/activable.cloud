@@ -1,0 +1,41 @@
+---
+# Shared Gateway for the Activable platform
+# Listens on HTTP :80 and HTTPS :443 (TLS termination).
+# Hostname: activable.localtest.me
+# Routes are attached by HTTPRoute resources (e.g., activable-httproute in the activable namespace).
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: activable-gateway
+  namespace: envoy-gateway-system
+spec:
+  gatewayClassName: activable-eg
+  listeners:
+    # HTTP listener (unsecured traffic, or redirect to HTTPS)
+    - name: http
+      protocol: HTTP
+      port: 80
+      hostname: activable.localtest.me
+      allowedRoutes:
+        namespaces:
+          from: Selector
+          selector:
+            matchLabels:
+              gateway.activable.io/expose: "true"
+
+    # HTTPS listener (TLS termination with mkcert-generated cert)
+    - name: https
+      protocol: HTTPS
+      port: 443
+      hostname: activable.localtest.me
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - name: activable-tls
+            namespace: envoy-gateway-system
+      allowedRoutes:
+        namespaces:
+          from: Selector
+          selector:
+            matchLabels:
+              gateway.activable.io/expose: "true"
