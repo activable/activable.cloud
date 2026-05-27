@@ -37,6 +37,8 @@
 pub mod cloud_control;
 pub mod config;
 pub mod error;
+pub mod executor;
+pub mod handler;
 pub mod native;
 pub mod native_fallback;
 pub mod relationship;
@@ -46,6 +48,8 @@ pub mod runtime;
 pub use cloud_control::IngestStats;
 pub use config::IngestConfig;
 pub use error::IngestError;
+pub use executor::{ingest_account, create_account_config, IngestRunStats};
+pub use handler::AccountIngestHandler;
 pub use relationship::{RelationshipRule, RelationshipStats};
 pub use resource_registry::{load_registry, ResourceRegistry, ResourceTypeConfig};
 pub use runtime::{IngestResult, IngestRuntime};
