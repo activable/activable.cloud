@@ -66,9 +66,21 @@ impl NativeEnricher for Ec2Enricher {
         let mut edge_count = 0u32;
         if !edges.is_empty() {
             debug!(edge_count = edges.len(), "Writing HasSecurityGroup edges");
-            let written =
-                load_edges(pool.clone(), graph_name, "HasSecurityGroup", &edges, 100).await?;
-            edge_count = written as u32;
+            let outcome = load_edges(
+                pool.clone(),
+                graph_name,
+                "HasSecurityGroup",
+                &edges,
+                100,
+                false,
+            )
+            .await?;
+            debug!(
+                created = outcome.created,
+                dropped = outcome.dropped,
+                "HasSecurityGroup edges outcome"
+            );
+            edge_count = outcome.created as u32;
         }
 
         Ok(EnrichmentStats {

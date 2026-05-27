@@ -1,0 +1,26 @@
+id: cf-passrole-001
+name: "iam:PassRole + cloudformation:CreateStack privilege escalation"
+category: passrole
+services:
+  - iam
+  - cloudformation
+permissions:
+  all_of:
+    - permission: "iam:PassRole"
+      resourceConstraints: "Can pass an IAM role to CloudFormation"
+    - any_of:
+        - permission: "cloudformation:CreateStack"
+          resourceConstraints: ""
+        - permission: "cloudformation:UpdateStack"
+          resourceConstraints: ""
+        - permission: "cloudformation:CreateChangeSet"
+          resourceConstraints: ""
+        - permission: "cloudformation:ExecuteChangeSet"
+          resourceConstraints: ""
+description: |
+  Principal with iam:PassRole AND any cloudformation:* action that can execute
+  a stack template can escalate to the privileges of the passed role.
+  CloudFormation will execute the template with the role's permissions,
+  allowing privilege escalation if the target role has elevated permissions.
+
+  Reference: HackingTheCloud, Cloudsplaining privilege escalation patterns.

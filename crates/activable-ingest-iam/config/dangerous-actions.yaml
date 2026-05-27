@@ -155,3 +155,88 @@ actions:
     actions: ["iam:AttachGroupPolicy"]
     combo: false
     description: "Attach policy to group — escalate all group members"
+
+  # === ABAC TAG MANIPULATION (HIGH) ===
+  - id: tag-user
+    tier: 2
+    severity: high
+    actions: ["iam:TagUser"]
+    combo: false
+    description: "Tag IAM user — can self-tag to bypass ABAC conditions"
+
+  - id: tag-role
+    tier: 2
+    severity: high
+    actions: ["iam:TagRole"]
+    combo: false
+    description: "Tag IAM role — can self-tag to bypass ABAC conditions"
+
+  - id: tag-resource
+    tier: 2
+    severity: high
+    actions: ["iam:TagResource"]
+    combo: false
+    description: "Tag any IAM resource — can tag to bypass ABAC conditions"
+
+  - id: tag-policy
+    tier: 3
+    severity: high
+    actions: ["iam:TagPolicy"]
+    combo: false
+    description: "Tag IAM policy — can tag to modify policy access controls"
+
+  - id: tag-instance-profile
+    tier: 3
+    severity: high
+    actions: ["iam:TagInstanceProfile"]
+    combo: false
+    description: "Tag instance profile — can tag to modify instance access"
+
+  - id: ec2-create-tags
+    tier: 3
+    severity: medium
+    actions: ["ec2:CreateTags"]
+    combo: false
+    description: "Create EC2 tags — can tag instances/resources to bypass ABAC"
+
+  - id: ec2-delete-tags
+    tier: 3
+    severity: medium
+    actions: ["ec2:DeleteTags"]
+    combo: false
+    description: "Delete EC2 tags — can remove access-control tags"
+
+  - id: s3-put-object-tagging
+    tier: 3
+    severity: medium
+    actions: ["s3:PutObjectTagging"]
+    combo: false
+    description: "Tag S3 objects — can tag to bypass resource-based ABAC"
+
+  - id: s3-put-bucket-tagging
+    tier: 3
+    severity: medium
+    actions: ["s3:PutBucketTagging"]
+    combo: false
+    description: "Tag S3 buckets — can tag to bypass bucket-level ABAC"
+
+  - id: lambda-tag-resource
+    tier: 3
+    severity: medium
+    actions: ["lambda:TagResource"]
+    combo: false
+    description: "Tag Lambda functions — can tag to modify function access"
+
+  - id: rds-add-tags
+    tier: 3
+    severity: medium
+    actions: ["rds:AddTagsToResource"]
+    combo: false
+    description: "Tag RDS resources — can tag to bypass RDS ABAC conditions"
+
+  - id: kms-tag-resource
+    tier: 3
+    severity: medium
+    actions: ["kms:TagResource"]
+    combo: false
+    description: "Tag KMS keys — can tag to modify key access policies"

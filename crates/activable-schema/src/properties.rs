@@ -122,6 +122,56 @@ pub struct FederatedProviderProperties {
     pub provider_type: String,
 }
 
+/// Properties for an S3 Bucket.
+#[derive(Debug, Clone, PartialEq)]
+pub struct BucketProperties {
+    pub common: CommonProperties,
+    /// The bucket's name (also the ARN resource component).
+    pub name: String,
+    /// AWS region where this bucket is located.
+    pub region: String,
+    /// AWS account ID that owns this bucket.
+    pub account_id: String,
+    /// ISO 8601 timestamp when this bucket was created.
+    pub created_at: Option<String>,
+}
+
+/// Properties for a KMS Cryptographic Key.
+#[derive(Debug, Clone, PartialEq)]
+pub struct KmsKeyExtendedProperties {
+    pub common: CommonProperties,
+    /// The KMS key's UUID (e.g., "arn:aws:kms:us-east-1:111111111111:key/abc-def-123").
+    pub key_id: String,
+    /// AWS region where this key is located.
+    pub region: String,
+    /// AWS account ID that owns this key.
+    pub account_id: String,
+    /// The key's usage (e.g., "ENCRYPT_DECRYPT", "SIGN_VERIFY").
+    pub key_usage: Option<String>,
+    /// The key's state (e.g., "Enabled", "Disabled", "PendingDeletion").
+    pub key_state: Option<String>,
+}
+
+/// Properties for a Policy (managed or inline reified).
+#[derive(Debug, Clone, PartialEq)]
+pub struct PolicyProperties {
+    pub common: CommonProperties,
+    /// The policy's name.
+    pub name: String,
+    /// The policy document as a JSON string.
+    pub document: String,
+    /// Optional version ID for managed policies.
+    pub version_id: Option<String>,
+    /// Source type: "managed" | "inline" | "boundary" | "scp" | "bucket" | "kms".
+    pub source: String,
+}
+
+/// Properties for the WildcardPrincipal sentinel node (used for resource policies with Principal: *).
+#[derive(Debug, Clone, PartialEq)]
+pub struct WildcardPrincipalProperties {
+    pub common: CommonProperties,
+}
+
 /// Wrapper enum for all node property types.
 ///
 /// Allows generic handling of properties while preserving type information.
@@ -138,6 +188,10 @@ pub enum NodeProperties {
     KmsKey(KmsKeyProperties),
     AccessKey(AccessKeyProperties),
     FederatedProvider(FederatedProviderProperties),
+    Bucket(BucketProperties),
+    KmsKeyExtended(KmsKeyExtendedProperties),
+    Policy(PolicyProperties),
+    WildcardPrincipal(WildcardPrincipalProperties),
     /// Custom properties for node types not yet in the v1 schema.
     Custom(serde_json::Value),
 }
@@ -156,6 +210,10 @@ impl NodeProperties {
             Self::KmsKey(_) => NodeLabel::KmsKey,
             Self::AccessKey(_) => NodeLabel::AccessKey,
             Self::FederatedProvider(_) => NodeLabel::FederatedProvider,
+            Self::Bucket(_) => NodeLabel::Bucket,
+            Self::KmsKeyExtended(_) => NodeLabel::KmsKey,
+            Self::Policy(_) => NodeLabel::Policy,
+            Self::WildcardPrincipal(_) => NodeLabel::WildcardPrincipal,
             Self::Custom(_) => NodeLabel::Custom("Unknown".to_string()),
         }
     }
@@ -174,6 +232,10 @@ impl NodeProperties {
             Self::KmsKey(p) => Some(&p.common),
             Self::AccessKey(p) => Some(&p.common),
             Self::FederatedProvider(p) => Some(&p.common),
+            Self::Bucket(p) => Some(&p.common),
+            Self::KmsKeyExtended(p) => Some(&p.common),
+            Self::Policy(p) => Some(&p.common),
+            Self::WildcardPrincipal(p) => Some(&p.common),
             Self::Custom(_) => None,
         }
     }

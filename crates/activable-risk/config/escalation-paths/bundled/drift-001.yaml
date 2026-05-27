@@ -1,0 +1,34 @@
+id: drift-001
+name: "Policy Permission Expansion via Version Drift"
+category: privilege-escalation
+services:
+  - iam
+permissions:
+  required:
+    - permission: "iam:CreatePolicyVersion"
+      resourceConstraints: "Policy must have version history with permission expansion"
+description: "A principal's policy permissions have expanded over time (version drift), indicating possible misconfiguration or backdoor. High drift scores suggest recent permission escalation attempts or unauthorized policy modifications."
+risk_factors:
+  - "Critical expansion: Actions added from dangerous set (iam:*, s3:*, *, PassRole, AssumeRole)"
+  - "High expansion: IAM policy modification actions added (CreatePolicyVersion, AttachUserPolicy, etc.)"
+  - "Medium expansion: New actions or resources granted without documented business reason"
+  - "Low signal: Actions removed (permission contraction is safer)"
+severity_thresholds:
+  critical:
+    drift_score: 0.8
+    description: "Multiple critical action expansions detected across policy versions"
+  high:
+    drift_score: 0.6
+    description: "Significant permission expansion with dangerous actions added"
+  medium:
+    drift_score: 0.4
+    description: "Noticeable permission expansion across versions"
+mitigation:
+  - "Review policy version history and document business justification for expansions"
+  - "Use resource tags to enforce principle of least privilege on changed permissions"
+  - "Enable CloudTrail PutRolePolicy / CreatePolicyVersion logging and alerting"
+  - "Consider using permission boundaries to restrict newly expanded permissions"
+references:
+  - "AWS IAM Best Practices: Policy Versioning"
+  - "NIST SP 800-63B: Privilege Management"
+  - "CIS AWS Foundations Benchmark: 1.16 (IAM policy review)"

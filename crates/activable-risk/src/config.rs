@@ -1,11 +1,42 @@
-use serde::Deserialize;
+use serde::{Deserialize, Deserializer};
 use std::collections::HashMap;
 
 /// Risk configuration with signal weights and severity thresholds
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct RiskConfig {
     pub signals: HashMap<String, f64>,
     pub severity: SeverityThresholds,
+}
+
+impl<'de> Deserialize<'de> for RiskConfig {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct RawConfig {
+            signals: HashMap<String, f64>,
+            severity: SeverityThresholds,
+        }
+
+        let mut raw = RawConfig::deserialize(deserializer)?;
+
+        // Migrate legacy "dangerous_actions" key to "dangerous_action_count"
+        if let Some(value) = raw.signals.remove("dangerous_actions") {
+            tracing::warn!(
+                legacy_key = "dangerous_actions",
+                suggested = "dangerous_action_count",
+                "deprecated config key, use new name"
+            );
+            raw.signals
+                .insert("dangerous_action_count".to_string(), value);
+        }
+
+        Ok(RiskConfig {
+            signals: raw.signals,
+            severity: raw.severity,
+        })
+    }
 }
 
 /// Severity threshold configuration
@@ -24,15 +55,22 @@ impl RiskConfig {
     }
 }
 
+impl RiskConfig {
+    /// Sum of all signal weights
+    pub fn signals_weight_sum(&self) -> f64 {
+        self.signals.values().sum()
+    }
+}
+
 impl Default for RiskConfig {
     fn default() -> Self {
         Self {
             signals: vec![
-                ("blast_radius".to_string(), 0.20),
-                ("path_to_admin".to_string(), 0.25),
-                ("dangerous_actions".to_string(), 0.15),
-                ("cross_account_hops".to_string(), 0.10),
-                ("permission_surface".to_string(), 0.00),
+                ("blast_radius".to_string(), 0.18),
+                ("path_to_admin".to_string(), 0.22),
+                ("dangerous_action_count".to_string(), 0.18),
+                ("cross_account_hops".to_string(), 0.07),
+                ("permission_surface".to_string(), 0.05),
             ]
             .into_iter()
             .collect(),
@@ -67,11 +105,11 @@ mod tests {
     #[test]
     fn default_config_has_correct_weights() {
         let config = RiskConfig::default();
-        assert_eq!(config.signal_weight("blast_radius"), 0.20);
-        assert_eq!(config.signal_weight("path_to_admin"), 0.25);
-        assert_eq!(config.signal_weight("dangerous_actions"), 0.15);
-        assert_eq!(config.signal_weight("cross_account_hops"), 0.10);
-        assert_eq!(config.signal_weight("permission_surface"), 0.00);
+        assert_eq!(config.signal_weight("blast_radius"), 0.18);
+        assert_eq!(config.signal_weight("path_to_admin"), 0.22);
+        assert_eq!(config.signal_weight("dangerous_action_count"), 0.18);
+        assert_eq!(config.signal_weight("cross_account_hops"), 0.07);
+        assert_eq!(config.signal_weight("permission_surface"), 0.05);
     }
 
     #[test]
@@ -99,8 +137,8 @@ mod tests {
     fn load_default_weights_from_yaml() {
         let yaml = include_str!("../config/risk-weights.yaml");
         let config = load_risk_config(yaml).unwrap();
-        assert_eq!(config.signal_weight("blast_radius"), 0.20);
-        assert_eq!(config.signal_weight("path_to_admin"), 0.25);
+        assert_eq!(config.signal_weight("blast_radius"), 0.18);
+        assert_eq!(config.signal_weight("path_to_admin"), 0.22);
     }
 
     #[test]

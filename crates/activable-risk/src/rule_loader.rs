@@ -1,8 +1,14 @@
-use crate::types::{EscalationRule, Prerequisites, RequiredPermission, RuleError};
+use crate::types::{
+    CascadeTrigger, EscalationRule, Prerequisites, RequiredPermission, RuleError, RuleRequirement,
+};
+use include_dir::{include_dir, Dir};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
-/// Intermediate YAML deserialization structure
+/// Intermediate YAML deserialization structure for backward compatibility.
+/// The `permissions` field can be either:
+/// - (old) `permissions: { required: [...] }` → implicitly AllOf
+/// - (new) `permissions: { all_of: [...] }` or `permissions: { any_of: [...] }`
 #[derive(Debug, Deserialize, Serialize)]
 struct YamlRule {
     id: String,
@@ -10,22 +16,22 @@ struct YamlRule {
     category: String,
     services: Vec<String>,
     #[serde(default)]
-    permissions: PermissionsContainer,
+    permissions: Option<serde_json::Value>,
     #[serde(default)]
     prerequisites: Prerequisites,
+    #[serde(default)]
+    trigger: Option<CascadeTrigger>,
     #[serde(default)]
     description: Option<String>,
 }
 
-#[derive(Debug, Deserialize, Serialize, Default)]
-struct PermissionsContainer {
-    #[serde(default)]
-    required: Vec<RequiredPermission>,
-}
+/// Embedded rules bundled at compile time
+static EMBEDDED_RULES: Dir = include_dir!("$CARGO_MANIFEST_DIR/config/escalation-paths/bundled");
 
 /// Category → Severity Tier mapping
 fn category_to_tier(category: &str) -> u8 {
     match category {
+        "cascade" => 1,
         "self-escalation" => 1,
         "new-passrole" | "passrole" => 2,
         "credential-access" | "new-principal" => 3,
@@ -45,6 +51,70 @@ fn tier_to_boost(tier: u8) -> f64 {
     }
 }
 
+/// Helper to parse permissions field — handles both old and new schema.
+fn parse_permissions(
+    permissions_value: Option<serde_json::Value>,
+) -> Result<Option<RuleRequirement>, RuleError> {
+    match permissions_value {
+        None => Ok(None),
+        Some(val) => {
+            // Empty object {} means no permissions (for cascade rules)
+            if let Some(obj) = val.as_object() {
+                if obj.is_empty() {
+                    return Ok(None);
+                }
+            }
+
+            // Try to deserialize as RuleRequirement (handles all_of, any_of, or a single permission)
+            let req: RuleRequirement = match serde_json::from_value::<RuleRequirement>(val.clone())
+            {
+                Ok(r) => r,
+                Err(_) => {
+                    // Fall back: if it looks like old schema { required: [...] }, extract required
+                    if let Some(obj) = val.as_object() {
+                        if let Some(required_val) = obj.get("required") {
+                            match serde_json::from_value::<Vec<RequiredPermission>>(
+                                required_val.clone(),
+                            ) {
+                                Ok(perms) => {
+                                    // Implicit AllOf: wrap in AllOf { all_of: [...] }
+                                    RuleRequirement::AllOf {
+                                        all_of: perms
+                                            .into_iter()
+                                            .map(RuleRequirement::Single)
+                                            .collect(),
+                                    }
+                                }
+                                Err(e) => {
+                                    return Err(RuleError::ParseError(format!(
+                                        "failed to parse permissions.required: {}",
+                                        e
+                                    )))
+                                }
+                            }
+                        } else {
+                            return Err(RuleError::ParseError(
+                                "permissions field is malformed — expected all_of, any_of, or required"
+                                    .to_string(),
+                            ));
+                        }
+                    } else {
+                        return Err(RuleError::ParseError(
+                            "permissions field must be an object".to_string(),
+                        ));
+                    }
+                }
+            };
+
+            // Validate depth
+            req.validate_depth()
+                .map_err(|e| RuleError::DepthExceeded(format!("rule requirement: {}", e)))?;
+
+            Ok(Some(req))
+        }
+    }
+}
+
 /// Parse a single YAML rule string
 pub fn parse_rule(yaml: &str) -> Result<EscalationRule, RuleError> {
     let yaml_rule: YamlRule =
@@ -53,17 +123,53 @@ pub fn parse_rule(yaml: &str) -> Result<EscalationRule, RuleError> {
     let severity_tier = category_to_tier(&yaml_rule.category);
     let boost = tier_to_boost(severity_tier);
 
+    let permissions = parse_permissions(yaml_rule.permissions)?;
+
+    // Validation: if not a cascade rule, empty permissions is an error
+    if permissions.is_none() && yaml_rule.category != "cascade" {
+        return Err(RuleError::ParseError(format!(
+            "rule {}: non-cascade rules must have permissions",
+            yaml_rule.id
+        )));
+    }
+
     Ok(EscalationRule {
         id: yaml_rule.id,
         name: yaml_rule.name,
         category: yaml_rule.category,
         services: yaml_rule.services,
-        permissions_required: yaml_rule.permissions.required,
+        permissions,
         prerequisites: yaml_rule.prerequisites,
         severity_tier,
         boost,
+        trigger: yaml_rule.trigger,
         description: yaml_rule.description,
     })
+}
+
+/// Load rules from the bundled directory at compile time. Production code path.
+/// Errors propagate — empty result means missing/corrupt embedded rules, not "no rules".
+pub fn load_rules_from_embedded() -> Result<Vec<EscalationRule>, RuleError> {
+    let mut rules = Vec::new();
+    for file in EMBEDDED_RULES.files() {
+        let path = file.path();
+        if path.extension().and_then(|s| s.to_str()) != Some("yaml")
+            && path.extension().and_then(|s| s.to_str()) != Some("yml")
+        {
+            continue;
+        }
+        let contents = file.contents_utf8().ok_or_else(|| {
+            RuleError::LoadError(format!("rule file {} not valid utf-8", path.display()))
+        })?;
+        match parse_rule(contents) {
+            Ok(rule) => rules.push(rule),
+            Err(e) => {
+                tracing::error!(path = %path.display(), error = %e, "failed to parse bundled rule");
+                return Err(e);
+            }
+        }
+    }
+    Ok(rules)
 }
 
 /// Load all rules from a directory
@@ -116,6 +222,11 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_category_to_tier_cascade() {
+        assert_eq!(category_to_tier("cascade"), 1);
+    }
+
+    #[test]
     fn test_category_to_tier_self_escalation() {
         assert_eq!(category_to_tier("self-escalation"), 1);
     }
@@ -152,5 +263,41 @@ mod tests {
         assert_eq!(tier_to_boost(3), 0.05);
         assert_eq!(tier_to_boost(4), 0.03);
         assert_eq!(tier_to_boost(5), 0.02);
+    }
+
+    #[test]
+    fn test_load_bundled_rules() {
+        let rules = load_rules_from_embedded().expect("Failed to load bundled rules");
+        assert!(
+            rules.len() >= 12,
+            "Expected at least 12 bundled rules, got {}",
+            rules.len()
+        );
+
+        // Verify scenario rules are present
+        let rule_ids: Vec<&str> = rules.iter().map(|r| r.id.as_str()).collect();
+        assert!(
+            rule_ids.contains(&"cf-passrole-001"),
+            "Missing cf-passrole-001"
+        );
+        assert!(rule_ids.contains(&"s3-org-id-001"), "Missing s3-org-id-001");
+        assert!(rule_ids.contains(&"kms-grant-001"), "Missing kms-grant-001");
+        assert!(
+            rule_ids.contains(&"iam-update-trust-001"),
+            "Missing iam-update-trust-001"
+        );
+        assert!(
+            rule_ids.contains(&"cascade-multi-finding-001"),
+            "Missing cascade-multi-finding-001"
+        );
+
+        // Verify cascade rule has correct category and tier
+        let cascade = rules
+            .iter()
+            .find(|r| r.id == "cascade-multi-finding-001")
+            .unwrap();
+        assert_eq!(cascade.category, "cascade");
+        assert_eq!(cascade.severity_tier, 1);
+        assert_eq!(cascade.boost, 0.15);
     }
 }

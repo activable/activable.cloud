@@ -1,0 +1,172 @@
+---
+# ABAC Tag Manipulation Escalation Patterns
+# Detects privilege escalation via self-tagging under attribute-based access control (ABAC)
+
+id: abac-001
+name: "ABAC tag self-tagging without RequestTag guard"
+category: abac
+services:
+  - iam
+  - ec2
+  - s3
+  - lambda
+  - rds
+  - kms
+
+permissions:
+  required:
+    - permission: "iam:TagUser"
+      description: "Principal can tag IAM users (including itself)"
+    - permission: "iam:TagRole"
+      description: "Principal can tag IAM roles (including itself)"
+  optional:
+    - permission: "ec2:CreateTags"
+      description: "Can tag EC2 resources"
+    - permission: "s3:PutObjectTagging"
+      description: "Can tag S3 objects"
+
+description: |
+  Principal can tag itself without RequestTag condition, enabling ABAC bypass.
+
+  Attack flow:
+  1. Attacker assumes principal with iam:TagUser but no RequestTag condition
+  2. Policies restrict access based on PrincipalTag/ResourceTag conditions
+  3. Attacker self-tags with required tag value (e.g., team=admin)
+  4. Tagged principal now passes ABAC conditions
+  5. Attacker gains escalated permissions via tag forgery
+
+attack_prerequisites:
+  - "Principal must have iam:TagUser or iam:TagRole without RequestTag guard"
+  - "At least one policy must have PrincipalTag or ResourceTag condition"
+  - "Attacker must be able to assume principal or compromise credentials"
+
+risk_level: high
+
+exploitation_scenarios:
+  - name: "Self-tag to bypass department restriction"
+    description: |
+      Policy: "Allow s3:GetObject if PrincipalTag/department==finance"
+      Attacker: has iam:TagUser without RequestTag
+      Exploit: iam:TagUser to add department=finance tag
+      Result: Attacker gains S3 access to finance bucket
+
+  - name: "Self-tag to assume admin role"
+    description: |
+      Policy: "Allow sts:AssumeRole if PrincipalTag/role==admin"
+      Attacker: has iam:TagUser without RequestTag
+      Exploit: iam:TagUser to add role=admin tag
+      Result: Attacker can assume admin role via condition match
+
+  - name: "EC2 instance tagging for multi-account access"
+    description: |
+      Policy: "Allow ec2:RunInstances if ResourceTag/environment==prod"
+      Attacker: has ec2:CreateTags without RequestTag
+      Exploit: ec2:CreateTags to add environment=prod tag
+      Result: Attacker can launch instances in restricted environment
+
+  - name: "S3 bucket tagging for data exfiltration"
+    description: |
+      Policy: "Allow s3:GetObject if ResourceTag/classification!=sensitive"
+      Attacker: has s3:PutObjectTagging without RequestTag
+      Exploit: s3:PutObjectTagging to remove/modify sensitive tag
+      Result: Attacker can read sensitive objects
+
+detection_signals:
+  - principal_has_tag_action: "iam:TagUser, iam:TagRole, iam:TagResource, etc."
+  - no_requesttag_condition: "Tag action not guarded by aws:RequestTag condition"
+  - tag_dependent_policies: "Policies with PrincipalTag/ResourceTag conditions"
+  - effective_self_tagging: "Principal can call tag action on self/resources"
+
+mitigation_strategies:
+  - title: "Add RequestTag condition guard"
+    description: |
+      {
+        "Version": "2012-10-17",
+        "Statement": [{
+          "Effect": "Allow",
+          "Action": "iam:TagUser",
+          "Resource": "*",
+          "Condition": {
+            "StringEquals": {
+              "aws:RequestTag/mfa": "true"
+            }
+          }
+        }]
+      }
+
+  - title: "Separate tag action into limited role"
+    description: "Create dedicated tagging role with RequestTag condition, use STS AssumeRole for temporary elevation"
+
+  - title: "Use resource-based policies"
+    description: "Enforce tagging restrictions at bucket/resource level instead of IAM policy"
+
+  - title: "Implement tag immutability"
+    description: "Use AWS Config or custom controls to prevent modification of critical tags after creation"
+
+test_cases:
+  - name: "Principal with unguarded iam:TagUser"
+    policy: |
+      {
+        "Version": "2012-10-17",
+        "Statement": [{
+          "Effect": "Allow",
+          "Action": "iam:TagUser",
+          "Resource": "*"
+        }]
+      }
+    expected_risk: "high"
+
+  - name: "Principal with guarded iam:TagUser (RequestTag)"
+    policy: |
+      {
+        "Version": "2012-10-17",
+        "Statement": [{
+          "Effect": "Allow",
+          "Action": "iam:TagUser",
+          "Resource": "*",
+          "Condition": {
+            "StringEquals": {
+              "aws:RequestTag/mfa": "true"
+            }
+          }
+        }]
+      }
+    expected_risk: "none"
+
+  - name: "Principal with tag action + tag-dependent policy"
+    policies:
+      - name: "tagging_policy"
+        policy: |
+          {
+            "Version": "2012-10-17",
+            "Statement": [{
+              "Effect": "Allow",
+              "Action": "iam:TagUser",
+              "Resource": "*"
+            }]
+          }
+      - name: "access_policy"
+        policy: |
+          {
+            "Version": "2012-10-17",
+            "Statement": [{
+              "Effect": "Allow",
+              "Action": "s3:*",
+              "Resource": "*",
+              "Condition": {
+                "StringEquals": {
+                  "aws:PrincipalTag/approved": "true"
+                }
+              }
+            }]
+          }
+    expected_risk: "high"
+    expected_exploitable_tags: ["approved"]
+
+references:
+  - title: "AWS ABAC Documentation"
+    url: "https://docs.aws.amazon.com/IAM/latest/UserGuide/introduction_attribute-based-access-control.html"
+  - title: "Condition Keys Reference"
+    url: "https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_condition-keys.html"
+  - title: "RequestTag vs PrincipalTag"
+    url: "https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_condition-keys.html#condition-keys-requesttag"

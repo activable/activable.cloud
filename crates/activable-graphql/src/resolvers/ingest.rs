@@ -67,18 +67,28 @@ async fn record_run_start(
 }
 
 /// Record the completion of an ingestion run.
+///
+/// # Arguments
+/// * `stats` - serialized telemetry as a serde_json::Value (if provided, must be valid JSON).
+///   The value is converted to a JSON string via to_string(), then bound to the JSONB column
+///   with a server-side `::jsonb` cast. NOTE: this JSONB bind path requires live-Postgres
+///   verification (covered by the Phase-4 integration harness) — not exercised by unit tests.
 async fn record_run_complete(
     pool: Arc<Pool>,
     run_id: &str,
     status: &str,
     error_message: Option<String>,
-    stats: Option<String>,
+    stats: Option<serde_json::Value>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let conn = pool.get().await?;
 
+    // Convert stats JSON value to string (via Value::to_string), then bind with server-side ::jsonb cast.
+    // The server-side cast handles JSON parsing; tokio_postgres binds the string parameter.
+    let stats_str = stats.map(|v| v.to_string());
+
     conn.execute(
         "UPDATE ingest_runs SET status = $1, completed_at = NOW(), error_message = $2, stats = $3::jsonb WHERE run_id = $4",
-        &[&status, &error_message.as_deref(), &stats.as_deref(), &run_id],
+        &[&status, &error_message.as_deref(), &stats_str.as_deref(), &run_id],
     )
     .await?;
 
@@ -161,19 +171,18 @@ pub async fn trigger_ingest(
             Ok(ingest_result) => {
                 tracing::info!(run_id = %run_id_clone, "ingestion completed");
 
-                let stats_json = serde_json::to_string(&serde_json::json!({
+                let stats_value = serde_json::json!({
                     "resource_types": ingest_result.stats.len(),
                     "errors": ingest_result.errors.len(),
                     "duration_secs": ingest_result.duration.as_secs(),
-                }))
-                .unwrap_or_else(|_| "{}".to_string());
+                });
 
                 if let Err(e) = record_run_complete(
                     pool_clone.clone(),
                     &run_id_clone,
                     "completed",
                     None,
-                    Some(stats_json),
+                    Some(stats_value),
                 )
                 .await
                 {
@@ -278,4 +287,28 @@ pub async fn ingest_status(
         started_at,
         services,
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn test_json_stats_serialization() {
+        // Verify that serde_json::Value serializes to a valid JSON string
+        // for JSONB binding via the ::jsonb SQL cast.
+        let stats = serde_json::json!({
+            "resource_types": 5,
+            "errors": 2,
+            "duration_secs": 123,
+        });
+
+        // Convert to string for binding to JSONB column
+        let json_str = stats.to_string();
+        assert!(!json_str.is_empty());
+
+        // Verify round-trip
+        let deserialized: serde_json::Value =
+            serde_json::from_str(&json_str).expect("should deserialize back");
+        assert_eq!(deserialized["resource_types"], 5);
+        assert_eq!(deserialized["errors"], 2);
+    }
 }

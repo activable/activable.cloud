@@ -1,0 +1,41 @@
+# Build artifacts (massive — must exclude)
+target/
+target-linux/
+**/target/
+# Allow the pre-built cross-compiled binary required by deploy/docker/Dockerfile
+!target/aarch64-unknown-linux-gnu/release-fast/activable-graphql
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# IDE / editor
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# Plans / docs not needed in image
+plans/
+docs/
+*.md
+!README.md
+
+# CI / dev tooling
+.github/
+.claude/
+infra/
+scripts/
+
+# Tests / spike
+tests/
+spike/
+
+# Bindings (generated)
+bindings/
+
+# Go (legacy)
+go/
+go.mod
+go.sum

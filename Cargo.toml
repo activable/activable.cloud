@@ -28,3 +28,11 @@ opt-level = 3
 lto = true
 codegen-units = 1
 strip = true
+
+# Fast iteration profile: opt-level 3 but no LTO, parallel codegen.
+# ~3x faster builds than release, ~10% slower runtime. Use for E2E/dev.
+# Build with: cargo build --profile release-fast -p activable-graphql
+[profile.release-fast]
+inherits = "release"
+lto = false
+codegen-units = 16

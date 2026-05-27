@@ -83,16 +83,15 @@ postgres:
   database: "activable"
   storageSize: "5Gi"
 
-# Floci AWS emulator (disabled in production — use real AWS)
-floci:
+# LocalStack AWS emulator (disabled in production — use real AWS)
+localstack:
   enabled: false
-  image: "floci/floci:latest"
+  image: "localstack/localstack:4.7"
   region: "us-east-1"
-  accountId: "000000000000"
   resources:
     requests:
-      memory: "256Mi"
-      cpu: "250m"
+      memory: "512Mi"
+      cpu: "500m"
     limits:
-      memory: "1Gi"
-      cpu: "1"
+      memory: "2Gi"
+      cpu: "2"

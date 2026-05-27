@@ -2,12 +2,18 @@
 //!
 //! These enrichers add relationship edges to the graph that CCAPI doesn't provide:
 //! - IAM trust policies → CanAssume/TrustedBy edges
+//! - IAM inline policies → HasEffectivePermission edges (permissions enricher)
 //! - EC2 security groups → HasSecurityGroup edges
 //! - S3 bucket policies → access edges
+//! - KMS key policies → access edges + grantable edges
 
 pub mod ec2;
 pub mod iam;
+pub mod kms;
+pub mod permissions;
+pub mod resource_policy;
 pub mod s3;
+pub mod sentinel;
 
 use crate::error::IngestError;
 use async_trait::async_trait;

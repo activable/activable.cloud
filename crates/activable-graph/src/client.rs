@@ -5,7 +5,72 @@ use crate::query_builder::CypherBuilder;
 use crate::types::{Direction, HydrationQuery, Node, NodeId, NodeRef, Path, Subgraph};
 use deadpool_postgres::Pool;
 use futures::stream::{self, Stream};
+use std::str::FromStr;
 use std::sync::Arc;
+
+/// Parse an agtype scalar value (number, boolean, string) to a typed result.
+///
+/// AGE returns agtype values as strings via `::text` cast. This helper handles:
+/// - Bare numbers: "5" → 5
+/// - Quoted strings: "\"hello\"" → stripped to "hello"
+/// - JSON Object forms: "{...}" → parsed accordingly
+///
+/// The caller is responsible for casting the agtype column to `::text` in the SQL
+/// to ensure the value arrives as a string rather than raw agtype OID.
+///
+/// # Examples
+/// ```ignore
+/// let raw: String = row.try_get(0)?;
+/// let count: u32 = parse_agtype_scalar::<u32>(&raw)?;
+/// ```
+pub fn parse_agtype_scalar<T: FromStr>(raw: &str) -> Result<T, GraphError>
+where
+    T::Err: std::fmt::Display,
+{
+    let trimmed = raw.trim();
+
+    // Case 1: bare number (most common from count(*), arithmetic)
+    if let Ok(val) = trimmed.parse::<T>() {
+        return Ok(val);
+    }
+
+    // Case 2: quoted string — strip outer quotes and parse again
+    if (trimmed.starts_with('"') && trimmed.ends_with('"'))
+        || (trimmed.starts_with('\'') && trimmed.ends_with('\''))
+    {
+        let inner = &trimmed[1..trimmed.len() - 1];
+        if let Ok(val) = inner.trim().parse::<T>() {
+            return Ok(val);
+        }
+    }
+
+    // Case 3: JSON Object form (e.g., count(*) as agtype might return {...})
+    // Try to extract a numeric or boolean value from the object if it looks like JSON
+    if trimmed.starts_with('{') && trimmed.ends_with('}') {
+        // For robustness, attempt to deserialize as JSON and extract first numeric field
+        if let Ok(obj) = serde_json::from_str::<serde_json::Map<String, serde_json::Value>>(trimmed)
+        {
+            // Try the common field names first
+            for field_name in &["value", "result", "count", "count(*)"] {
+                if let Some(val) = obj.get(*field_name) {
+                    if let Some(num) = val.as_i64() {
+                        if let Ok(parsed) = format!("{}", num).parse::<T>() {
+                            return Ok(parsed);
+                        }
+                    }
+                }
+            }
+            // Fall through to error below
+        }
+    }
+
+    // No parse succeeded; return structured error
+    Err(GraphError::Parse(format!(
+        "Failed to parse agtype scalar to {}: '{}'",
+        std::any::type_name::<T>(),
+        raw
+    )))
+}
 
 /// Main graph client for querying the AGE graph.
 ///
@@ -291,8 +356,11 @@ impl GraphClient {
             .await
             .map_err(|e| GraphError::Query(e.to_string()))?;
 
+        // Cast agtype to ::text — tokio-postgres can't deserialize the agtype OID
+        // directly. The text rendering of agtype IS valid JSON, so we can read as
+        // String and parse with serde_json.
         let sql = format!(
-            "SELECT * FROM ag_catalog.cypher('{}', $${}$$) AS (result agtype)",
+            "SELECT result::text FROM ag_catalog.cypher('{}', $${}$$) AS (result agtype)",
             self.graph_name, cypher
         );
 
@@ -303,13 +371,79 @@ impl GraphClient {
 
         let mut results = Vec::new();
         for row in rows {
-            let agtype_bytes: &[u8] = row
+            let agtype_str_opt: Option<String> = row
                 .try_get(0)
                 .map_err(|e| GraphError::Parse(e.to_string()))?;
-            let agtype_str = String::from_utf8_lossy(agtype_bytes);
-            let value: serde_json::Value = serde_json::from_str(&agtype_str)
+            let agtype_str = match agtype_str_opt {
+                None => continue,
+                Some(s) => s,
+            };
+            let agtype_str = agtype_str.as_str();
+            let value: serde_json::Value = serde_json::from_str(agtype_str)
                 .map_err(|e| GraphError::Parse(format!("Failed to parse agtype: {}", e)))?;
             results.push(value);
+        }
+
+        Ok(results)
+    }
+
+    /// Execute Cypher query returning multiple columns.
+    /// Each row is returned as a Vec<serde_json::Value> (one per column).
+    ///
+    /// **Warning:** Caller is responsible for safe interpolation of any runtime values.
+    /// Use `escape_cypher()` from `query_builder` before interpolating user-supplied strings.
+    pub async fn cypher_multi_column(
+        &self,
+        cypher: &str,
+        column_count: usize,
+    ) -> Result<Vec<Vec<serde_json::Value>>, GraphError> {
+        let conn = self
+            .pool
+            .get()
+            .await
+            .map_err(|e| GraphError::Pool(e.to_string()))?;
+
+        conn.batch_execute("LOAD 'age'; SET search_path = ag_catalog, \"$user\", public;")
+            .await
+            .map_err(|e| GraphError::Query(e.to_string()))?;
+
+        // Build SQL with correct number of columns. Cast each agtype column to ::text
+        // because tokio-postgres can't deserialize agtype OID directly — it succeeds
+        // for text. agtype's text rendering IS valid JSON (quoted strings, JSON arrays
+        // etc.), so we can serde_json::from_str the text into Value.
+        let column_defs = (0..column_count)
+            .map(|i| format!("col{} agtype", i))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let column_selects = (0..column_count)
+            .map(|i| format!("col{}::text", i))
+            .collect::<Vec<_>>()
+            .join(", ");
+
+        let sql = format!(
+            "SELECT {} FROM ag_catalog.cypher('{}', $${}$$) AS ({})",
+            column_selects, self.graph_name, cypher, column_defs
+        );
+
+        let rows = conn
+            .query(&sql, &[])
+            .await
+            .map_err(|e| GraphError::Query(e.to_string()))?;
+
+        let mut results = Vec::new();
+        for row in rows {
+            let mut row_values = Vec::new();
+            for col_idx in 0..column_count {
+                let agtype_str: Option<String> = row.try_get(col_idx).map_err(|e| {
+                    GraphError::Parse(format!("Failed to read column {}: {}", col_idx, e))
+                })?;
+                let value = match agtype_str {
+                    None => serde_json::Value::Null,
+                    Some(s) => serde_json::from_str(&s).unwrap_or(serde_json::Value::String(s)),
+                };
+                row_values.push(value);
+            }
+            results.push(row_values);
         }
 
         Ok(results)

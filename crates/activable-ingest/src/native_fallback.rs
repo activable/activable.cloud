@@ -83,28 +83,122 @@ async fn fetch_iam_users(
     while let Some(page_result) = paginator.next().await {
         let page = page_result.map_err(|e| IngestError::AwsSdk(e.to_string()))?;
 
-        let nodes: Vec<Value> = page
-            .users()
-            .iter()
-            .map(|user| {
-                json!({
-                    "id": user.arn(),
-                    "name": user.user_name(),
-                    "user_id": user.user_id(),
-                    "path": user.path(),
-                    "principal_type": "User",
-                })
-            })
-            .collect();
+        for user in page.users() {
+            // Fetch managed policy attachments for this user
+            let mut managed_policies: Vec<serde_json::Value> = Vec::new();
+            if let Ok(attached) = client
+                .list_attached_user_policies()
+                .user_name(user.user_name())
+                .send()
+                .await
+            {
+                for attached_policy in attached.attached_policies() {
+                    let policy_arn = match attached_policy.policy_arn() {
+                        Some(arn) => arn,
+                        None => continue,
+                    };
 
-        if !nodes.is_empty() {
+                    // Get the default version of this managed policy
+                    if let Ok(policy_resp) = client.get_policy().policy_arn(policy_arn).send().await
+                    {
+                        if let Some(policy) = policy_resp.policy() {
+                            let version_id = match policy.default_version_id() {
+                                Some(v) => v,
+                                None => continue,
+                            };
+                            if let Ok(version_resp) = client
+                                .get_policy_version()
+                                .policy_arn(policy_arn)
+                                .version_id(version_id)
+                                .send()
+                                .await
+                            {
+                                if let Some(pv) = version_resp.policy_version() {
+                                    let doc_raw = pv.document().unwrap_or("");
+                                    let doc = urlencoding::decode(doc_raw)
+                                        .unwrap_or_else(|_| doc_raw.into())
+                                        .to_string();
+                                    managed_policies.push(json!({
+                                        "arn": policy_arn,
+                                        "name": attached_policy.policy_name().unwrap_or(""),
+                                        "version_id": version_id,
+                                        "document": doc,
+                                    }));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Fetch permission boundary for this user
+            let permissions_boundary: Option<serde_json::Value> = match user.permissions_boundary()
+            {
+                Some(boundary) => {
+                    let boundary_arn = boundary.permissions_boundary_arn().unwrap_or("");
+                    if !boundary_arn.is_empty() {
+                        // Fetch the boundary policy document
+                        if let Ok(policy_resp) =
+                            client.get_policy().policy_arn(boundary_arn).send().await
+                        {
+                            if let Some(policy) = policy_resp.policy() {
+                                if let Some(version_id) = policy.default_version_id() {
+                                    if let Ok(version_resp) = client
+                                        .get_policy_version()
+                                        .policy_arn(boundary_arn)
+                                        .version_id(version_id)
+                                        .send()
+                                        .await
+                                    {
+                                        if let Some(pv) = version_resp.policy_version() {
+                                            let doc_raw = pv.document().unwrap_or("");
+                                            let doc = urlencoding::decode(doc_raw)
+                                                .unwrap_or_else(|_| doc_raw.into())
+                                                .to_string();
+                                            Some(json!({
+                                                "arn": boundary_arn,
+                                                "document": doc,
+                                                "version_id": version_id,
+                                            }))
+                                        } else {
+                                            None
+                                        }
+                                    } else {
+                                        None
+                                    }
+                                } else {
+                                    None
+                                }
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                }
+                None => None,
+            };
+
+            let node = json!({
+                "id": user.arn(),
+                "name": user.user_name(),
+                "user_id": user.user_id(),
+                "path": user.path(),
+                "principal_type": "User",
+                "managed_policies": managed_policies,
+                "permissions_boundary": permissions_boundary,
+            });
+
             let written =
-                loader::load_nodes(pool.clone(), graph_name, "Principal", &nodes, 100).await?;
+                loader::load_nodes(pool.clone(), graph_name, "Principal", &[node], 100).await?;
             count += written as u32;
             debug!(
                 batch_count = written,
-                total = count,
-                "IAM Users batch written"
+                "IAM User {} ingested with managed policies and boundary",
+                user.user_name()
             );
         }
     }
@@ -130,28 +224,161 @@ async fn fetch_iam_roles(
     while let Some(page_result) = paginator.next().await {
         let page = page_result.map_err(|e| IngestError::AwsSdk(e.to_string()))?;
 
-        let nodes: Vec<Value> = page
-            .roles()
-            .iter()
-            .map(|role| {
-                json!({
-                    "id": role.arn(),
-                    "name": role.role_name(),
-                    "role_id": role.role_id(),
-                    "path": role.path(),
-                    "principal_type": "Role",
-                })
-            })
-            .collect();
+        for role in page.roles() {
+            // Decode trust policy (URL-encoded by AWS)
+            let trust_policy_raw = role.assume_role_policy_document().unwrap_or("");
+            let trust_policy = urlencoding::decode(trust_policy_raw)
+                .unwrap_or_else(|_| trust_policy_raw.into())
+                .to_string();
 
-        if !nodes.is_empty() {
+            // Fetch inline policies for this role
+            let mut inline_policies = Vec::new();
+            if let Ok(policy_list) = client
+                .list_role_policies()
+                .role_name(role.role_name())
+                .send()
+                .await
+            {
+                for policy_name in policy_list.policy_names() {
+                    if let Ok(policy_detail) = client
+                        .get_role_policy()
+                        .role_name(role.role_name())
+                        .policy_name(policy_name)
+                        .send()
+                        .await
+                    {
+                        let doc_raw = policy_detail.policy_document();
+                        let doc = urlencoding::decode(doc_raw)
+                            .unwrap_or_else(|_| doc_raw.into())
+                            .to_string();
+                        inline_policies.push(json!({
+                            "name": policy_name,
+                            "document": doc,
+                        }));
+                    }
+                }
+            }
+
+            // Fetch managed policy attachments for this role
+            let mut managed_policies: Vec<serde_json::Value> = Vec::new();
+            if let Ok(attached) = client
+                .list_attached_role_policies()
+                .role_name(role.role_name())
+                .send()
+                .await
+            {
+                for attached_policy in attached.attached_policies() {
+                    let policy_arn = match attached_policy.policy_arn() {
+                        Some(arn) => arn,
+                        None => continue,
+                    };
+
+                    // Get the default version of this managed policy
+                    if let Ok(policy_resp) = client.get_policy().policy_arn(policy_arn).send().await
+                    {
+                        if let Some(policy) = policy_resp.policy() {
+                            let version_id = match policy.default_version_id() {
+                                Some(v) => v,
+                                None => continue,
+                            };
+                            if let Ok(version_resp) = client
+                                .get_policy_version()
+                                .policy_arn(policy_arn)
+                                .version_id(version_id)
+                                .send()
+                                .await
+                            {
+                                if let Some(pv) = version_resp.policy_version() {
+                                    let doc_raw = pv.document().unwrap_or("");
+                                    let doc = urlencoding::decode(doc_raw)
+                                        .unwrap_or_else(|_| doc_raw.into())
+                                        .to_string();
+                                    managed_policies.push(json!({
+                                        "arn": policy_arn,
+                                        "name": attached_policy.policy_name().unwrap_or(""),
+                                        "version_id": version_id,
+                                        "document": doc,
+                                    }));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Fetch permission boundary for this role
+            let permissions_boundary: Option<serde_json::Value> = match role.permissions_boundary()
+            {
+                Some(boundary) => {
+                    let boundary_arn = boundary.permissions_boundary_arn().unwrap_or("");
+                    if !boundary_arn.is_empty() {
+                        // Fetch the boundary policy document
+                        if let Ok(policy_resp) =
+                            client.get_policy().policy_arn(boundary_arn).send().await
+                        {
+                            if let Some(policy) = policy_resp.policy() {
+                                if let Some(version_id) = policy.default_version_id() {
+                                    if let Ok(version_resp) = client
+                                        .get_policy_version()
+                                        .policy_arn(boundary_arn)
+                                        .version_id(version_id)
+                                        .send()
+                                        .await
+                                    {
+                                        if let Some(pv) = version_resp.policy_version() {
+                                            let doc_raw = pv.document().unwrap_or("");
+                                            let doc = urlencoding::decode(doc_raw)
+                                                .unwrap_or_else(|_| doc_raw.into())
+                                                .to_string();
+                                            Some(json!({
+                                                "arn": boundary_arn,
+                                                "document": doc,
+                                                "version_id": version_id,
+                                            }))
+                                        } else {
+                                            None
+                                        }
+                                    } else {
+                                        None
+                                    }
+                                } else {
+                                    None
+                                }
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                }
+                None => None,
+            };
+
+            let node = json!({
+                "id": role.arn(),
+                "name": role.role_name(),
+                "role_id": role.role_id(),
+                "path": role.path(),
+                "principal_type": "Role",
+                "assume_role_policy_document": trust_policy,
+                "inline_policies": inline_policies,
+                "managed_policies": managed_policies,
+                "permissions_boundary": permissions_boundary,
+            });
+
             let written =
-                loader::load_nodes(pool.clone(), graph_name, "Principal", &nodes, 100).await?;
+                loader::load_nodes(pool.clone(), graph_name, "Principal", &[node], 100).await?;
             count += written as u32;
         }
     }
 
-    info!(nodes_ingested = count, "IAM Roles ingest complete");
+    info!(
+        nodes_ingested = count,
+        "IAM Roles ingest complete (with policies)"
+    );
     Ok(IngestStats {
         type_name: "AWS::IAM::Role".to_string(),
         label: "Principal".to_string(),

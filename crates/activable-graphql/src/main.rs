@@ -2,7 +2,7 @@
 
 use activable_graph::pool::GraphPool;
 use activable_graph::GraphClient;
-use activable_risk::RiskConfig;
+use activable_risk::{load_rules_from_embedded, RiskConfig};
 use async_graphql::Schema;
 use axum::{extract::DefaultBodyLimit, routing::get, Json, Router};
 use std::net::SocketAddr;
@@ -12,8 +12,10 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 mod error;
 mod graph_adapter;
+mod graph_client_adapter;
 mod resolvers;
 mod schema;
+mod telemetry;
 mod types;
 
 use schema::{AppSchema, MutationRoot, QueryRoot};
@@ -104,6 +106,40 @@ async fn main() -> anyhow::Result<()> {
     let client = GraphClient::new(pool.clone(), &graph_name);
     tracing::info!(graph_name = %graph_name, "GraphClient initialized");
 
+    // Run index migrations (create indexes for common node labels)
+    {
+        let conn = pool
+            .get()
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to get connection for index migrations: {}", e))?;
+
+        let index_statements = &[
+            r#"SELECT * FROM cypher('activable', $$ CREATE INDEX IF NOT EXISTS ON :Principal(id) $$) AS (r agtype)"#,
+            r#"SELECT * FROM cypher('activable', $$ CREATE INDEX IF NOT EXISTS ON :Permission(id) $$) AS (r agtype)"#,
+            r#"SELECT * FROM cypher('activable', $$ CREATE INDEX IF NOT EXISTS ON :Bucket(id) $$) AS (r agtype)"#,
+            r#"SELECT * FROM cypher('activable', $$ CREATE INDEX IF NOT EXISTS ON :KmsKey(id) $$) AS (r agtype)"#,
+            r#"SELECT * FROM cypher('activable', $$ CREATE INDEX IF NOT EXISTS ON :Policy(id) $$) AS (r agtype)"#,
+        ];
+
+        for stmt in index_statements {
+            match conn.batch_execute(stmt).await {
+                Ok(_) => {
+                    tracing::debug!(stmt = %stmt, "index migration ok");
+                }
+                Err(e) => {
+                    // Common: label table doesn't exist yet (no nodes created of that label).
+                    // Non-fatal: re-runs on every startup.
+                    tracing::warn!(
+                        error = %e,
+                        stmt = %stmt,
+                        "index migration skipped — label table may not exist yet"
+                    );
+                }
+            }
+        }
+        tracing::info!("index migrations complete");
+    }
+
     // Create the IngestRuntime
     let ingest_runtime =
         activable_ingest::IngestRuntime::new(pool.clone(), graph_name.clone()).await?;
@@ -120,11 +156,23 @@ async fn main() -> anyhow::Result<()> {
         "Risk configuration initialized"
     );
 
-    // Initialize in-memory graph service for risk scoring
-    // Phase 9 will replace this with GraphClientAdapter wrapping the real GraphClient
-    let graph_service: Box<dyn activable_risk::signals::GraphQueryService> =
-        Box::new(graph_adapter::InMemoryGraphService::new());
-    tracing::info!("Graph service initialized (in-memory; Phase 9 will use real GraphClient)");
+    // Load and initialize risk rules
+    let _rules = load_rules_from_embedded().expect("embedded rules must parse at startup");
+    let rule_count = _rules.len();
+    let weight_sum = risk_config.signals_weight_sum();
+    tracing::info!(
+        rule_count = rule_count,
+        weight_sum = %format!("{:.2}", weight_sum),
+        "risk engine ready"
+    );
+
+    // Initialize graph service for risk scoring
+    // Use GraphClientAdapter wrapping the real GraphClient (Phase 1)
+    // Fallback to InMemoryGraphService if needed for testing
+    let graph_service: Box<dyn activable_risk::signals::GraphQueryService> = Box::new(
+        graph_client_adapter::GraphClientAdapter::new(client.clone()),
+    );
+    tracing::info!("Graph service initialized (GraphClientAdapter wrapping GraphClient)");
 
     // Build the async-graphql schema
     let schema: AppSchema =

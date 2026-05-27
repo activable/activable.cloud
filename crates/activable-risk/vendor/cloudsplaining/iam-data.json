@@ -1,0 +1,34 @@
+{
+  "source": "Cloudsplaining v0.7.0",
+  "version": "0.7.0",
+  "url": "https://github.com/salesforce/cloudsplaining",
+  "license": "Apache-2.0",
+  "note": "Minimal vendored copy. For full patterns, see upstream repo.",
+  "privilege_escalation_methods": [
+    {
+      "name": "PassRole + CreateFunction",
+      "actions": ["iam:PassRole", "lambda:CreateFunction"],
+      "description": "Create Lambda function with a passed role to escalate privileges"
+    },
+    {
+      "name": "PassRole + CreateStack",
+      "actions": ["iam:PassRole", "cloudformation:CreateStack"],
+      "description": "CloudFormation service role escalation"
+    },
+    {
+      "name": "UpdateAssumeRolePolicy",
+      "actions": ["iam:UpdateAssumeRolePolicy"],
+      "description": "Rewrite trust policy on a role"
+    },
+    {
+      "name": "CreateGrant",
+      "actions": ["kms:CreateGrant"],
+      "description": "Create KMS grants for credential access"
+    },
+    {
+      "name": "PutBucketPolicy",
+      "actions": ["s3:PutBucketPolicy"],
+      "description": "Modify bucket policies to access data"
+    }
+  ]
+}

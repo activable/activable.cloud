@@ -1,0 +1,16 @@
+id: iam-update-trust-001
+name: "iam:UpdateAssumeRolePolicy trust-policy hijack"
+category: new-passrole
+services:
+  - iam
+permissions:
+  required:
+    - permission: "iam:UpdateAssumeRolePolicy"
+      resourceConstraints: "Can rewrite trust policy on a role"
+description: |
+  Principal can rewrite the trust policy of any role they have permission on.
+  Used as a privilege escalation primitive when combined with other findings
+  (e.g., a drifted OIDC trust policy that is too loose).
+
+  Attack: Rewrite the trust policy to allow the attacker's role to assume
+  a privileged role, effectively bypassing intended access controls.
