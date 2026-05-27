@@ -138,8 +138,8 @@ async fn compute_and_return(
     }
 
     // Load rules from embedded bundled directory (compile-time)
-    let rules = load_rules_from_embedded()
-        .expect("embedded rules must parse — fix YAML or report bug");
+    let rules =
+        load_rules_from_embedded().expect("embedded rules must parse — fix YAML or report bug");
 
     // Compute timestamp
     let now = std::time::SystemTime::now()

@@ -1,7 +1,9 @@
-use crate::types::{CascadeTrigger, EscalationRule, Prerequisites, RequiredPermission, RuleError, RuleRequirement};
+use crate::types::{
+    CascadeTrigger, EscalationRule, Prerequisites, RequiredPermission, RuleError, RuleRequirement,
+};
+use include_dir::{include_dir, Dir};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
-use include_dir::{include_dir, Dir};
 
 /// Intermediate YAML deserialization structure for backward compatibility.
 /// The `permissions` field can be either:
@@ -50,7 +52,9 @@ fn tier_to_boost(tier: u8) -> f64 {
 }
 
 /// Helper to parse permissions field — handles both old and new schema.
-fn parse_permissions(permissions_value: Option<serde_json::Value>) -> Result<Option<RuleRequirement>, RuleError> {
+fn parse_permissions(
+    permissions_value: Option<serde_json::Value>,
+) -> Result<Option<RuleRequirement>, RuleError> {
     match permissions_value {
         None => Ok(None),
         Some(val) => {
@@ -62,13 +66,16 @@ fn parse_permissions(permissions_value: Option<serde_json::Value>) -> Result<Opt
             }
 
             // Try to deserialize as RuleRequirement (handles all_of, any_of, or a single permission)
-            let req: RuleRequirement = match serde_json::from_value::<RuleRequirement>(val.clone()) {
+            let req: RuleRequirement = match serde_json::from_value::<RuleRequirement>(val.clone())
+            {
                 Ok(r) => r,
                 Err(_) => {
                     // Fall back: if it looks like old schema { required: [...] }, extract required
                     if let Some(obj) = val.as_object() {
                         if let Some(required_val) = obj.get("required") {
-                            match serde_json::from_value::<Vec<RequiredPermission>>(required_val.clone()) {
+                            match serde_json::from_value::<Vec<RequiredPermission>>(
+                                required_val.clone(),
+                            ) {
                                 Ok(perms) => {
                                     // Implicit AllOf: wrap in AllOf { all_of: [...] }
                                     RuleRequirement::AllOf {
@@ -261,18 +268,34 @@ mod tests {
     #[test]
     fn test_load_bundled_rules() {
         let rules = load_rules_from_embedded().expect("Failed to load bundled rules");
-        assert!(rules.len() >= 12, "Expected at least 12 bundled rules, got {}", rules.len());
+        assert!(
+            rules.len() >= 12,
+            "Expected at least 12 bundled rules, got {}",
+            rules.len()
+        );
 
         // Verify scenario rules are present
         let rule_ids: Vec<&str> = rules.iter().map(|r| r.id.as_str()).collect();
-        assert!(rule_ids.contains(&"cf-passrole-001"), "Missing cf-passrole-001");
+        assert!(
+            rule_ids.contains(&"cf-passrole-001"),
+            "Missing cf-passrole-001"
+        );
         assert!(rule_ids.contains(&"s3-org-id-001"), "Missing s3-org-id-001");
         assert!(rule_ids.contains(&"kms-grant-001"), "Missing kms-grant-001");
-        assert!(rule_ids.contains(&"iam-update-trust-001"), "Missing iam-update-trust-001");
-        assert!(rule_ids.contains(&"cascade-multi-finding-001"), "Missing cascade-multi-finding-001");
+        assert!(
+            rule_ids.contains(&"iam-update-trust-001"),
+            "Missing iam-update-trust-001"
+        );
+        assert!(
+            rule_ids.contains(&"cascade-multi-finding-001"),
+            "Missing cascade-multi-finding-001"
+        );
 
         // Verify cascade rule has correct category and tier
-        let cascade = rules.iter().find(|r| r.id == "cascade-multi-finding-001").unwrap();
+        let cascade = rules
+            .iter()
+            .find(|r| r.id == "cascade-multi-finding-001")
+            .unwrap();
         assert_eq!(cascade.category, "cascade");
         assert_eq!(cascade.severity_tier, 1);
         assert_eq!(cascade.boost, 0.15);

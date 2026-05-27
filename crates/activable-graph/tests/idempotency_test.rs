@@ -2,7 +2,10 @@
 //!
 //! Run with: AGE_TEST_URL="postgres://activable:password@localhost:5433/activable" cargo test --test idempotency_test
 
-use activable_graph::{GraphPool, loader::{load_edges_with_props_identifying, load_nodes}};
+use activable_graph::{
+    loader::{load_edges_with_props_identifying, load_nodes},
+    GraphPool,
+};
 use serde_json::json;
 
 fn test_url_parts() -> Option<(String, u16, String, String, String)> {
@@ -303,7 +306,15 @@ async fn test_idempotency_edge_properties() {
         }
     }
 
-    match load_nodes(pool.clone(), graph_name, "Permission", &[perm1_node, perm2_node], 10).await {
+    match load_nodes(
+        pool.clone(),
+        graph_name,
+        "Permission",
+        &[perm1_node, perm2_node],
+        10,
+    )
+    .await
+    {
         Ok(_) => {}
         Err(e) => {
             println!("Skipping: failed to load Permission nodes: {}", e);

@@ -2,7 +2,7 @@
 
 use activable_graph::pool::GraphPool;
 use activable_graph::GraphClient;
-use activable_risk::{RiskConfig, load_rules_from_embedded};
+use activable_risk::{load_rules_from_embedded, RiskConfig};
 use async_graphql::Schema;
 use axum::{extract::DefaultBodyLimit, routing::get, Json, Router};
 use std::net::SocketAddr;
@@ -108,9 +108,10 @@ async fn main() -> anyhow::Result<()> {
 
     // Run index migrations (create indexes for common node labels)
     {
-        let conn = pool.get().await.map_err(|e| {
-            anyhow::anyhow!("Failed to get connection for index migrations: {}", e)
-        })?;
+        let conn = pool
+            .get()
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to get connection for index migrations: {}", e))?;
 
         let index_statements = &[
             r#"SELECT * FROM cypher('activable', $$ CREATE INDEX IF NOT EXISTS ON :Principal(id) $$) AS (r agtype)"#,
@@ -156,8 +157,7 @@ async fn main() -> anyhow::Result<()> {
     );
 
     // Load and initialize risk rules
-    let _rules = load_rules_from_embedded()
-        .expect("embedded rules must parse at startup");
+    let _rules = load_rules_from_embedded().expect("embedded rules must parse at startup");
     let rule_count = _rules.len();
     let weight_sum = risk_config.signals_weight_sum();
     tracing::info!(

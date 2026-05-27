@@ -10,7 +10,7 @@ use serde_json::json;
 #[derive(Debug, Clone)]
 pub struct ParsedStatement {
     pub effect: String,
-    pub principals: Vec<String>,    // ARNs (or "*" if wildcard)
+    pub principals: Vec<String>, // ARNs (or "*" if wildcard)
     pub actions: Vec<String>,
     pub condition_keys: Vec<String>,
     pub wildcard_principal: bool,
@@ -168,7 +168,9 @@ mod tests {
         assert!(stmt.wildcard_principal);
         assert_eq!(stmt.principals, vec!["*"]);
         assert!(stmt.actions.contains(&"s3:GetObject".to_string()));
-        assert!(stmt.condition_keys.contains(&"aws:PrincipalOrgID".to_string()));
+        assert!(stmt
+            .condition_keys
+            .contains(&"aws:PrincipalOrgID".to_string()));
     }
 
     #[test]
@@ -206,7 +208,10 @@ mod tests {
 
         let grant_stmt = &result[1];
         assert_eq!(grant_stmt.effect, "Allow");
-        assert_eq!(grant_stmt.principals, vec!["arn:aws:iam::111111111111:root"]);
+        assert_eq!(
+            grant_stmt.principals,
+            vec!["arn:aws:iam::111111111111:root"]
+        );
         assert!(grant_stmt.actions.contains(&"kms:CreateGrant".to_string()));
     }
 

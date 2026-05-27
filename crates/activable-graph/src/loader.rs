@@ -80,11 +80,19 @@ pub async fn load_nodes(
                                 let json_str = match serde_json::to_string(v) {
                                     Ok(s) => s,
                                     Err(e) => {
-                                        tracing::warn!("Failed to serialize property {} to JSON: {}", k, e);
+                                        tracing::warn!(
+                                            "Failed to serialize property {} to JSON: {}",
+                                            k,
+                                            e
+                                        );
                                         return None;
                                     }
                                 };
-                                tracing::debug!("Serialized property {} ({:?}) to JSON string", k, v);
+                                tracing::debug!(
+                                    "Serialized property {} ({:?}) to JSON string",
+                                    k,
+                                    v
+                                );
                                 Some(format!("{}: '{}'", k, escape_sql_literal(&json_str)))
                             }
                             serde_json::Value::Null => None, // Skip nulls
@@ -195,9 +203,9 @@ pub async fn load_edges(
                         dropped += 1;
                         if strict {
                             // Commit and exit before returning error (to clean up the transaction state)
-                            conn.batch_execute("COMMIT;")
-                                .await
-                                .map_err(|e| GraphError::Query(format!("Failed to commit transaction: {}", e)))?;
+                            conn.batch_execute("COMMIT;").await.map_err(|e| {
+                                GraphError::Query(format!("Failed to commit transaction: {}", e))
+                            })?;
                             return Err(GraphError::Query(format!(
                                 "Strict mode: missing endpoint in edge {} -> {}",
                                 from_id, to_id
@@ -253,7 +261,8 @@ pub async fn load_edges_with_props(
     batch_size: usize,
     strict: bool,
 ) -> Result<EdgeLoadOutcome, GraphError> {
-    load_edges_with_props_identifying(pool, graph_name, edge_label, edges, batch_size, strict, &[]).await
+    load_edges_with_props_identifying(pool, graph_name, edge_label, edges, batch_size, strict, &[])
+        .await
 }
 
 /// Load edges with properties, specifying which properties are part of the MERGE identifying key.
@@ -353,9 +362,9 @@ pub async fn load_edges_with_props_identifying(
                         dropped += 1;
                         if strict {
                             // Commit and exit before returning error
-                            conn.batch_execute("COMMIT;")
-                                .await
-                                .map_err(|e| GraphError::Query(format!("Failed to commit transaction: {}", e)))?;
+                            conn.batch_execute("COMMIT;").await.map_err(|e| {
+                                GraphError::Query(format!("Failed to commit transaction: {}", e))
+                            })?;
                             return Err(GraphError::Query(format!(
                                 "Strict mode: missing endpoint in edge {} -> {}",
                                 from_id, to_id
@@ -372,7 +381,12 @@ pub async fn load_edges_with_props_identifying(
                     }
                 }
                 Err(e) => {
-                    tracing::warn!("Edge insert with props failed for ({} -> {}): {}", from_id, to_id, e);
+                    tracing::warn!(
+                        "Edge insert with props failed for ({} -> {}): {}",
+                        from_id,
+                        to_id,
+                        e
+                    );
                     return Err(GraphError::Query(format!(
                         "Failed to insert edge with props from {} to {}: {}",
                         from_id, to_id, e
@@ -395,10 +409,7 @@ pub async fn load_edges_with_props_identifying(
 /// Properties listed in `identifying_keys` are returned as a comma-separated
 /// key-value string suitable for a MERGE pattern: `action: 'value', resource: 'value'`.
 /// All other properties are returned as a settable map `{key: value, ...}` for SET clauses.
-fn partition_properties(
-    props: &serde_json::Value,
-    identifying_keys: &[&str],
-) -> (String, String) {
+fn partition_properties(props: &serde_json::Value, identifying_keys: &[&str]) -> (String, String) {
     let map = match props.as_object() {
         Some(m) => m,
         None => return (String::new(), String::new()),

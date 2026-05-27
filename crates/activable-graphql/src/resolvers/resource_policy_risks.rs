@@ -1,10 +1,10 @@
 //! Resolver for resource policy risk queries.
 
+use crate::resolvers::policy_helpers::{extract_account_id_from_arn, policy_value_to_json};
 use crate::types::{
     GqlCrossAccountAccess, GqlResourcePolicy, GqlResourcePolicyRisks, GqlResourcePolicyStatement,
     GqlSeverity,
 };
-use crate::resolvers::policy_helpers::{policy_value_to_json, extract_account_id_from_arn};
 use activable_graph::GraphClient;
 use async_graphql::Context;
 use std::collections::HashMap;
@@ -28,11 +28,9 @@ pub async fn resource_policy_risks(
         (None, None) => Err(async_graphql::Error::new(
             "Either bucketName or keyId must be provided",
         )),
-        (Some(_), Some(_)) => {
-            Err(async_graphql::Error::new(
-                "Provide only one of bucketName or keyId",
-            ))
-        }
+        (Some(_), Some(_)) => Err(async_graphql::Error::new(
+            "Provide only one of bucketName or keyId",
+        )),
     }
 }
 
@@ -83,12 +81,7 @@ async fn query_bucket_policy(
         })
         .unwrap_or_default();
 
-    build_resource_policy_risks(
-        &resource_arn,
-        "bucket",
-        policy_doc,
-        consuming_accounts,
-    )
+    build_resource_policy_risks(&resource_arn, "bucket", policy_doc, consuming_accounts)
 }
 
 /// Query and analyze KMS key policy risks.
@@ -138,12 +131,7 @@ async fn query_key_policy(
         })
         .unwrap_or_default();
 
-    build_resource_policy_risks(
-        &resource_arn,
-        "kmsKey",
-        policy_doc,
-        consuming_accounts,
-    )
+    build_resource_policy_risks(&resource_arn, "kmsKey", policy_doc, consuming_accounts)
 }
 
 /// Build the complete GqlResourcePolicyRisks response.
@@ -177,7 +165,9 @@ fn build_resource_policy_risks(
 }
 
 /// Parse a resource policy document into statements.
-fn parse_resource_policy(policy_json: &str) -> async_graphql::Result<Vec<GqlResourcePolicyStatement>> {
+fn parse_resource_policy(
+    policy_json: &str,
+) -> async_graphql::Result<Vec<GqlResourcePolicyStatement>> {
     let parsed: serde_json::Value = serde_json::from_str(policy_json).map_err(|e| {
         tracing::warn!(error = %e, "failed to parse resource policy JSON");
         async_graphql::Error::new("Invalid policy JSON")
@@ -186,11 +176,7 @@ fn parse_resource_policy(policy_json: &str) -> async_graphql::Result<Vec<GqlReso
     let statements = parsed
         .get("Statement")
         .and_then(|v| v.as_array())
-        .map(|arr| {
-            arr.iter()
-                .filter_map(parse_resource_statement)
-                .collect()
-        })
+        .map(|arr| arr.iter().filter_map(parse_resource_statement).collect())
         .unwrap_or_default();
 
     Ok(statements)
@@ -316,11 +302,13 @@ fn extract_cross_account_access(
 
     account_map
         .into_iter()
-        .map(|(account_id, (principal_count, severity))| GqlCrossAccountAccess {
-            destination_account_id: account_id,
-            principal_count,
-            severity,
-        })
+        .map(
+            |(account_id, (principal_count, severity))| GqlCrossAccountAccess {
+                destination_account_id: account_id,
+                principal_count,
+                severity,
+            },
+        )
         .collect()
 }
 
@@ -350,7 +338,11 @@ fn compute_resource_policy_score(policy: &GqlResourcePolicy, has_cross_account: 
         .filter(|s| s.effect == "Allow" && !s.is_trust_boundary)
         .count();
 
-    let base_score: f64 = match (wildcard_count > 0, boundary_violations > 0, has_cross_account) {
+    let base_score: f64 = match (
+        wildcard_count > 0,
+        boundary_violations > 0,
+        has_cross_account,
+    ) {
         (true, _, _) => 0.85,
         (false, true, true) => 0.70,
         (false, true, false) => 0.45,
@@ -547,8 +539,8 @@ mod tests {
 }"#;
 
         // Parse the policy
-        let statements = parse_resource_policy(policy_json)
-            .expect("policy should parse successfully");
+        let statements =
+            parse_resource_policy(policy_json).expect("policy should parse successfully");
 
         // Verify: exactly 1 statement
         assert_eq!(statements.len(), 1, "should have exactly 1 statement");
@@ -565,7 +557,9 @@ mod tests {
             stmt.condition_keys
         );
         assert!(
-            stmt.condition_keys.iter().any(|k| k.contains("PrincipalOrgID")),
+            stmt.condition_keys
+                .iter()
+                .any(|k| k.contains("PrincipalOrgID")),
             "should extract PrincipalOrgID condition key from {:?}",
             stmt.condition_keys
         );
@@ -607,8 +601,8 @@ mod tests {
         assert!(result.is_some(), "should handle object value");
         let s = result.unwrap();
         // Serialize the object to JSON and parse it back to verify structure is intact
-        let reparsed: serde_json::Value = serde_json::from_str(&s)
-            .expect("serialized object should parse back");
+        let reparsed: serde_json::Value =
+            serde_json::from_str(&s).expect("serialized object should parse back");
         assert!(reparsed.is_object(), "reparsed should be an object");
         assert_eq!(
             reparsed.get("Version").and_then(|v| v.as_str()),
@@ -632,8 +626,8 @@ mod tests {
         let result = policy_value_to_json(&json_array);
         assert!(result.is_some(), "should handle array value");
         let s = result.unwrap();
-        let reparsed: serde_json::Value = serde_json::from_str(&s)
-            .expect("serialized array should parse back");
+        let reparsed: serde_json::Value =
+            serde_json::from_str(&s).expect("serialized array should parse back");
         assert!(reparsed.is_array(), "reparsed should be an array");
     }
 
@@ -658,18 +652,21 @@ mod tests {
         });
 
         // Simulate the fix: convert object to string
-        let policy_string = policy_value_to_json(&policy_obj)
-            .expect("should convert object to string");
+        let policy_string =
+            policy_value_to_json(&policy_obj).expect("should convert object to string");
 
         // Then parse it like the real resolver does
-        let statements = parse_resource_policy(&policy_string)
-            .expect("should parse the converted document");
+        let statements =
+            parse_resource_policy(&policy_string).expect("should parse the converted document");
 
         // Verify the structure came through
         assert_eq!(statements.len(), 1, "should have 1 statement");
         assert_eq!(statements[0].principal, "*");
         assert!(
-            statements[0].condition_keys.iter().any(|k| k.contains("PrincipalOrgID")),
+            statements[0]
+                .condition_keys
+                .iter()
+                .any(|k| k.contains("PrincipalOrgID")),
             "should extract condition key from nested object"
         );
     }

@@ -121,11 +121,7 @@ impl IngestRuntime {
     }
 
     /// Run ingestion for a single account using the provided config.
-    async fn ingest_single_account(
-        &self,
-        account_id: &str,
-        config: &SdkConfig,
-    ) -> IngestResult {
+    async fn ingest_single_account(&self, account_id: &str, config: &SdkConfig) -> IngestResult {
         let start = Instant::now();
 
         let ccapi_client = aws_sdk_cloudcontrol::Client::new(config);
@@ -360,12 +356,11 @@ impl IngestRuntime {
                 self.aws_config.clone()
             };
 
-            info!(
-                account_id = account_id,
-                "Starting ingestion for account"
-            );
+            info!(account_id = account_id, "Starting ingestion for account");
 
-            let result = self.ingest_single_account(account_id, &account_config).await;
+            let result = self
+                .ingest_single_account(account_id, &account_config)
+                .await;
 
             all_stats.extend(result.stats);
             all_errors.extend(result.errors);

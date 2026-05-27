@@ -198,12 +198,16 @@ impl GraphQueryService for GraphClientAdapter {
         );
 
         // Use multi-column query to get both action and resource in one call
-        let results = self.client.cypher_multi_column(&cypher, 2).await.map_err(|e| {
-            Box::new(GraphQueryError(format!(
-                "get_effective_permissions cypher query failed: {}",
-                e
-            ))) as SignalError
-        })?;
+        let results = self
+            .client
+            .cypher_multi_column(&cypher, 2)
+            .await
+            .map_err(|e| {
+                Box::new(GraphQueryError(format!(
+                    "get_effective_permissions cypher query failed: {}",
+                    e
+                ))) as SignalError
+            })?;
 
         let perms: Vec<(String, String)> = results
             .iter()
@@ -253,7 +257,10 @@ impl GraphQueryService for GraphClientAdapter {
             match first {
                 serde_json::Value::Null => {
                     // AGE returned agtype null — property doesn't exist yet
-                    tracing::trace!(principal_id = principal_id, "no risk_assessment_json found (null)");
+                    tracing::trace!(
+                        principal_id = principal_id,
+                        "no risk_assessment_json found (null)"
+                    );
                     return Ok(None);
                 }
                 serde_json::Value::String(json_str) => {
@@ -268,7 +275,10 @@ impl GraphQueryService for GraphClientAdapter {
                 }
                 _ => {
                     // Other types (shouldn't happen, but treat as missing)
-                    tracing::trace!(principal_id = principal_id, "unexpected type for risk_assessment_json");
+                    tracing::trace!(
+                        principal_id = principal_id,
+                        "unexpected type for risk_assessment_json"
+                    );
                     return Ok(None);
                 }
             }

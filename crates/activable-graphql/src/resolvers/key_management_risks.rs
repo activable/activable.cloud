@@ -1,9 +1,9 @@
 //! Resolver for key management risk queries.
 
+use crate::resolvers::policy_helpers::{extract_account_id_from_arn, policy_value_to_json};
 use crate::types::{
     GqlCreateGrantRisk, GqlKeyManagementRisks, GqlKeyPolicy, GqlKeyPolicyStatement, GqlSeverity,
 };
-use crate::resolvers::policy_helpers::{policy_value_to_json, extract_account_id_from_arn};
 use activable_graph::GraphClient;
 use async_graphql::Context;
 
@@ -84,11 +84,12 @@ pub async fn key_management_risks(
     let key_account = extract_key_account(&key_arn_val);
 
     // Detect cross-account grant capability
-    let has_cross_account_grant = grantable && grantable_principals.iter().any(|p| {
-        extract_account_id_from_arn(p)
-            .map(|acct| acct != key_account)
-            .unwrap_or(false)
-    });
+    let has_cross_account_grant = grantable
+        && grantable_principals.iter().any(|p| {
+            extract_account_id_from_arn(p)
+                .map(|acct| acct != key_account)
+                .unwrap_or(false)
+        });
 
     let severity = compute_grant_severity(grantable, wildcard_principal, has_cross_account_grant);
     let risk_score = compute_key_risk_score(grantable, wildcard_principal, has_cross_account_grant);
@@ -121,7 +122,9 @@ fn normalize_key_id(key_id: &str) -> async_graphql::Result<(String, String)> {
             .rsplit('/')
             .next()
             .map(|s| s.to_string())
-            .ok_or_else(|| async_graphql::Error::new("Invalid KMS key ARN: missing UUID after '/'"))?;
+            .ok_or_else(|| {
+                async_graphql::Error::new("Invalid KMS key ARN: missing UUID after '/'")
+            })?;
         Ok((key_id.to_string(), uuid))
     } else {
         // Bare UUID format: construct full ARN
@@ -141,11 +144,7 @@ fn parse_key_policy(policy_json: &str) -> async_graphql::Result<GqlKeyPolicy> {
     let statements = parsed
         .get("Statement")
         .and_then(|v| v.as_array())
-        .map(|arr| {
-            arr.iter()
-                .filter_map(parse_policy_statement)
-                .collect()
-        })
+        .map(|arr| arr.iter().filter_map(parse_policy_statement).collect())
         .unwrap_or_default();
 
     Ok(GqlKeyPolicy {
@@ -168,9 +167,11 @@ fn parse_policy_statement(stmt: &serde_json::Value) -> Option<GqlKeyPolicyStatem
         .get("Principal")
         .and_then(|v| match v {
             serde_json::Value::String(s) => Some(vec![s.clone()]),
-            serde_json::Value::Array(arr) => {
-                Some(arr.iter().filter_map(|p| p.as_str().map(|s| s.to_string())).collect())
-            }
+            serde_json::Value::Array(arr) => Some(
+                arr.iter()
+                    .filter_map(|p| p.as_str().map(|s| s.to_string()))
+                    .collect(),
+            ),
             _ => None,
         })
         .unwrap_or_default();
@@ -179,9 +180,11 @@ fn parse_policy_statement(stmt: &serde_json::Value) -> Option<GqlKeyPolicyStatem
         .get("Action")
         .and_then(|v| match v {
             serde_json::Value::String(s) => Some(vec![s.clone()]),
-            serde_json::Value::Array(arr) => {
-                Some(arr.iter().filter_map(|a| a.as_str().map(|s| s.to_string())).collect())
-            }
+            serde_json::Value::Array(arr) => Some(
+                arr.iter()
+                    .filter_map(|a| a.as_str().map(|s| s.to_string()))
+                    .collect(),
+            ),
             _ => None,
         })
         .unwrap_or_default();
@@ -248,7 +251,10 @@ mod tests {
 
     #[test]
     fn normalize_full_arn() {
-        let (arn, uuid) = normalize_key_id("arn:aws:kms:us-east-1:123456789012:key/12345678-1234-1234-1234-123456789012").unwrap();
+        let (arn, uuid) = normalize_key_id(
+            "arn:aws:kms:us-east-1:123456789012:key/12345678-1234-1234-1234-123456789012",
+        )
+        .unwrap();
         assert_eq!(
             arn,
             "arn:aws:kms:us-east-1:123456789012:key/12345678-1234-1234-1234-123456789012"
@@ -265,8 +271,14 @@ mod tests {
 
     #[test]
     fn normalize_key_id_arn_parses_uuid() {
-        let (arn, uuid) = normalize_key_id("arn:aws:kms:us-east-1:000000000000:key/a48a7767-96eb-490f-9442-9656c9524547").unwrap();
-        assert_eq!(arn, "arn:aws:kms:us-east-1:000000000000:key/a48a7767-96eb-490f-9442-9656c9524547");
+        let (arn, uuid) = normalize_key_id(
+            "arn:aws:kms:us-east-1:000000000000:key/a48a7767-96eb-490f-9442-9656c9524547",
+        )
+        .unwrap();
+        assert_eq!(
+            arn,
+            "arn:aws:kms:us-east-1:000000000000:key/a48a7767-96eb-490f-9442-9656c9524547"
+        );
         assert_eq!(uuid, "a48a7767-96eb-490f-9442-9656c9524547");
     }
 
@@ -280,18 +292,12 @@ mod tests {
 
     #[test]
     fn severity_high_if_wildcard() {
-        assert_eq!(
-            compute_grant_severity(true, true, false),
-            GqlSeverity::High
-        );
+        assert_eq!(compute_grant_severity(true, true, false), GqlSeverity::High);
     }
 
     #[test]
     fn severity_high_if_cross_account() {
-        assert_eq!(
-            compute_grant_severity(true, false, true),
-            GqlSeverity::High
-        );
+        assert_eq!(compute_grant_severity(true, false, true), GqlSeverity::High);
     }
 
     #[test]
@@ -364,7 +370,10 @@ mod tests {
         assert_eq!(result.statements.len(), 1);
         assert_eq!(result.statements[0].effect, "Allow");
         assert_eq!(result.statements[0].actions.len(), 1);
-        assert_eq!(result.policy_arn, Some("arn:aws:kms:us-east-1:123456789012:key/12345678".to_string()));
+        assert_eq!(
+            result.policy_arn,
+            Some("arn:aws:kms:us-east-1:123456789012:key/12345678".to_string())
+        );
     }
 
     #[test]

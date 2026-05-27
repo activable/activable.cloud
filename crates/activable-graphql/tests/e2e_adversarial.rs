@@ -47,7 +47,8 @@ impl E2eEnvironment {
     async fn reset_graph(&self) -> Result<(), Box<dyn std::error::Error>> {
         // Use native psql via tokio_postgres to reset the AGE graph.
         // For simplicity, drop and recreate the graph.
-        let (client, connection) = tokio_postgres::connect(&self.database_url, tokio_postgres::tls::NoTls).await?;
+        let (client, connection) =
+            tokio_postgres::connect(&self.database_url, tokio_postgres::tls::NoTls).await?;
 
         tokio::spawn(async move {
             if let Err(e) = connection.await {
@@ -469,8 +470,7 @@ async fn e2e_adversarial_scenarios() {
     match env.scenario_1_score().await {
         Ok(score) => {
             tracing::info!(score = %score, "scenario 1 score");
-            if let Err(msg) = assert_score_threshold("1 (CF Service Role Trap)", score, 0.80, ">")
-            {
+            if let Err(msg) = assert_score_threshold("1 (CF Service Role Trap)", score, 0.80, ">") {
                 assertions_failed.push(msg);
             }
         }
@@ -486,7 +486,11 @@ async fn e2e_adversarial_scenarios() {
             } else {
                 0.0
             };
-            let op = if env::var("E2E_OIDC_ENABLED").is_ok() { ">" } else { ">=" };
+            let op = if env::var("E2E_OIDC_ENABLED").is_ok() {
+                ">"
+            } else {
+                ">="
+            };
             if let Err(msg) =
                 assert_score_threshold("2 (OIDC Configuration Drift)", score, threshold, op)
             {
@@ -500,12 +504,9 @@ async fn e2e_adversarial_scenarios() {
     match env.scenario_3_score().await {
         Ok(score) => {
             tracing::info!(score = %score, "scenario 3 score");
-            if let Err(msg) = assert_score_threshold(
-                "3 (S3 Bucket Policy Principal Boundary)",
-                score,
-                0.75,
-                ">",
-            ) {
+            if let Err(msg) =
+                assert_score_threshold("3 (S3 Bucket Policy Principal Boundary)", score, 0.75, ">")
+            {
                 assertions_failed.push(msg);
             }
         }
@@ -529,8 +530,7 @@ async fn e2e_adversarial_scenarios() {
     match env.scenario_5_cascade().await {
         Ok(score) => {
             tracing::info!(score = %score, "scenario 5 cascade score");
-            if let Err(msg) =
-                assert_score_threshold("5 (Cross-Account Cascade)", score, 0.78, ">=")
+            if let Err(msg) = assert_score_threshold("5 (Cross-Account Cascade)", score, 0.78, ">=")
             {
                 assertions_failed.push(msg);
             }
@@ -543,7 +543,10 @@ async fn e2e_adversarial_scenarios() {
         for msg in &assertions_failed {
             eprintln!("  - {}", msg);
         }
-        panic!("e2e test failed: {} assertions failed", assertions_failed.len());
+        panic!(
+            "e2e test failed: {} assertions failed",
+            assertions_failed.len()
+        );
     }
 
     tracing::info!("all scenarios passed");

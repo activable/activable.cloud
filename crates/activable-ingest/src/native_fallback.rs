@@ -86,7 +86,12 @@ async fn fetch_iam_users(
         for user in page.users() {
             // Fetch managed policy attachments for this user
             let mut managed_policies: Vec<serde_json::Value> = Vec::new();
-            if let Ok(attached) = client.list_attached_user_policies().user_name(user.user_name()).send().await {
+            if let Ok(attached) = client
+                .list_attached_user_policies()
+                .user_name(user.user_name())
+                .send()
+                .await
+            {
                 for attached_policy in attached.attached_policies() {
                     let policy_arn = match attached_policy.policy_arn() {
                         Some(arn) => arn,
@@ -94,7 +99,8 @@ async fn fetch_iam_users(
                     };
 
                     // Get the default version of this managed policy
-                    if let Ok(policy_resp) = client.get_policy().policy_arn(policy_arn).send().await {
+                    if let Ok(policy_resp) = client.get_policy().policy_arn(policy_arn).send().await
+                    {
                         if let Some(policy) = policy_resp.policy() {
                             let version_id = match policy.default_version_id() {
                                 Some(v) => v,
@@ -126,12 +132,15 @@ async fn fetch_iam_users(
             }
 
             // Fetch permission boundary for this user
-            let permissions_boundary: Option<serde_json::Value> = match user.permissions_boundary() {
+            let permissions_boundary: Option<serde_json::Value> = match user.permissions_boundary()
+            {
                 Some(boundary) => {
                     let boundary_arn = boundary.permissions_boundary_arn().unwrap_or("");
                     if !boundary_arn.is_empty() {
                         // Fetch the boundary policy document
-                        if let Ok(policy_resp) = client.get_policy().policy_arn(boundary_arn).send().await {
+                        if let Ok(policy_resp) =
+                            client.get_policy().policy_arn(boundary_arn).send().await
+                        {
                             if let Some(policy) = policy_resp.policy() {
                                 if let Some(version_id) = policy.default_version_id() {
                                     if let Ok(version_resp) = client
@@ -151,12 +160,24 @@ async fn fetch_iam_users(
                                                 "document": doc,
                                                 "version_id": version_id,
                                             }))
-                                        } else { None }
-                                    } else { None }
-                                } else { None }
-                            } else { None }
-                        } else { None }
-                    } else { None }
+                                        } else {
+                                            None
+                                        }
+                                    } else {
+                                        None
+                                    }
+                                } else {
+                                    None
+                                }
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
                 }
                 None => None,
             };
@@ -240,7 +261,12 @@ async fn fetch_iam_roles(
 
             // Fetch managed policy attachments for this role
             let mut managed_policies: Vec<serde_json::Value> = Vec::new();
-            if let Ok(attached) = client.list_attached_role_policies().role_name(role.role_name()).send().await {
+            if let Ok(attached) = client
+                .list_attached_role_policies()
+                .role_name(role.role_name())
+                .send()
+                .await
+            {
                 for attached_policy in attached.attached_policies() {
                     let policy_arn = match attached_policy.policy_arn() {
                         Some(arn) => arn,
@@ -248,7 +274,8 @@ async fn fetch_iam_roles(
                     };
 
                     // Get the default version of this managed policy
-                    if let Ok(policy_resp) = client.get_policy().policy_arn(policy_arn).send().await {
+                    if let Ok(policy_resp) = client.get_policy().policy_arn(policy_arn).send().await
+                    {
                         if let Some(policy) = policy_resp.policy() {
                             let version_id = match policy.default_version_id() {
                                 Some(v) => v,
@@ -280,12 +307,15 @@ async fn fetch_iam_roles(
             }
 
             // Fetch permission boundary for this role
-            let permissions_boundary: Option<serde_json::Value> = match role.permissions_boundary() {
+            let permissions_boundary: Option<serde_json::Value> = match role.permissions_boundary()
+            {
                 Some(boundary) => {
                     let boundary_arn = boundary.permissions_boundary_arn().unwrap_or("");
                     if !boundary_arn.is_empty() {
                         // Fetch the boundary policy document
-                        if let Ok(policy_resp) = client.get_policy().policy_arn(boundary_arn).send().await {
+                        if let Ok(policy_resp) =
+                            client.get_policy().policy_arn(boundary_arn).send().await
+                        {
                             if let Some(policy) = policy_resp.policy() {
                                 if let Some(version_id) = policy.default_version_id() {
                                     if let Ok(version_resp) = client
@@ -305,12 +335,24 @@ async fn fetch_iam_roles(
                                                 "document": doc,
                                                 "version_id": version_id,
                                             }))
-                                        } else { None }
-                                    } else { None }
-                                } else { None }
-                            } else { None }
-                        } else { None }
-                    } else { None }
+                                        } else {
+                                            None
+                                        }
+                                    } else {
+                                        None
+                                    }
+                                } else {
+                                    None
+                                }
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
                 }
                 None => None,
             };
@@ -333,7 +375,10 @@ async fn fetch_iam_roles(
         }
     }
 
-    info!(nodes_ingested = count, "IAM Roles ingest complete (with policies)");
+    info!(
+        nodes_ingested = count,
+        "IAM Roles ingest complete (with policies)"
+    );
     Ok(IngestStats {
         type_name: "AWS::IAM::Role".to_string(),
         label: "Principal".to_string(),

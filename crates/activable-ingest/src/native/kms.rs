@@ -1,10 +1,10 @@
 //! KMS key-policy ingester: KMS keys, key policies, AllowsAccessFrom + KmsGrantable edges.
 
 use crate::error::IngestError;
-use crate::native::{EnrichmentStats, NativeEnricher};
 use crate::native::resource_policy::parse_resource_policy;
 use crate::native::sentinel::{ensure_wildcard_principal, WILDCARD_PRINCIPAL_ID};
-use activable_graph::loader::{load_nodes, load_edges, load_edges_with_props};
+use crate::native::{EnrichmentStats, NativeEnricher};
+use activable_graph::loader::{load_edges, load_edges_with_props, load_nodes};
 use async_trait::async_trait;
 use aws_config::SdkConfig;
 use deadpool_postgres::Pool;
@@ -95,11 +95,10 @@ impl NativeEnricher for KmsEnricher {
 
         // Get caller account ID from STS
         let sts_client = aws_sdk_sts::Client::new(&self.config);
-        let identity = sts_client
-            .get_caller_identity()
-            .send()
-            .await
-            .map_err(|e| IngestError::AwsSdk(format!("Failed to get caller identity: {}", e)))?;
+        let identity =
+            sts_client.get_caller_identity().send().await.map_err(|e| {
+                IngestError::AwsSdk(format!("Failed to get caller identity: {}", e))
+            })?;
         let account_id = identity
             .account()
             .ok_or_else(|| IngestError::AwsSdk("No account ID in identity".to_string()))?
@@ -155,98 +154,54 @@ impl NativeEnricher for KmsEnricher {
                             .map(|ku| format!("{:?}", ku))
                             .unwrap_or_else(|| "ENCRYPT_DECRYPT".to_string());
 
-                    // Create KmsKey node
-                    key_nodes.push(json!({
-                        "id": key_arn.clone(),
-                        "key_id": key_id.clone(),
-                        "region": region,
-                        "account_id": account_id,
-                        "key_usage": key_usage,
-                        "key_state": key_state,
-                    }));
+                        // Create KmsKey node
+                        key_nodes.push(json!({
+                            "id": key_arn.clone(),
+                            "key_id": key_id.clone(),
+                            "region": region,
+                            "account_id": account_id,
+                            "key_usage": key_usage,
+                            "key_state": key_state,
+                        }));
 
-                    // Get key policy
-                    match client.get_key_policy().key_id(&key_id).policy_name("default").send().await {
-                        Ok(policy_resp) => {
-                            if let Some(policy_doc) = policy_resp.policy() {
-                                let policy_id = format!(
-                                    "sha256:{:x}:key-policy",
-                                    sha2::Sha256::digest(key_arn.as_bytes())
-                                );
+                        // Get key policy
+                        match client
+                            .get_key_policy()
+                            .key_id(&key_id)
+                            .policy_name("default")
+                            .send()
+                            .await
+                        {
+                            Ok(policy_resp) => {
+                                if let Some(policy_doc) = policy_resp.policy() {
+                                    let policy_id = format!(
+                                        "sha256:{:x}:key-policy",
+                                        sha2::Sha256::digest(key_arn.as_bytes())
+                                    );
 
-                                // Create Policy node
-                                policy_nodes.push(json!({
-                                    "id": policy_id.clone(),
-                                    "name": format!("{}/key-policy", key_id),
-                                    "source": "kms",
-                                    "document": policy_doc,
-                                }));
+                                    // Create Policy node
+                                    policy_nodes.push(json!({
+                                        "id": policy_id.clone(),
+                                        "name": format!("{}/key-policy", key_id),
+                                        "source": "kms",
+                                        "document": policy_doc,
+                                    }));
 
-                                // Create HasKeyPolicy edge
-                                has_key_policy_edges.push((key_arn.clone(), policy_id.clone()));
+                                    // Create HasKeyPolicy edge
+                                    has_key_policy_edges.push((key_arn.clone(), policy_id.clone()));
 
-                                // Parse policy and extract principals + actions
-                                match parse_resource_policy(policy_doc) {
-                                    Ok(statements) => {
-                                        for stmt in statements {
-                                            let condition_keys_json = json!(stmt.condition_keys);
+                                    // Parse policy and extract principals + actions
+                                    match parse_resource_policy(policy_doc) {
+                                        Ok(statements) => {
+                                            for stmt in statements {
+                                                let condition_keys_json =
+                                                    json!(stmt.condition_keys);
 
-                                            // Create AllowsAccessFrom edges
-                                            if stmt.wildcard_principal {
-                                                allows_access_edges.push((
-                                                    key_arn.clone(),
-                                                    WILDCARD_PRINCIPAL_ID.to_string(),
-                                                    json!({
-                                                        "wildcard_principal": true,
-                                                        "condition_keys": condition_keys_json,
-                                                    }),
-                                                ));
-                                            } else {
-                                                if stmt.principals.len() > 50 {
-                                                    // Emit 49 explicit + 1 sentinel
-                                                    for principal in stmt.principals.iter().take(49) {
-                                                        allows_access_edges.push((
-                                                            key_arn.clone(),
-                                                            principal.clone(),
-                                                            json!({
-                                                                "condition_keys": condition_keys_json,
-                                                            }),
-                                                        ));
-                                                        grant_principals.insert(principal.clone());
-                                                    }
+                                                // Create AllowsAccessFrom edges
+                                                if stmt.wildcard_principal {
                                                     allows_access_edges.push((
                                                         key_arn.clone(),
                                                         WILDCARD_PRINCIPAL_ID.to_string(),
-                                                        json!({
-                                                            "cap_exceeded": true,
-                                                            "condition_keys": condition_keys_json,
-                                                        }),
-                                                    ));
-                                                } else {
-                                                    for principal in &stmt.principals {
-                                                        allows_access_edges.push((
-                                                            key_arn.clone(),
-                                                            principal.clone(),
-                                                            json!({
-                                                                "condition_keys": condition_keys_json,
-                                                            }),
-                                                        ));
-                                                        grant_principals.insert(principal.clone());
-                                                    }
-                                                }
-                                            }
-
-                                            // Check if statement allows kms:CreateGrant
-                                            let allows_create_grant = stmt.actions.iter().any(|a| {
-                                                a == "kms:CreateGrant" || a == "kms:*" || a == "*"
-                                            });
-
-                                            if allows_create_grant {
-                                                // Create KmsGrantable edges for each principal
-                                                if stmt.wildcard_principal {
-                                                    kms_grantable_edges.push((
-                                                        WILDCARD_PRINCIPAL_ID.to_string(),
-                                                        key_arn.clone(),
                                                         json!({
                                                             "wildcard_principal": true,
                                                             "condition_keys": condition_keys_json,
@@ -255,17 +210,78 @@ impl NativeEnricher for KmsEnricher {
                                                 } else {
                                                     if stmt.principals.len() > 50 {
                                                         // Emit 49 explicit + 1 sentinel
-                                                        for principal in stmt.principals.iter().take(49) {
-                                                            kms_grantable_edges.push((
+                                                        for principal in
+                                                            stmt.principals.iter().take(49)
+                                                        {
+                                                            allows_access_edges.push((
+                                                            key_arn.clone(),
+                                                            principal.clone(),
+                                                            json!({
+                                                                "condition_keys": condition_keys_json,
+                                                            }),
+                                                        ));
+                                                            grant_principals
+                                                                .insert(principal.clone());
+                                                        }
+                                                        allows_access_edges.push((
+                                                        key_arn.clone(),
+                                                        WILDCARD_PRINCIPAL_ID.to_string(),
+                                                        json!({
+                                                            "cap_exceeded": true,
+                                                            "condition_keys": condition_keys_json,
+                                                        }),
+                                                    ));
+                                                    } else {
+                                                        for principal in &stmt.principals {
+                                                            allows_access_edges.push((
+                                                            key_arn.clone(),
+                                                            principal.clone(),
+                                                            json!({
+                                                                "condition_keys": condition_keys_json,
+                                                            }),
+                                                        ));
+                                                            grant_principals
+                                                                .insert(principal.clone());
+                                                        }
+                                                    }
+                                                }
+
+                                                // Check if statement allows kms:CreateGrant
+                                                let allows_create_grant =
+                                                    stmt.actions.iter().any(|a| {
+                                                        a == "kms:CreateGrant"
+                                                            || a == "kms:*"
+                                                            || a == "*"
+                                                    });
+
+                                                if allows_create_grant {
+                                                    // Create KmsGrantable edges for each principal
+                                                    if stmt.wildcard_principal {
+                                                        kms_grantable_edges.push((
+                                                        WILDCARD_PRINCIPAL_ID.to_string(),
+                                                        key_arn.clone(),
+                                                        json!({
+                                                            "wildcard_principal": true,
+                                                            "condition_keys": condition_keys_json,
+                                                        }),
+                                                    ));
+                                                    } else {
+                                                        if stmt.principals.len() > 50 {
+                                                            // Emit 49 explicit + 1 sentinel
+                                                            for principal in
+                                                                stmt.principals.iter().take(49)
+                                                            {
+                                                                kms_grantable_edges.push((
                                                                 principal.clone(),
                                                                 key_arn.clone(),
                                                                 json!({
                                                                     "condition_keys": condition_keys_json,
                                                                 }),
                                                             ));
-                                                            grant_principals.insert(principal.clone());
-                                                        }
-                                                        kms_grantable_edges.push((
+                                                                grant_principals
+                                                                    .insert(principal.clone());
+                                                            }
+                                                            kms_grantable_edges.push((
                                                             WILDCARD_PRINCIPAL_ID.to_string(),
                                                             key_arn.clone(),
                                                             json!({
@@ -273,32 +289,33 @@ impl NativeEnricher for KmsEnricher {
                                                                 "condition_keys": condition_keys_json,
                                                             }),
                                                         ));
-                                                    } else {
-                                                        for principal in &stmt.principals {
-                                                            kms_grantable_edges.push((
+                                                        } else {
+                                                            for principal in &stmt.principals {
+                                                                kms_grantable_edges.push((
                                                                 principal.clone(),
                                                                 key_arn.clone(),
                                                                 json!({
                                                                     "condition_keys": condition_keys_json,
                                                                 }),
                                                             ));
-                                                            grant_principals.insert(principal.clone());
+                                                                grant_principals
+                                                                    .insert(principal.clone());
+                                                            }
                                                         }
                                                     }
                                                 }
                                             }
                                         }
-                                    }
-                                    Err(e) => {
-                                        warn!(
-                                            key_id = %key_id,
-                                            error = %e,
-                                            "Failed to parse KMS key policy"
-                                        );
+                                        Err(e) => {
+                                            warn!(
+                                                key_id = %key_id,
+                                                error = %e,
+                                                "Failed to parse KMS key policy"
+                                            );
+                                        }
                                     }
                                 }
                             }
-                        }
                             Err(e) => {
                                 warn!(key_id = %key_id, error = %e, "Failed to fetch key policy");
                             }
@@ -332,12 +349,18 @@ impl NativeEnricher for KmsEnricher {
         }
 
         if !principal_nodes.is_empty() {
-            debug!(count = principal_nodes.len(), "Writing Principal nodes for KMS grant principals");
+            debug!(
+                count = principal_nodes.len(),
+                "Writing Principal nodes for KMS grant principals"
+            );
             load_nodes(pool.clone(), graph_name, "Principal", &principal_nodes, 100).await?;
         }
 
         if !has_key_policy_edges.is_empty() {
-            debug!(count = has_key_policy_edges.len(), "Writing HasKeyPolicy edges");
+            debug!(
+                count = has_key_policy_edges.len(),
+                "Writing HasKeyPolicy edges"
+            );
             let outcome = load_edges(
                 pool.clone(),
                 graph_name,
@@ -347,12 +370,19 @@ impl NativeEnricher for KmsEnricher {
                 false,
             )
             .await?;
-            debug!(created = outcome.created, dropped = outcome.dropped, "HasKeyPolicy edges outcome");
+            debug!(
+                created = outcome.created,
+                dropped = outcome.dropped,
+                "HasKeyPolicy edges outcome"
+            );
             total_edges += outcome.created as u32;
         }
 
         if !allows_access_edges.is_empty() {
-            debug!(count = allows_access_edges.len(), "Writing AllowsAccessFrom edges (KMS)");
+            debug!(
+                count = allows_access_edges.len(),
+                "Writing AllowsAccessFrom edges (KMS)"
+            );
             let outcome = load_edges_with_props(
                 pool.clone(),
                 graph_name,
@@ -362,12 +392,19 @@ impl NativeEnricher for KmsEnricher {
                 false,
             )
             .await?;
-            debug!(created = outcome.created, dropped = outcome.dropped, "AllowsAccessFrom edges outcome");
+            debug!(
+                created = outcome.created,
+                dropped = outcome.dropped,
+                "AllowsAccessFrom edges outcome"
+            );
             total_edges += outcome.created as u32;
         }
 
         if !kms_grantable_edges.is_empty() {
-            debug!(count = kms_grantable_edges.len(), "Writing KmsGrantable edges");
+            debug!(
+                count = kms_grantable_edges.len(),
+                "Writing KmsGrantable edges"
+            );
             let outcome = load_edges_with_props(
                 pool.clone(),
                 graph_name,
@@ -377,7 +414,11 @@ impl NativeEnricher for KmsEnricher {
                 false,
             )
             .await?;
-            debug!(created = outcome.created, dropped = outcome.dropped, "KmsGrantable edges outcome");
+            debug!(
+                created = outcome.created,
+                dropped = outcome.dropped,
+                "KmsGrantable edges outcome"
+            );
             total_edges += outcome.created as u32;
         }
 

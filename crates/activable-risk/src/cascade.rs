@@ -146,12 +146,7 @@ mod tests {
         // For this simple test: HM(a, b) <= min(a, b) is FALSE. Instead verify HM is between 0 and max
         #[test]
         fn prop_harmonic_mean_between_bounds() {
-            let test_pairs = vec![
-                (0.5, 0.9),
-                (0.2, 0.8),
-                (0.1, 0.99),
-                (0.7, 0.3),
-            ];
+            let test_pairs = vec![(0.5, 0.9), (0.2, 0.8), (0.1, 0.99), (0.7, 0.3)];
             for (a, b) in test_pairs {
                 let result = harmonic_mean(&[a, b]);
                 let max = a.max(b);

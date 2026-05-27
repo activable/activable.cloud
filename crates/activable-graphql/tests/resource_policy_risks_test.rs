@@ -55,10 +55,7 @@ mod tests {
         assert_eq!(statements.len(), 1);
 
         let stmt = &statements[0];
-        assert_eq!(
-            stmt.get("Effect").unwrap().as_str().unwrap(),
-            "Allow"
-        );
+        assert_eq!(stmt.get("Effect").unwrap().as_str().unwrap(), "Allow");
     }
 
     #[test]

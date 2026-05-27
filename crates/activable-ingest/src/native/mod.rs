@@ -9,11 +9,11 @@
 
 pub mod ec2;
 pub mod iam;
+pub mod kms;
 pub mod permissions;
 pub mod resource_policy;
-pub mod sentinel;
 pub mod s3;
-pub mod kms;
+pub mod sentinel;
 
 use crate::error::IngestError;
 use async_trait::async_trait;

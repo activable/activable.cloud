@@ -106,8 +106,7 @@ mod tests {
         assert!(!json_str.is_empty());
 
         // Verify round-trip from Value
-        let from_value: IngestRunStats =
-            serde_json::from_value(value).expect("from_value failed");
+        let from_value: IngestRunStats = serde_json::from_value(value).expect("from_value failed");
         assert_eq!(from_value.node_count, 100);
     }
 }

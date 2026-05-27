@@ -35,8 +35,9 @@ where
     }
 
     // Case 2: quoted string — strip outer quotes and parse again
-    if (trimmed.starts_with('"') && trimmed.ends_with('"')) ||
-       (trimmed.starts_with('\'') && trimmed.ends_with('\'')) {
+    if (trimmed.starts_with('"') && trimmed.ends_with('"'))
+        || (trimmed.starts_with('\'') && trimmed.ends_with('\''))
+    {
         let inner = &trimmed[1..trimmed.len() - 1];
         if let Ok(val) = inner.trim().parse::<T>() {
             return Ok(val);
@@ -47,7 +48,8 @@ where
     // Try to extract a numeric or boolean value from the object if it looks like JSON
     if trimmed.starts_with('{') && trimmed.ends_with('}') {
         // For robustness, attempt to deserialize as JSON and extract first numeric field
-        if let Ok(obj) = serde_json::from_str::<serde_json::Map<String, serde_json::Value>>(trimmed) {
+        if let Ok(obj) = serde_json::from_str::<serde_json::Map<String, serde_json::Value>>(trimmed)
+        {
             // Try the common field names first
             for field_name in &["value", "result", "count", "count(*)"] {
                 if let Some(val) = obj.get(*field_name) {
@@ -432,9 +434,9 @@ impl GraphClient {
         for row in rows {
             let mut row_values = Vec::new();
             for col_idx in 0..column_count {
-                let agtype_str: Option<String> = row
-                    .try_get(col_idx)
-                    .map_err(|e| GraphError::Parse(format!("Failed to read column {}: {}", col_idx, e)))?;
+                let agtype_str: Option<String> = row.try_get(col_idx).map_err(|e| {
+                    GraphError::Parse(format!("Failed to read column {}: {}", col_idx, e))
+                })?;
                 let value = match agtype_str {
                     None => serde_json::Value::Null,
                     Some(s) => serde_json::from_str(&s).unwrap_or(serde_json::Value::String(s)),

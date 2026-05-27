@@ -113,14 +113,8 @@ async fn test_edge_persistence_both_endpoints_present() {
         "SELECT * FROM ag_catalog.cypher('{}', $${}$$) AS (cnt agtype)",
         graph_name, cypher
     );
-    let rows = conn
-        .query(&sql, &[])
-        .await
-        .expect("failed to count edges");
-    assert!(
-        !rows.is_empty(),
-        "Edge count query should return a row"
-    );
+    let rows = conn.query(&sql, &[]).await.expect("failed to count edges");
+    assert!(!rows.is_empty(), "Edge count query should return a row");
 
     // Cleanup
     let _ = conn
@@ -334,7 +328,10 @@ async fn test_edge_persistence_injection_defense() {
     .expect("failed to load edges");
 
     // Verify: the edge should be dropped (missing endpoint), not an error
-    assert_eq!(outcome.dropped, 1, "Malicious ID should be treated as missing endpoint");
+    assert_eq!(
+        outcome.dropped, 1,
+        "Malicious ID should be treated as missing endpoint"
+    );
 
     // Verify: the graph still exists (DROP GRAPH wasn't executed)
     let conn = pool.get().await.expect("failed to get connection");
@@ -347,10 +344,7 @@ async fn test_edge_persistence_injection_defense() {
         "SELECT * FROM ag_catalog.cypher('{}', $${}$$) AS (cnt agtype)",
         graph_name, cypher
     );
-    let rows = conn
-        .query(&sql, &[])
-        .await
-        .expect("failed to count nodes");
+    let rows = conn.query(&sql, &[]).await.expect("failed to count nodes");
     assert!(
         !rows.is_empty(),
         "Graph should still exist (injection was prevented)"

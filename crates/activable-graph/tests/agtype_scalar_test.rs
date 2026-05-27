@@ -143,7 +143,10 @@ fn test_parse_json_object_with_count_star_field() {
 #[test]
 fn test_parse_json_object_no_recognized_field() {
     let result = parse_agtype_scalar::<u32>("{\"other_field\": 42}");
-    assert!(result.is_err(), "JSON without recognized field should error");
+    assert!(
+        result.is_err(),
+        "JSON without recognized field should error"
+    );
 }
 
 #[test]
@@ -201,7 +204,10 @@ fn test_relationship_count_bare_number() {
 fn test_relationship_count_zero() {
     let raw_result = "0";
     let count = parse_agtype_scalar::<u32>(raw_result);
-    assert!(count.is_ok(), "zero count should be distinguishable from error");
+    assert!(
+        count.is_ok(),
+        "zero count should be distinguishable from error"
+    );
     assert_eq!(count.unwrap(), 0);
 }
 
@@ -209,7 +215,10 @@ fn test_relationship_count_zero() {
 fn test_relationship_count_unparseable() {
     let raw_result = "not_a_count";
     let count = parse_agtype_scalar::<u32>(raw_result);
-    assert!(count.is_err(), "unparseable count should error (not silent 0)");
+    assert!(
+        count.is_err(),
+        "unparseable count should error (not silent 0)"
+    );
 }
 
 #[test]

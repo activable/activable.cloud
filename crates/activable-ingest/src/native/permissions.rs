@@ -9,7 +9,7 @@
 
 use crate::error::IngestError;
 use crate::native::{EnrichmentStats, NativeEnricher};
-use activable_graph::loader::{load_nodes, load_edges_with_props_identifying};
+use activable_graph::loader::{load_edges_with_props_identifying, load_nodes};
 use async_trait::async_trait;
 use deadpool_postgres::Pool;
 use serde_json::json;
@@ -86,18 +86,36 @@ impl NativeEnricher for PermissionsEnricher {
 
             // Step 1: Collect Allow tuples from inline and managed policies (UNION).
             // Track the source (inline vs managed) for each permission.
-            let mut effective_permissions: std::collections::HashMap<(String, String), &'static str> =
-                std::collections::HashMap::new();
+            let mut effective_permissions: std::collections::HashMap<
+                (String, String),
+                &'static str,
+            > = std::collections::HashMap::new();
 
             // Process inline policies
-            if let Some(inline_tuple) = parse_and_extract_permissions(&principal.inline_policies, &principal_id, "inline", &mut skipped_deny, &mut skipped_conditions, self.skip_deny, self.warn_on_conditions) {
+            if let Some(inline_tuple) = parse_and_extract_permissions(
+                &principal.inline_policies,
+                &principal_id,
+                "inline",
+                &mut skipped_deny,
+                &mut skipped_conditions,
+                self.skip_deny,
+                self.warn_on_conditions,
+            ) {
                 for (action, resource) in inline_tuple {
                     effective_permissions.insert((action, resource), "inline");
                 }
             }
 
             // Process managed policies
-            if let Some(managed_tuple) = parse_and_extract_permissions(&principal.managed_policies, &principal_id, "managed", &mut skipped_deny, &mut skipped_conditions, self.skip_deny, self.warn_on_conditions) {
+            if let Some(managed_tuple) = parse_and_extract_permissions(
+                &principal.managed_policies,
+                &principal_id,
+                "managed",
+                &mut skipped_deny,
+                &mut skipped_conditions,
+                self.skip_deny,
+                self.warn_on_conditions,
+            ) {
                 for (action, resource) in managed_tuple {
                     // If action+resource exists from inline, keep it; otherwise add from managed.
                     // Union semantics: if it's in either, it's in the result.
@@ -108,7 +126,8 @@ impl NativeEnricher for PermissionsEnricher {
             // Step 2: AND-mask with permission boundary if present.
             let after_boundary = if let Some(boundary_value) = &principal.permissions_boundary {
                 // Extract permissions allowed by the boundary
-                let boundary_permissions = parse_and_extract_permissions_only_allow(boundary_value, &principal_id);
+                let boundary_permissions =
+                    parse_and_extract_permissions_only_allow(boundary_value, &principal_id);
                 if boundary_permissions.is_empty() {
                     debug!(principal = %principal_id, "Permission boundary has no Allow statements; all permissions filtered");
                     std::collections::HashMap::new()
@@ -130,15 +149,13 @@ impl NativeEnricher for PermissionsEnricher {
                 let perm_id = sha256_perm_id(&action, &resource);
                 let perm_key = format!("{}|{}", action, resource);
 
-                permission_nodes
-                    .entry(perm_key)
-                    .or_insert_with(|| {
-                        json!({
-                            "id": perm_id,
-                            "action": action,
-                            "resource": resource,
-                        })
-                    });
+                permission_nodes.entry(perm_key).or_insert_with(|| {
+                    json!({
+                        "id": perm_id,
+                        "action": action,
+                        "resource": resource,
+                    })
+                });
 
                 edges.push((
                     principal_id.clone(),
@@ -163,7 +180,8 @@ impl NativeEnricher for PermissionsEnricher {
         // Insert Permission nodes (MERGE semantics — idempotent)
         if !permission_nodes.is_empty() {
             let perm_values: Vec<serde_json::Value> = permission_nodes.into_values().collect();
-            let written = load_nodes(pool.clone(), graph_name, "Permission", &perm_values, 100).await?;
+            let written =
+                load_nodes(pool.clone(), graph_name, "Permission", &perm_values, 100).await?;
             debug!(permissions_created = written, "Permission nodes inserted");
         }
 
@@ -172,7 +190,10 @@ impl NativeEnricher for PermissionsEnricher {
         // MERGE on (from,to,action,resource) to preserve distinct permission edges on re-ingest.
         let mut edge_count = 0u32;
         if !edges.is_empty() {
-            debug!(edge_count = edges.len(), "Writing HasEffectivePermission edges with properties");
+            debug!(
+                edge_count = edges.len(),
+                "Writing HasEffectivePermission edges with properties"
+            );
             let outcome = load_edges_with_props_identifying(
                 pool.clone(),
                 graph_name,
@@ -183,7 +204,11 @@ impl NativeEnricher for PermissionsEnricher {
                 &["action", "resource"],
             )
             .await?;
-            debug!(created = outcome.created, dropped = outcome.dropped, "HasEffectivePermission edges outcome");
+            debug!(
+                created = outcome.created,
+                dropped = outcome.dropped,
+                "HasEffectivePermission edges outcome"
+            );
             edge_count = outcome.created as u32;
         }
 
@@ -228,10 +253,9 @@ async fn fetch_principals_with_policies(
         graph_name, cypher
     );
 
-    let rows = conn
-        .query(&sql, &[])
-        .await
-        .map_err(|e| IngestError::Graph(format!("Failed to query principals with policies: {}", e)))?;
+    let rows = conn.query(&sql, &[]).await.map_err(|e| {
+        IngestError::Graph(format!("Failed to query principals with policies: {}", e))
+    })?;
 
     let mut results = Vec::new();
 
@@ -239,18 +263,18 @@ async fn fetch_principals_with_policies(
         // Use Option<String> for every column — agtype null becomes SQL null on
         // ::text cast, and tokio-postgres can't deserialize SQL null into String.
         // This is the same null-handling bug pattern seen in earlier slices.
-        let id_opt: Option<String> = row
-            .try_get(0)
-            .map_err(|e| IngestError::Graph(format!("Failed to read principal ID column: {}", e)))?;
-        let inline_opt: Option<String> = row
-            .try_get(1)
-            .map_err(|e| IngestError::Graph(format!("Failed to read inline_policies column: {}", e)))?;
-        let managed_opt: Option<String> = row
-            .try_get(2)
-            .map_err(|e| IngestError::Graph(format!("Failed to read managed_policies column: {}", e)))?;
-        let boundary_opt: Option<String> = row
-            .try_get(3)
-            .map_err(|e| IngestError::Graph(format!("Failed to read permissions_boundary column: {}", e)))?;
+        let id_opt: Option<String> = row.try_get(0).map_err(|e| {
+            IngestError::Graph(format!("Failed to read principal ID column: {}", e))
+        })?;
+        let inline_opt: Option<String> = row.try_get(1).map_err(|e| {
+            IngestError::Graph(format!("Failed to read inline_policies column: {}", e))
+        })?;
+        let managed_opt: Option<String> = row.try_get(2).map_err(|e| {
+            IngestError::Graph(format!("Failed to read managed_policies column: {}", e))
+        })?;
+        let boundary_opt: Option<String> = row.try_get(3).map_err(|e| {
+            IngestError::Graph(format!("Failed to read permissions_boundary column: {}", e))
+        })?;
 
         // ::text casts strip agtype's outer JSON quoting:
         //   agtype string `"arn:..."` -> text `arn:...`
@@ -327,7 +351,9 @@ fn parse_and_extract_permissions(
                         if let Some(statements) = doc.get("Statement").and_then(|s| s.as_array()) {
                             for statement in statements {
                                 // Skip Deny statements (out of scope this phase)
-                                if let Some(effect) = statement.get("Effect").and_then(|e| e.as_str()) {
+                                if let Some(effect) =
+                                    statement.get("Effect").and_then(|e| e.as_str())
+                                {
                                     if effect == "Deny" {
                                         *skipped_deny += 1;
                                         if skip_deny {
@@ -425,7 +451,9 @@ fn parse_and_extract_permissions_only_allow(
                     if let Ok(doc) = serde_json::from_str::<serde_json::Value>(doc_str) {
                         if let Some(statements) = doc.get("Statement").and_then(|s| s.as_array()) {
                             for statement in statements {
-                                if let Some(effect) = statement.get("Effect").and_then(|e| e.as_str()) {
+                                if let Some(effect) =
+                                    statement.get("Effect").and_then(|e| e.as_str())
+                                {
                                     if effect != "Allow" {
                                         continue;
                                     }
@@ -465,7 +493,7 @@ fn extract_string_or_array(value: Option<&serde_json::Value>) -> Vec<String> {
 /// Generate a stable ID for a permission (action, resource) pair.
 /// Using SHA256 hash of "action|resource" for deterministic IDs.
 fn sha256_perm_id(action: &str, resource: &str) -> String {
-    use sha2::{Sha256, Digest};
+    use sha2::{Digest, Sha256};
 
     let input = format!("{}|{}", action, resource);
     let mut hasher = Sha256::new();
@@ -555,15 +583,13 @@ mod tests {
         );
 
         assert!(inline_perms.is_some());
-        let inline_set: std::collections::HashSet<_> = inline_perms
-            .unwrap()
-            .into_iter()
-            .collect();
+        let inline_set: std::collections::HashSet<_> = inline_perms.unwrap().into_iter().collect();
         assert!(inline_set.contains(&("s3:GetObject".to_string(), "*".to_string())));
         assert!(inline_set.contains(&("s3:PutObject".to_string(), "*".to_string())));
 
         // Extract boundary permissions
-        let boundary_perms = parse_and_extract_permissions_only_allow(&boundary_policy, "test-principal");
+        let boundary_perms =
+            parse_and_extract_permissions_only_allow(&boundary_policy, "test-principal");
         assert!(boundary_perms.contains(&("s3:GetObject".to_string(), "*".to_string())));
         assert!(!boundary_perms.contains(&("s3:PutObject".to_string(), "*".to_string())));
 
@@ -641,8 +667,7 @@ mod tests {
         .unwrap_or_default();
 
         // Union: both should be present
-        let mut union: std::collections::HashSet<_> =
-            inline_perms.iter().cloned().collect();
+        let mut union: std::collections::HashSet<_> = inline_perms.iter().cloned().collect();
         for perm in managed_perms {
             union.insert(perm);
         }
@@ -686,7 +711,7 @@ mod tests {
             "inline",
             &mut skipped_deny,
             &mut skipped_conditions,
-            true,  // skip_deny = true
+            true, // skip_deny = true
             true,
         )
         .unwrap_or_default();

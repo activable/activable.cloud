@@ -1,8 +1,6 @@
 //! Resolver for federation risk queries (OIDC trust boundary scoring).
 
-use crate::types::{
-    GqlFederationRisks, GqlOidcProvider, GqlSeverity,
-};
+use crate::types::{GqlFederationRisks, GqlOidcProvider, GqlSeverity};
 use activable_graph::GraphClient;
 use async_graphql::Context;
 
@@ -33,10 +31,7 @@ pub async fn federation_risks(
             oidc_providers: vec![],
             risk_score: 0.0,
             severity: GqlSeverity::Info,
-            notice: Some(
-                "No OIDC providers configured for this account."
-                    .to_string(),
-            ),
+            notice: Some("No OIDC providers configured for this account.".to_string()),
             is_trust_boundary: false,
         });
     }
@@ -68,15 +63,9 @@ pub async fn federation_risks(
             .map(|s| s.to_string())
             .unwrap_or_else(|| "unknown".to_string());
 
-        let aud = row[2]
-            .as_str()
-            .map(|s| s.to_string())
-            .unwrap_or_default();
+        let aud = row[2].as_str().map(|s| s.to_string()).unwrap_or_default();
 
-        let sub = row[3]
-            .as_str()
-            .map(|s| s.to_string())
-            .unwrap_or_default();
+        let sub = row[3].as_str().map(|s| s.to_string()).unwrap_or_default();
 
         // Evaluate trust boundary: broad/missing aud or sub => weak
         let is_weak = evaluate_oidc_weakness(&aud, &sub);
@@ -98,7 +87,11 @@ pub async fn federation_risks(
     // Compute account-level risk and trust boundary
     // Account is only a trust boundary if ALL providers have specific aud AND sub
     let is_account_trust_boundary = !has_weak_provider && !oidc_providers.is_empty();
-    let risk_score = if has_weak_provider { 0.85 } else { account_level_risk_score };
+    let risk_score = if has_weak_provider {
+        0.85
+    } else {
+        account_level_risk_score
+    };
     let severity = score_to_severity(risk_score);
 
     let is_empty = oidc_providers.is_empty();
@@ -153,14 +146,16 @@ mod tests {
     fn oidc_strength_with_specific_sub_and_aud() {
         // Properly-scoped: aud="sts.amazonaws.com", sub="repo:myorg/myrepo:ref:refs/heads/main"
         // No wildcards => strong trust boundary
-        let is_weak = evaluate_oidc_weakness("sts.amazonaws.com", "repo:myorg/myrepo:ref:refs/heads/main");
+        let is_weak =
+            evaluate_oidc_weakness("sts.amazonaws.com", "repo:myorg/myrepo:ref:refs/heads/main");
         assert!(!is_weak, "Sub without wildcard should be strong");
     }
 
     #[test]
     fn oidc_weakness_with_wildcard_aud() {
         // Aud with wildcard => weak
-        let is_weak = evaluate_oidc_weakness("*.amazonaws.com", "repo:myorg/myrepo:ref:refs/heads/main");
+        let is_weak =
+            evaluate_oidc_weakness("*.amazonaws.com", "repo:myorg/myrepo:ref:refs/heads/main");
         assert!(is_weak, "Aud with wildcard should be weak");
     }
 
@@ -195,7 +190,8 @@ mod tests {
     #[test]
     fn oidc_strength_both_specific() {
         // Both aud and sub are specific (no wildcards, not empty) => strong
-        let is_weak = evaluate_oidc_weakness("123456789", "repo:myorg/repo-a:environment:production");
+        let is_weak =
+            evaluate_oidc_weakness("123456789", "repo:myorg/repo-a:environment:production");
         assert!(!is_weak, "Specific aud and sub should be strong");
     }
 }

@@ -28,7 +28,8 @@ impl<'de> Deserialize<'de> for RiskConfig {
                 suggested = "dangerous_action_count",
                 "deprecated config key, use new name"
             );
-            raw.signals.insert("dangerous_action_count".to_string(), value);
+            raw.signals
+                .insert("dangerous_action_count".to_string(), value);
         }
 
         Ok(RiskConfig {

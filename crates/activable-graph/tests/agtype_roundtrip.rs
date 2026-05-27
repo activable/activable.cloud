@@ -168,9 +168,15 @@ async fn test_agtype_roundtrip_string() {
 
     // Write a node with a string property
     let original = node_with_property("test_str", "text", Value::String("hello world".to_string()));
-    let written = loader::load_nodes(pool.clone(), graph_name, "Test", std::slice::from_ref(&original), 1)
-        .await
-        .expect("failed to write node");
+    let written = loader::load_nodes(
+        pool.clone(),
+        graph_name,
+        "Test",
+        std::slice::from_ref(&original),
+        1,
+    )
+    .await
+    .expect("failed to write node");
     assert_eq!(written, 1, "should write 1 node");
 
     // Read it back via cypher_multi_column
@@ -233,7 +239,11 @@ async fn test_agtype_roundtrip_number() {
 
     assert!(!results.is_empty());
     let value = &results[0][0];
-    assert_eq!(value.as_i64().unwrap(), 42, "integer property should round-trip");
+    assert_eq!(
+        value.as_i64().unwrap(),
+        42,
+        "integer property should round-trip"
+    );
 }
 
 #[tokio::test]
@@ -330,8 +340,8 @@ async fn test_agtype_roundtrip_array() {
     assert!(!results.is_empty());
     let value = &results[0][0];
     // Array is serialized as JSON string, so we parse it back
-    let parsed: Value = serde_json::from_str(value.as_str().unwrap())
-        .expect("array should be valid JSON");
+    let parsed: Value =
+        serde_json::from_str(value.as_str().unwrap()).expect("array should be valid JSON");
     assert_eq!(parsed, arr, "array property should round-trip");
 }
 
@@ -380,8 +390,8 @@ async fn test_agtype_roundtrip_object() {
     assert!(!results.is_empty());
     let value = &results[0][0];
     // Object is serialized as JSON string
-    let parsed: Value = serde_json::from_str(value.as_str().unwrap())
-        .expect("object should be valid JSON");
+    let parsed: Value =
+        serde_json::from_str(value.as_str().unwrap()).expect("object should be valid JSON");
     assert_eq!(parsed, obj, "object property should round-trip");
 }
 
@@ -428,7 +438,10 @@ async fn test_agtype_roundtrip_null() {
 
     assert!(!results.is_empty());
     let value = &results[0][0];
-    assert!(value.is_null(), "null property should be absent (loader skips them)");
+    assert!(
+        value.is_null(),
+        "null property should be absent (loader skips them)"
+    );
 }
 
 #[tokio::test]
@@ -463,9 +476,15 @@ async fn test_agtype_roundtrip_unicode() {
         "text",
         Value::String("値 emoji 🚨 test".to_string()),
     );
-    let written = loader::load_nodes(pool.clone(), graph_name, "Test", std::slice::from_ref(&original), 1)
-        .await
-        .expect("failed to write node");
+    let written = loader::load_nodes(
+        pool.clone(),
+        graph_name,
+        "Test",
+        std::slice::from_ref(&original),
+        1,
+    )
+    .await
+    .expect("failed to write node");
     assert_eq!(written, 1);
 
     // Read back
@@ -517,9 +536,15 @@ async fn test_agtype_roundtrip_quoted_strings() {
         "text",
         Value::String("it's a \"test\" with \\ backslash".to_string()),
     );
-    let written = loader::load_nodes(pool.clone(), graph_name, "Test", std::slice::from_ref(&original), 1)
-        .await
-        .expect("failed to write node");
+    let written = loader::load_nodes(
+        pool.clone(),
+        graph_name,
+        "Test",
+        std::slice::from_ref(&original),
+        1,
+    )
+    .await
+    .expect("failed to write node");
     assert_eq!(written, 1);
 
     // Read back
@@ -567,7 +592,6 @@ async fn regression_bug01_edge_write_count() {
         return;
     }
 
-
     // Write 100 nodes first
     let mut nodes = Vec::new();
     for i in 0..100 {
@@ -582,9 +606,10 @@ async fn regression_bug01_edge_write_count() {
 
     // Write 100 edges
     let edges = edges_for_batch_test();
-    let written_edges = loader::load_edges(pool.clone(), graph_name, "CanAssume", &edges, 10, false)
-        .await
-        .expect("failed to write edges");
+    let written_edges =
+        loader::load_edges(pool.clone(), graph_name, "CanAssume", &edges, 10, false)
+            .await
+            .expect("failed to write edges");
     assert_eq!(written_edges.created, 100, "should write 100 edges");
 
     // Count edges via cypher
@@ -631,22 +656,15 @@ async fn regression_bug02_array_property_survives() {
         return;
     }
 
-
     // Write a Principal with inline_policies array
     let policies = Value::Array(vec![
         json!({"name": "p1", "document": "{\"Version\":\"2012-10-17\",\"Statement\":[]}"}),
         json!({"name": "p2", "document": "{\"Version\":\"2012-10-17\",\"Statement\":[]}"}),
     ]);
     let original = node_with_property("principal_1", "inline_policies", policies.clone());
-    let written = loader::load_nodes(
-        pool.clone(),
-        graph_name,
-        "Principal",
-        &[original],
-        1,
-    )
-    .await
-    .expect("failed to write Principal");
+    let written = loader::load_nodes(pool.clone(), graph_name, "Principal", &[original], 1)
+        .await
+        .expect("failed to write Principal");
     assert_eq!(written, 1);
 
     // Read back the property
@@ -698,7 +716,6 @@ async fn regression_bug03_unicode_survives() {
         println!("Skipping: setup failed");
         return;
     }
-
 
     // Write with multi-byte UTF-8 characters
     let original = node_with_property(
@@ -809,7 +826,6 @@ async fn regression_bug05_agtype_text_cast() {
         return;
     }
 
-
     // Write a simple node
     let original = node_with_property("id_test", "name", Value::String("test".to_string()));
     let written = loader::load_nodes(pool.clone(), graph_name, "Test", &[original], 1)
@@ -862,7 +878,6 @@ async fn regression_bug06_quoted_property_survives() {
         println!("Skipping: setup failed");
         return;
     }
-
 
     // Write with complex quoting and escaping
     let text = "path: \"c:\\\\users\\\\admin\", quote: \"it's\" ";

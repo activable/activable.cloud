@@ -1,10 +1,10 @@
 //! S3 enricher: extracts bucket nodes, bucket policies, and access edges.
 
 use crate::error::IngestError;
-use crate::native::{EnrichmentStats, NativeEnricher};
 use crate::native::resource_policy::parse_resource_policy;
 use crate::native::sentinel::{ensure_wildcard_principal, WILDCARD_PRINCIPAL_ID};
-use activable_graph::loader::{load_nodes, load_edges, load_edges_with_props};
+use crate::native::{EnrichmentStats, NativeEnricher};
+use activable_graph::loader::{load_edges, load_edges_with_props, load_nodes};
 use async_trait::async_trait;
 use aws_config::SdkConfig;
 use deadpool_postgres::Pool;
@@ -54,11 +54,10 @@ impl NativeEnricher for S3Enricher {
 
         // Get caller account ID from STS
         let sts_client = aws_sdk_sts::Client::new(&self.config);
-        let identity = sts_client
-            .get_caller_identity()
-            .send()
-            .await
-            .map_err(|e| IngestError::AwsSdk(format!("Failed to get caller identity: {}", e)))?;
+        let identity =
+            sts_client.get_caller_identity().send().await.map_err(|e| {
+                IngestError::AwsSdk(format!("Failed to get caller identity: {}", e))
+            })?;
         let account_id = identity
             .account()
             .ok_or_else(|| IngestError::AwsSdk("No account ID in identity".to_string()))?
@@ -223,7 +222,10 @@ impl NativeEnricher for S3Enricher {
         }
 
         if !has_bucket_policy_edges.is_empty() {
-            debug!(count = has_bucket_policy_edges.len(), "Writing HasBucketPolicy edges");
+            debug!(
+                count = has_bucket_policy_edges.len(),
+                "Writing HasBucketPolicy edges"
+            );
             let outcome = load_edges(
                 pool.clone(),
                 graph_name,
@@ -233,12 +235,19 @@ impl NativeEnricher for S3Enricher {
                 false,
             )
             .await?;
-            debug!(created = outcome.created, dropped = outcome.dropped, "HasBucketPolicy edges outcome");
+            debug!(
+                created = outcome.created,
+                dropped = outcome.dropped,
+                "HasBucketPolicy edges outcome"
+            );
             total_edges += outcome.created as u32;
         }
 
         if !allows_access_edges.is_empty() {
-            debug!(count = allows_access_edges.len(), "Writing AllowsAccessFrom edges");
+            debug!(
+                count = allows_access_edges.len(),
+                "Writing AllowsAccessFrom edges"
+            );
             let outcome = load_edges_with_props(
                 pool.clone(),
                 graph_name,
@@ -248,7 +257,11 @@ impl NativeEnricher for S3Enricher {
                 false,
             )
             .await?;
-            debug!(created = outcome.created, dropped = outcome.dropped, "AllowsAccessFrom edges outcome");
+            debug!(
+                created = outcome.created,
+                dropped = outcome.dropped,
+                "AllowsAccessFrom edges outcome"
+            );
             total_edges += outcome.created as u32;
         }
 

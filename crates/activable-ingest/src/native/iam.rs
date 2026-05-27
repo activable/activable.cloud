@@ -42,11 +42,10 @@ impl NativeEnricher for IamEnricher {
 
         // Get STS caller identity to extract account ID
         let sts_client = aws_sdk_sts::Client::new(&self.config);
-        let identity = sts_client
-            .get_caller_identity()
-            .send()
-            .await
-            .map_err(|e| IngestError::AwsSdk(format!("Failed to get caller identity: {}", e)))?;
+        let identity =
+            sts_client.get_caller_identity().send().await.map_err(|e| {
+                IngestError::AwsSdk(format!("Failed to get caller identity: {}", e))
+            })?;
         let account_id = identity
             .account()
             .ok_or_else(|| IngestError::AwsSdk("No account ID in identity".to_string()))?
@@ -100,8 +99,11 @@ impl NativeEnricher for IamEnricher {
                                             for federated_arn in extract_string_or_array(fed_val) {
                                                 if federated_arn.contains(":oidc-provider/") {
                                                     // Extract provider name and conditions
-                                                    if let Some(provider_name) = extract_oidc_provider_name(&federated_arn) {
-                                                        let (aud, sub) = extract_oidc_conditions(statement);
+                                                    if let Some(provider_name) =
+                                                        extract_oidc_provider_name(&federated_arn)
+                                                    {
+                                                        let (aud, sub) =
+                                                            extract_oidc_conditions(statement);
                                                         let provider_id = federated_arn.clone();
 
                                                         // Create OidcProvider node
@@ -156,8 +158,13 @@ impl NativeEnricher for IamEnricher {
                 });
                 // Ignore errors — node may already exist (MERGE semantics)
                 let _ = activable_graph::loader::load_nodes(
-                    pool.clone(), graph_name, "Principal", &[source_node], 1
-                ).await;
+                    pool.clone(),
+                    graph_name,
+                    "Principal",
+                    &[source_node],
+                    1,
+                )
+                .await;
                 created_sources.insert(source.clone());
             }
         }
@@ -170,13 +177,21 @@ impl NativeEnricher for IamEnricher {
             "account_id": account_id.clone(),
         });
         let _ = activable_graph::loader::load_nodes(
-            pool.clone(), graph_name, "Account", &[account_node], 1
-        ).await;
+            pool.clone(),
+            graph_name,
+            "Account",
+            &[account_node],
+            1,
+        )
+        .await;
 
         // Write OidcProvider nodes
         let mut edge_count = 0u32;
         if !oidc_provider_nodes.is_empty() {
-            debug!(count = oidc_provider_nodes.len(), "Writing OidcProvider nodes");
+            debug!(
+                count = oidc_provider_nodes.len(),
+                "Writing OidcProvider nodes"
+            );
             let _ = load_nodes(
                 pool.clone(),
                 graph_name,
@@ -189,7 +204,10 @@ impl NativeEnricher for IamEnricher {
 
         // Write HasOidcProvider edges
         if !has_oidc_provider_edges.is_empty() {
-            debug!(count = has_oidc_provider_edges.len(), "Writing HasOidcProvider edges");
+            debug!(
+                count = has_oidc_provider_edges.len(),
+                "Writing HasOidcProvider edges"
+            );
             let outcome = load_edges(
                 pool.clone(),
                 graph_name,
@@ -199,15 +217,24 @@ impl NativeEnricher for IamEnricher {
                 false,
             )
             .await?;
-            debug!(created = outcome.created, dropped = outcome.dropped, "HasOidcProvider edges outcome");
+            debug!(
+                created = outcome.created,
+                dropped = outcome.dropped,
+                "HasOidcProvider edges outcome"
+            );
             edge_count += outcome.created as u32;
         }
 
         // Write CanAssume edges in batches
         if !edges.is_empty() {
             debug!(edge_count = edges.len(), "Writing CanAssume edges");
-            let outcome = load_edges(pool.clone(), graph_name, "CanAssume", &edges, 100, false).await?;
-            debug!(created = outcome.created, dropped = outcome.dropped, "CanAssume edges outcome");
+            let outcome =
+                load_edges(pool.clone(), graph_name, "CanAssume", &edges, 100, false).await?;
+            debug!(
+                created = outcome.created,
+                dropped = outcome.dropped,
+                "CanAssume edges outcome"
+            );
             edge_count += outcome.created as u32;
         }
 
@@ -332,7 +359,10 @@ mod tests {
     fn test_extract_oidc_provider_name() {
         let arn = "arn:aws:iam::222222222222:oidc-provider/token.actions.githubusercontent.com";
         let name = extract_oidc_provider_name(arn);
-        assert_eq!(name, Some("token.actions.githubusercontent.com".to_string()));
+        assert_eq!(
+            name,
+            Some("token.actions.githubusercontent.com".to_string())
+        );
     }
 
     #[test]

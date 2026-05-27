@@ -326,7 +326,10 @@ mod tests {
             permission: "iam:CreatePolicyVersion".to_string(),
             resource_constraints: None,
         });
-        let perms = vec![eff("iam:CreatePolicyVersion", "*"), eff("s3:GetObject", "*")];
+        let perms = vec![
+            eff("iam:CreatePolicyVersion", "*"),
+            eff("s3:GetObject", "*"),
+        ];
         let (matched, _) = evaluate_requirement(&req, &perms);
         assert!(matched);
     }
@@ -487,7 +490,10 @@ mod tests {
         };
 
         // Only match 2 primaries (rule1, rule2)
-        let perms = vec![eff("iam:CreatePolicyVersion", "*"), eff("ec2:RunInstances", "*")];
+        let perms = vec![
+            eff("iam:CreatePolicyVersion", "*"),
+            eff("ec2:RunInstances", "*"),
+        ];
 
         let rules = vec![rule1, rule2, rule3, cascade_rule];
         let matches = match_all_rules(&rules, &perms);
