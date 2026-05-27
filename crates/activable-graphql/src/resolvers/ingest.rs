@@ -136,7 +136,7 @@ pub async fn ingest_status(
 
     let rows = conn
         .query(
-            "SELECT id, status, created_at, finished_at, claimed_by, result, last_error \
+            "SELECT id, status, created_at::text, finished_at::text, claimed_by, result, last_error \
              FROM jobs WHERE id = $1",
             &[&job_id],
         )
@@ -214,7 +214,7 @@ pub async fn ingest_jobs(
             let account_id = f.account_id.as_ref().unwrap();
             let status = f.status.as_ref().unwrap();
             conn.query(
-                "SELECT id, status, created_at, finished_at, claimed_by, result, last_error \
+                "SELECT id, status, created_at::text, finished_at::text, claimed_by, result, last_error \
                  FROM jobs WHERE job_type = 'account_ingest' AND dedup_key = $1 AND status = $2 \
                  ORDER BY created_at DESC LIMIT 100",
                 &[account_id, status],
@@ -224,7 +224,7 @@ pub async fn ingest_jobs(
         Some(f) if f.account_id.is_some() => {
             let account_id = f.account_id.as_ref().unwrap();
             conn.query(
-                "SELECT id, status, created_at, finished_at, claimed_by, result, last_error \
+                "SELECT id, status, created_at::text, finished_at::text, claimed_by, result, last_error \
                  FROM jobs WHERE job_type = 'account_ingest' AND dedup_key = $1 \
                  ORDER BY created_at DESC LIMIT 100",
                 &[account_id],
@@ -234,7 +234,7 @@ pub async fn ingest_jobs(
         Some(f) if f.status.is_some() => {
             let status = f.status.as_ref().unwrap();
             conn.query(
-                "SELECT id, status, created_at, finished_at, claimed_by, result, last_error \
+                "SELECT id, status, created_at::text, finished_at::text, claimed_by, result, last_error \
                  FROM jobs WHERE job_type = 'account_ingest' AND status = $1 \
                  ORDER BY created_at DESC LIMIT 100",
                 &[status],
@@ -243,7 +243,7 @@ pub async fn ingest_jobs(
         }
         _ => {
             conn.query(
-                "SELECT id, status, created_at, finished_at, claimed_by, result, last_error \
+                "SELECT id, status, created_at::text, finished_at::text, claimed_by, result, last_error \
                  FROM jobs WHERE job_type = 'account_ingest' \
                  ORDER BY created_at DESC LIMIT 100",
                 &[],
