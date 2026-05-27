@@ -137,7 +137,7 @@ pub async fn ingest_status(
     let rows = conn
         .query(
             "SELECT id::text, status, created_at::text, finished_at::text, claimed_by, result::text, last_error \
-             FROM jobs WHERE id = $1::uuid",
+             FROM jobs WHERE id::text = $1",
             &[&job_id],
         )
         .await
