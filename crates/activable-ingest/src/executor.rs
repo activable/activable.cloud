@@ -214,6 +214,7 @@ pub async fn ingest_account(
         Box::new(crate::native::secretsmanager::SecretsManagerEnricher::new(
             config.clone(),
         )),
+        Box::new(crate::native::lambda::LambdaEnricher::new(config.clone())),
     ];
 
     for enricher in &enrichers {

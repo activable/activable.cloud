@@ -6,10 +6,13 @@
 //! - EC2 security groups → HasSecurityGroup edges
 //! - S3 bucket policies → access edges
 //! - KMS key policies → access edges + grantable edges
+//! - Lambda resource policies → access edges
 
+pub mod access_edges;
 pub mod ec2;
 pub mod iam;
 pub mod kms;
+pub mod lambda;
 pub mod permissions;
 pub mod principal;
 pub mod resource_policy;
