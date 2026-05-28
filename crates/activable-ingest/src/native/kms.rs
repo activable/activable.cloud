@@ -1,6 +1,7 @@
 //! KMS key-policy ingester: KMS keys, key policies, AllowsAccessFrom + KmsGrantable edges.
 
 use crate::error::IngestError;
+use crate::native::principal::build_principal_node;
 use crate::native::resource_policy::parse_resource_policy;
 use crate::native::sentinel::{ensure_wildcard_principal, WILDCARD_PRINCIPAL_ID};
 use crate::native::{EnrichmentStats, NativeEnricher};
@@ -13,55 +14,6 @@ use sha2::Digest;
 use std::collections::HashSet;
 use std::sync::Arc;
 use tracing::{debug, warn};
-
-/// Build a Principal node from an IAM principal ARN.
-/// Returns a JSON node with id, name, principal_type, and account_id.
-/// Deduplicates based on ARN to ensure one node per unique principal.
-fn build_principal_node(principal_arn: &str) -> serde_json::Value {
-    // Determine principal type: check more specific types first
-    let principal_type = if principal_arn.contains(".amazonaws.com") {
-        "Service"
-    } else if principal_arn.contains(":root") {
-        "AccountRoot"
-    } else if principal_arn.contains(":role/") {
-        "Role"
-    } else if principal_arn.contains(":user/") {
-        "User"
-    } else {
-        "Principal"
-    };
-
-    // Extract account ID from ARN (part 4 of colon-separated fields)
-    let account_id = principal_arn
-        .split(':')
-        .nth(4)
-        .unwrap_or("000000000000")
-        .to_string();
-
-    // Use last segment of ARN as display name for readability
-    // Try slash-separated first (roles, users), then colon-separated (root)
-    let name = if principal_arn.contains('/') {
-        principal_arn
-            .rsplit('/')
-            .next()
-            .unwrap_or(principal_arn)
-            .to_string()
-    } else {
-        // For arns like ...::123456789012:root, extract "root"
-        principal_arn
-            .rsplit(':')
-            .next()
-            .unwrap_or(principal_arn)
-            .to_string()
-    };
-
-    json!({
-        "id": principal_arn,
-        "name": name,
-        "principal_type": principal_type,
-        "account_id": account_id,
-    })
-}
 
 /// KMS enricher that extracts key policies and creates access edges.
 pub struct KmsEnricher {
@@ -332,7 +284,7 @@ impl NativeEnricher for KmsEnricher {
 
         // Build Principal nodes from grant principals (for KmsGrantable + AllowsAccessFrom edge endpoints)
         for principal in grant_principals {
-            principal_nodes.push(build_principal_node(&principal));
+            principal_nodes.push(build_principal_node(&principal, &account_id));
         }
 
         // Write nodes and edges
@@ -426,71 +378,5 @@ impl NativeEnricher for KmsEnricher {
             service: self.service().to_string(),
             edges_created: total_edges,
         })
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_build_principal_node_account_root() {
-        let arn = "arn:aws:iam::123456789012:root";
-        let node = build_principal_node(arn);
-        assert_eq!(node["id"].as_str().unwrap(), arn);
-        assert_eq!(node["principal_type"].as_str().unwrap(), "AccountRoot");
-        assert_eq!(node["account_id"].as_str().unwrap(), "123456789012");
-        assert_eq!(node["name"].as_str().unwrap(), "root");
-    }
-
-    #[test]
-    fn test_build_principal_node_role() {
-        let arn = "arn:aws:iam::000000000000:role/application-role";
-        let node = build_principal_node(arn);
-        assert_eq!(node["id"].as_str().unwrap(), arn);
-        assert_eq!(node["principal_type"].as_str().unwrap(), "Role");
-        assert_eq!(node["account_id"].as_str().unwrap(), "000000000000");
-        assert_eq!(node["name"].as_str().unwrap(), "application-role");
-    }
-
-    #[test]
-    fn test_build_principal_node_user() {
-        let arn = "arn:aws:iam::999999999999:user/testuser";
-        let node = build_principal_node(arn);
-        assert_eq!(node["id"].as_str().unwrap(), arn);
-        assert_eq!(node["principal_type"].as_str().unwrap(), "User");
-        assert_eq!(node["account_id"].as_str().unwrap(), "999999999999");
-        assert_eq!(node["name"].as_str().unwrap(), "testuser");
-    }
-
-    #[test]
-    fn test_build_principal_node_service() {
-        let arn = "arn:aws:iam::123456789012:role/aws-service-role/example.amazonaws.com/AWSServiceRoleForExample";
-        let node = build_principal_node(arn);
-        assert_eq!(node["principal_type"].as_str().unwrap(), "Service");
-        assert_eq!(node["account_id"].as_str().unwrap(), "123456789012");
-    }
-
-    #[test]
-    fn test_build_principal_node_malformed_arn() {
-        let arn = "malformed-arn";
-        let node = build_principal_node(arn);
-        assert_eq!(node["id"].as_str().unwrap(), arn);
-        assert_eq!(node["account_id"].as_str().unwrap(), "000000000000"); // Default
-        assert_eq!(node["principal_type"].as_str().unwrap(), "Principal"); // Fallback type
-    }
-
-    #[test]
-    fn test_principal_node_deduplication_via_hashset() {
-        let mut principals: HashSet<String> = HashSet::new();
-        let arn1 = "arn:aws:iam::123456789012:role/test-role";
-        let arn2 = "arn:aws:iam::999999999999:role/another-role";
-
-        principals.insert(arn1.to_string());
-        principals.insert(arn2.to_string());
-        principals.insert(arn1.to_string()); // Duplicate
-
-        // Should only have 2 unique principals
-        assert_eq!(principals.len(), 2);
     }
 }

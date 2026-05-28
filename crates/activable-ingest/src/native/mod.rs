@@ -11,8 +11,10 @@ pub mod ec2;
 pub mod iam;
 pub mod kms;
 pub mod permissions;
+pub mod principal;
 pub mod resource_policy;
 pub mod s3;
+pub mod secretsmanager;
 pub mod sentinel;
 
 use crate::error::IngestError;
