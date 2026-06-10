@@ -1,5 +1,5 @@
 use crate::types::{EscalationRule, MatchedRule, RuleRequirement};
-use activable_ingest_iam::action_matches;
+use activable_iam_engine::action_matches;
 
 /// Effective permission for a principal
 #[derive(Debug, Clone)]

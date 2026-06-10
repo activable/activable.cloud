@@ -1,6 +1,6 @@
 //! Integration tests for policy drift detection across version histories.
 
-use activable_ingest_iam::{
+use activable_iam_engine::{
     analyze_version_history, compute_drift_score, diff_policies, parse_policy, DriftSeverity,
     PolicyVersion,
 };
@@ -293,7 +293,7 @@ fn test_empty_policy_no_drift() {
 }
 
 // Re-import ParsedPolicy for direct construction if needed
-use activable_ingest_iam::ParsedPolicy;
+use activable_iam_engine::ParsedPolicy;
 
 /// Test: Complex multi-statement policy with mixed Allow/Deny
 #[test]

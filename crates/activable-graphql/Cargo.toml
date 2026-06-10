@@ -15,7 +15,7 @@ activable-schema = { path = "../activable-schema" }
 activable-graph = { path = "../activable-graph" }
 activable-ingest = { path = "../activable-ingest" }
 activable-risk = { path = "../activable-risk" }
-activable-ingest-iam = { path = "../activable-ingest-iam" }
+activable-iam-engine = { path = "../activable-iam-engine" }
 activable-scheduler = { path = "../activable-scheduler" }
 async-graphql = "=8.0.0-rc.5"
 async-graphql-axum = "=8.0.0-rc.5"

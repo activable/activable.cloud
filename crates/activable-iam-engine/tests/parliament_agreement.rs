@@ -10,7 +10,7 @@
 //! - Wildcard matching
 //! - Multiple policies combined
 
-use activable_ingest_iam::{effective_permissions, parse_policy, EvalContext};
+use activable_iam_engine::{effective_permissions, parse_policy, EvalContext};
 
 /// Test: Simple Allow statement
 #[test]

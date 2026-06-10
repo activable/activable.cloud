@@ -85,7 +85,7 @@ kubectl port-forward svc/activable-api 8080:8080
 | `activable-schema` | Node/edge type definitions, ARN canonicalizer, constraint validation |
 | `activable-graph` | Postgres + Apache AGE driver, typed query API (BFS, Dijkstra, subgraph) |
 | `activable-ingest` | YAML-driven AWS ingestion engine with native SDK enrichers |
-| `activable-ingest-iam` | Parliament-equivalent IAM policy evaluator, escalation edge derivation |
+| `activable-iam-engine` | Parliament-equivalent IAM policy evaluator, escalation edge derivation |
 | `activable-risk` | AML-inspired risk scoring: signal engine, rule engine, batch scorer |
 | `activable-graphql` | GraphQL API server (async-graphql + axum) |
 

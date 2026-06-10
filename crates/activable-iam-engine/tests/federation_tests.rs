@@ -1,6 +1,6 @@
 //! Integration tests for federation trust analysis.
 
-use activable_ingest_iam::{
+use activable_iam_engine::{
     extract_federation_trusts, find_weak_federation_trusts, FederationProviderType,
     FederationWeakness,
 };

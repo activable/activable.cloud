@@ -11,7 +11,7 @@
 /// # Examples
 ///
 /// ```
-/// # use activable_ingest_iam::action_matches;
+/// # use activable_iam_engine::action_matches;
 /// assert!(action_matches("s3:GetObject", "s3:GetObject"));
 /// assert!(action_matches("s3:Get*", "s3:GetObject"));
 /// assert!(action_matches("s3:Get*", "s3:GetBucketPolicy"));

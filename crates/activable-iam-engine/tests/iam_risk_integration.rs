@@ -4,7 +4,7 @@
 //! Each test exercises a specific IAM Risk paper gap and verifies that
 //! activable.cloud addresses it correctly.
 
-use activable_ingest_iam::{
+use activable_iam_engine::{
     compute_drift_score, diff_policies, effective_permissions, effective_permissions_with_session,
     evaluate_resource_policy_pair, extract_federation_trusts, parse_policy, parse_resource_policy,
     EvalContext, ResourcePolicyDecision,

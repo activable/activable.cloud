@@ -1,7 +1,7 @@
 /// Dangerous Action Count Signal: Tier-weighted dangerous IAM actions
 ///
 /// Detects high-impact IAM actions that enable escalation or lateral movement.
-/// Uses the dangerous_actions registry from activable-ingest-iam.
+/// Uses the dangerous_actions registry from activable-iam-engine.
 ///
 /// Raw value: tier-weighted sum (tier 1=3, tier 2=2, tier 3=1)
 /// Normalized: min(1.0, raw / 10.0) — 10 weighted units = max score
@@ -28,21 +28,21 @@ impl DangerousActionCountSignal {
     /// Compute dangerous action count synchronously from effective permissions.
     /// No async needed — this is pure Rust, no graph queries.
     pub fn compute_sync(&self, effective_perms: &[EffectivePermission]) -> super::SignalResult {
-        let registry = activable_ingest_iam::load_dangerous_actions_registry();
+        let registry = activable_iam_engine::load_dangerous_actions_registry();
 
-        // Convert from crate::EffectivePermission to activable_ingest_iam's DangerousActionEffectivePermission
-        let ingest_perms: Vec<activable_ingest_iam::DangerousActionEffectivePermission> =
+        // Convert from crate::EffectivePermission to activable_iam_engine's DangerousActionEffectivePermission
+        let ingest_perms: Vec<activable_iam_engine::DangerousActionEffectivePermission> =
             effective_perms
                 .iter()
                 .map(
-                    |p| activable_ingest_iam::DangerousActionEffectivePermission {
+                    |p| activable_iam_engine::DangerousActionEffectivePermission {
                         action: p.action.clone(),
                         resource: p.resource.clone(),
                     },
                 )
                 .collect();
 
-        let matches = activable_ingest_iam::detect_dangerous_actions(&ingest_perms, &registry);
+        let matches = activable_iam_engine::detect_dangerous_actions(&ingest_perms, &registry);
 
         // Sum tier weights
         let raw_value: f64 = matches.iter().map(|m| tier_weight(m.tier)).sum();

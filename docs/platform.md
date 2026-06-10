@@ -283,7 +283,7 @@ using Cypher patterns that walk `CanAssume`, `CanAccess`, `Contains`, and bridge
 between IAM roles and K8s service accounts.
 
 Components:
-- **Parliament-equivalent IAM evaluator** (`activable-ingest-iam`) — offline Rust crate
+- **Parliament-equivalent IAM evaluator** (`activable-iam-engine`) — offline Rust crate
   that evaluates IAM policy documents against a principal and resource, producing
   allow/deny decisions without calling `iam:SimulatePrincipalPolicy`. Port of the Python
   Parliament library to Rust with full condition-key support.
