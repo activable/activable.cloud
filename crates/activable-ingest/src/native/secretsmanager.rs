@@ -17,18 +17,29 @@ use tracing::{debug, warn};
 
 /// Classify the KMS key target for a secret's encryption.
 /// Returns the KMS key ID to use as the EncryptedBy edge target.
-fn classify_secret_kms(kms_key_id: Option<&str>) -> String {
+///
+/// KmsKey nodes are keyed by full key ARN, but DescribeSecret echoes whatever
+/// identifier the secret was created with (ARN, bare key ID, or alias). Bare
+/// key IDs are canonicalized to the key ARN in the secret's own account/region
+/// so the edge joins the node the KMS enricher wrote. Aliases cannot be
+/// resolved to a key ARN without an extra KMS call; they pass through as-is
+/// and the loader drops the edge if no matching node exists (best-effort).
+fn classify_secret_kms(kms_key_id: Option<&str>, account_id: &str, region: &str) -> String {
     match kms_key_id {
         None | Some("") => AWS_MANAGED_KEY_ID.to_string(),
         Some(id) => {
             if id == "aws/secretsmanager" || id.starts_with("alias/aws/") {
                 AWS_MANAGED_KEY_ID.to_string()
-            } else if id.starts_with("arn:aws:kms:") {
-                // Customer KMS key ARN — use as-is (loader will drop edge if node missing)
+            } else if id.starts_with("arn:") {
+                // Customer KMS key ARN (any partition: aws, aws-us-gov, aws-cn) —
+                // use as-is (loader will drop edge if node missing)
+                id.to_string()
+            } else if id.starts_with("alias/") {
+                // Customer alias — unresolvable without a KMS lookup (best-effort)
                 id.to_string()
             } else {
-                // Bare key ID or alias — use as-is (best-effort)
-                id.to_string()
+                // Bare key ID — canonicalize to the key ARN so it matches the KmsKey node id
+                format!("arn:aws:kms:{}:{}:key/{}", region, account_id, id)
             }
         }
     }
@@ -118,7 +129,7 @@ impl NativeEnricher for SecretsManagerEnricher {
                         }));
 
                         // Build EncryptedBy edge if KMS key is resolvable
-                        let kms_target = classify_secret_kms(kms_key_id);
+                        let kms_target = classify_secret_kms(kms_key_id, &account_id, &region);
                         encrypted_by_edges.push((secret_arn.clone(), kms_target));
 
                         // Try to get resource policy for AllowsAccessFrom edges
@@ -250,42 +261,62 @@ impl NativeEnricher for SecretsManagerEnricher {
 mod tests {
     use super::*;
 
+    const TEST_ACCOUNT: &str = "444444444444";
+    const TEST_REGION: &str = "us-east-1";
+
     #[test]
     fn test_classify_secret_kms_none() {
-        let target = classify_secret_kms(None);
+        let target = classify_secret_kms(None, TEST_ACCOUNT, TEST_REGION);
         assert_eq!(target, AWS_MANAGED_KEY_ID);
     }
 
     #[test]
     fn test_classify_secret_kms_empty() {
-        let target = classify_secret_kms(Some(""));
+        let target = classify_secret_kms(Some(""), TEST_ACCOUNT, TEST_REGION);
         assert_eq!(target, AWS_MANAGED_KEY_ID);
     }
 
     #[test]
     fn test_classify_secret_kms_aws_managed_slash() {
-        let target = classify_secret_kms(Some("aws/secretsmanager"));
+        let target = classify_secret_kms(Some("aws/secretsmanager"), TEST_ACCOUNT, TEST_REGION);
         assert_eq!(target, AWS_MANAGED_KEY_ID);
     }
 
     #[test]
     fn test_classify_secret_kms_aws_managed_alias() {
-        let target = classify_secret_kms(Some("alias/aws/secretsmanager"));
+        let target =
+            classify_secret_kms(Some("alias/aws/secretsmanager"), TEST_ACCOUNT, TEST_REGION);
         assert_eq!(target, AWS_MANAGED_KEY_ID);
     }
 
     #[test]
     fn test_classify_secret_kms_customer_arn() {
         let kms_arn = "arn:aws:kms:us-east-1:999999999999:key/12345678-1234-1234-1234-123456789012";
-        let target = classify_secret_kms(Some(kms_arn));
+        let target = classify_secret_kms(Some(kms_arn), TEST_ACCOUNT, TEST_REGION);
         assert_eq!(target, kms_arn);
     }
 
     #[test]
-    fn test_classify_secret_kms_bare_key_id() {
+    fn test_classify_secret_kms_govcloud_arn() {
+        // Non-default partitions (aws-us-gov, aws-cn) must pass through as-is,
+        // never be wrapped into a doubly-nested aws-partition ARN.
+        let kms_arn =
+            "arn:aws-us-gov:kms:us-gov-west-1:999999999999:key/12345678-1234-1234-1234-123456789012";
+        let target = classify_secret_kms(Some(kms_arn), TEST_ACCOUNT, TEST_REGION);
+        assert_eq!(target, kms_arn);
+    }
+
+    #[test]
+    fn test_classify_secret_kms_bare_key_id_canonicalized() {
+        // DescribeSecret echoes the identifier the secret was created with. A bare
+        // key ID must be canonicalized to the key ARN, because KmsKey nodes are
+        // keyed by ARN — otherwise the EncryptedBy edge is silently dropped.
         let key_id = "12345678-1234-1234-1234-123456789012";
-        let target = classify_secret_kms(Some(key_id));
-        assert_eq!(target, key_id);
+        let target = classify_secret_kms(Some(key_id), TEST_ACCOUNT, TEST_REGION);
+        assert_eq!(
+            target,
+            "arn:aws:kms:us-east-1:444444444444:key/12345678-1234-1234-1234-123456789012"
+        );
     }
 
     #[test]
@@ -293,8 +324,9 @@ mod tests {
         // Regression: customer alias like "alias/my-aws/secretsmanager" must NOT be
         // misclassified as AWS-managed. AWS reserves "alias/aws/" namespace;
         // customers cannot create aliases starting with "alias/aws/".
+        // Aliases also must NOT be wrapped into a key ARN (they are not key IDs).
         let customer_alias = "alias/my-aws/secretsmanager";
-        let target = classify_secret_kms(Some(customer_alias));
+        let target = classify_secret_kms(Some(customer_alias), TEST_ACCOUNT, TEST_REGION);
         assert_eq!(
             target, customer_alias,
             "Customer alias should not be misclassified as AWS-managed key"
