@@ -66,10 +66,10 @@ make smoke
 
 ```bash
 # Docker Compose brings up the database
-docker compose -f infra/compose/docker-compose.yml up -d db
+docker compose -f ops/compose/docker-compose.yml up -d db
 
 # Wait for health check
-docker compose -f infra/compose/docker-compose.yml logs db
+docker compose -f ops/compose/docker-compose.yml logs db
 
 # Verify connectivity
 psql -h localhost -p 5433 -U activable -d activable -c "SELECT 1;"
@@ -169,13 +169,13 @@ git commit --no-verify
 ### Postgres+AGE not responding
 ```bash
 # Check container
-docker compose -f infra/compose/docker-compose.yml ps
+docker compose -f ops/compose/docker-compose.yml ps
 
 # Restart
-docker compose -f infra/compose/docker-compose.yml restart db
+docker compose -f ops/compose/docker-compose.yml restart db
 
 # Tail logs
-docker compose -f infra/compose/docker-compose.yml logs -f db
+docker compose -f ops/compose/docker-compose.yml logs -f db
 ```
 
 ## Next Steps

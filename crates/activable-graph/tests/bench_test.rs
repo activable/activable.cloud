@@ -30,11 +30,11 @@ async fn test_bench_regression_latencies() {
         }
     };
 
-    // Benchmark infrastructure is present in spike/graph-backend
-    // This test documents that latency assertions use thresholds from Phase 2:
+    // Latency thresholds locked by the graph-backend benchmark
+    // (docs/references/graph-backend-benchmark-pg-age-verdict.md):
     // - 6-hop VLE p95 < 2,000,000 µs
     // - shortest-path p95 < 3,000,000 µs
 
-    println!("Benchmark regression test: latency thresholds locked per Phase 2 spike");
-    println!("Test infrastructure ready for fixture loading (pending Phase 3)");
+    println!("Benchmark regression test: latency thresholds locked per graph-backend benchmark");
+    println!("Test infrastructure ready for fixture loading");
 }

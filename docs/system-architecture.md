@@ -81,7 +81,7 @@ API server, ingestion), Postgres + Apache AGE storage, UniFFI boundary.
 | 6-hop variable-length traversal (concurrent, 4×25) | < 2,500,000 µs | **697 µs** | 3,587× |
 | Shortest-path (single-thread) | < 3,000,000 µs | **367 µs** | 8,174× |
 
-Full methodology, query mix, hardware fingerprint, and reproduction commands: [`spike/graph-backend/results.md`](../spike/graph-backend/results.md).
+Full methodology, query mix, hardware fingerprint, and reproduction commands: [`docs/references/graph-backend-benchmark-pg-age-verdict.md`](./references/graph-backend-benchmark-pg-age-verdict.md).
 
 ### Why the margins are this large (and what they don't promise)
 
@@ -118,11 +118,11 @@ The Cypher `UNWIND $batch AS row MATCH ... CREATE` approach is **unusable at 100
 - Expression indexes on `agtype_access_operator(properties, '"id"'::agtype)` for vertex-ID lookup by JOIN.
 - Vertex inserts still use Cypher `UNWIND` (acceptable because each row is independent; no MATCH lookup needed).
 
-Implementation: [`spike/graph-backend/src/load_pg_age.rs`](../spike/graph-backend/src/load_pg_age.rs). Code review of the SQL fast-path loader: APPROVED_WITH_CAVEATS — 0 priority-0 (security/correctness), 8 priority-1 (production-readiness) items recorded below. (Full report in `plans/reports/` — local artifact, not in repository.)
+Implementation: `load_pg_age.rs` from the graph-backend benchmark harness (removed from the working tree; recoverable from git history). Code review of the SQL fast-path loader: APPROVED_WITH_CAVEATS — 0 priority-0 (security/correctness), 8 priority-1 (production-readiness) items recorded below. (Full report in `plans/reports/` — local artifact, not in repository.)
 
 #### Carry-over for production loader
 
-These items were identified in the phase-2 benchmark but deferred to production implementation. All are resolved in the `activable-graph` crate (phase-2 and subsequent implementations).
+These items were identified in the graph-backend benchmark but deferred to production implementation. All are resolved in the `activable-graph` crate (initial implementation and subsequent hardening).
 
 | # | Item | Status |
 |---|---|---|
@@ -306,7 +306,7 @@ The Rust `GraphClient` exposes five query primitives. All queries are memory-eff
 
 ### Primitives and Performance Characteristics
 
-Latency measurements from phase-8 integration benchmark on synthetic 100k-node AWS IAM graph (single-thread, p95):
+Latency measurements from the integration benchmark on synthetic 100k-node AWS IAM graph (single-thread, p95):
 
 | Primitive | Purpose | Signature | Latency (p95) | Exposure |
 |-----------|---------|-----------|---------------|----------|
@@ -327,7 +327,7 @@ Latency measurements from phase-8 integration benchmark on synthetic 100k-node A
 **API exposure:**
 - **FFI boundary:** All primitives exported via `activable-ffi` and accessible from Go.
 - **CLI:** Subcommands under `activable query` (e.g., `activable query path`, `activable query walk`).
-- **GraphQL:** Planned for phase-7 API server (not v1 substrate).
+- **GraphQL:** Served by the GraphQL API server.
 
 ## Security Boundary
 

@@ -6,16 +6,16 @@
 # Apply the adversarial seed Job to populate LocalStack with test scenarios.
 #
 # Single-source reconciliation:
-# - The standalone source is deploy/scripts/seed-adversarial.sh (one truth)
+# - The standalone source is ops/seed/seed-adversarial.sh (one truth)
 # - At apply time, generate a ConfigMap FROM the standalone file
-# - The Job manifest (deploy/k8s/seed-adversarial-job.yaml) mounts the ConfigMap
+# - The Job manifest (ops/k8s/seed-adversarial-job.yaml) mounts the ConfigMap
 # - No embedded script copy (avoids drift)
 #
 # Usage:
 #   ./seed.sh
 #
 # The script:
-# 1. Creates a ConfigMap from deploy/scripts/seed-adversarial.sh
+# 1. Creates a ConfigMap from ops/seed/seed-adversarial.sh
 # 2. Applies the Job manifest (seed-adversarial-job.yaml)
 # 3. Waits for Job to complete (max 300s)
 #
@@ -43,10 +43,10 @@ echo ""
 
 # Step 2: Generate ConfigMap from standalone seed script
 echo "Step 2: Creating ConfigMap from standalone seed script..."
-echo "Source: deploy/scripts/seed-adversarial.sh"
+echo "Source: ops/seed/seed-adversarial.sh"
 
-if [[ ! -f "deploy/scripts/seed-adversarial.sh" ]]; then
-    echo "ERROR: deploy/scripts/seed-adversarial.sh not found."
+if [[ ! -f "ops/seed/seed-adversarial.sh" ]]; then
+    echo "ERROR: ops/seed/seed-adversarial.sh not found."
     echo "Must run from the project root: cd /path/to/activable.cloud"
     exit 1
 fi
@@ -56,7 +56,7 @@ fi
 # Namespace: same as deployment (typically 'default')
 # Dry-run to generate YAML, then apply
 kubectl create configmap localstack-seed-adversarial-script \
-    --from-file=seed-adversarial.sh=deploy/scripts/seed-adversarial.sh \
+    --from-file=seed-adversarial.sh=ops/seed/seed-adversarial.sh \
     --dry-run=client \
     -o yaml \
     -n "$NS" | kubectl apply -f -
@@ -70,7 +70,7 @@ echo "Manifest: $SEED_JOB_MANIFEST"
 
 if [[ ! -f "$SEED_JOB_MANIFEST" ]]; then
     echo "ERROR: Seed Job manifest not found: $SEED_JOB_MANIFEST"
-    echo "Expected: deploy/k8s/seed-adversarial-job.yaml"
+    echo "Expected: ops/k8s/seed-adversarial-job.yaml"
     exit 1
 fi
 

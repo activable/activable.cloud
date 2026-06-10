@@ -83,7 +83,7 @@ impl E2eEnvironment {
 
     /// Run the seed script to populate LocalStack with adversarial scenarios.
     async fn run_seed_script(&self) -> Result<(), Box<dyn std::error::Error>> {
-        let script_path = "deploy/scripts/seed-adversarial.sh";
+        let script_path = "ops/seed/seed-adversarial.sh";
 
         // Check if script exists
         if !std::path::Path::new(script_path).exists() {

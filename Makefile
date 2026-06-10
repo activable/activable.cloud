@@ -19,7 +19,7 @@ build-linux:
 	@echo "✓ Linux binary ready: target/aarch64-unknown-linux-gnu/release-fast/activable-graphql"
 
 deploy-dev: build-linux
-	$(RTK) docker build -f deploy/docker/Dockerfile -t activable-server:dev .
+	$(RTK) docker build -f ops/docker/Dockerfile -t activable-server:dev .
 	$(RTK) kubectl rollout restart deployment/activable
 	$(RTK) kubectl rollout status deployment/activable --timeout=240s
 	@echo "✓ Deployed and rolled out"
@@ -55,13 +55,13 @@ test:
 test-integration: build
 	@echo "Integration tests: teardown → deploy → wait-healthy → test → teardown"
 	@echo "Step 1: Teardown (clean slate)"
-	docker compose -f infra/compose/docker-compose.yml down -v || true
+	docker compose -f ops/compose/docker-compose.yml down -v || true
 	@echo "Step 2: Deploy Postgres+AGE"
-	docker compose -f infra/compose/docker-compose.yml up -d db
+	docker compose -f ops/compose/docker-compose.yml up -d db
 	@echo "Step 3: Wait for healthy status (timeout 30s)"
 	@timeout=30; \
 	while [ $$timeout -gt 0 ]; do \
-		if docker compose -f infra/compose/docker-compose.yml ps db | grep -q healthy; then \
+		if docker compose -f ops/compose/docker-compose.yml ps db | grep -q healthy; then \
 			echo "✓ Postgres ready"; \
 			break; \
 		fi; \
@@ -71,7 +71,7 @@ test-integration: build
 	done; \
 	if [ $$timeout -le 0 ]; then \
 		echo "✗ Postgres failed to become healthy"; \
-		docker compose -f infra/compose/docker-compose.yml down -v; \
+		docker compose -f ops/compose/docker-compose.yml down -v; \
 		exit 1; \
 	fi
 	@echo "Step 4: Run integration tests"
@@ -82,7 +82,7 @@ test-integration: build
 	echo "Running Rust integration tests..."; \
 	cargo test --test '*_integration*' --release -- --nocapture 2>&1
 	@echo "Step 5: Teardown"
-	docker compose -f infra/compose/docker-compose.yml down -v
+	docker compose -f ops/compose/docker-compose.yml down -v
 	@echo "✓ Integration tests completed"
 
 build:
@@ -118,12 +118,12 @@ dev-up:
 	@kubectl cluster-info > /dev/null 2>&1 || { echo "✗ Kubernetes not available. Enable: Docker Desktop > Settings > Kubernetes > Enable"; exit 1; }
 	@echo ""
 	@echo "Step 1: Building Docker image..."
-	docker build -t activable-server:dev -f deploy/docker/Dockerfile .
+	docker build -t activable-server:dev -f ops/docker/Dockerfile .
 	@echo "✓ Docker image built"
 	@echo ""
 	@echo "Step 2: Deploying Helm chart (Postgres+AGE + Floci + GraphQL server)..."
-	helm upgrade --install activable deploy/helm/activable \
-		-f deploy/helm/activable/values-local.yaml \
+	helm upgrade --install activable ops/helm/activable \
+		-f ops/helm/activable/values-local.yaml \
 		--wait --timeout 300s
 	@echo "✓ Helm deployment successful"
 	@echo ""
@@ -162,7 +162,7 @@ dev-seed:
 	AWS_ACCESS_KEY_ID=test \
 	AWS_SECRET_ACCESS_KEY=test \
 	AWS_DEFAULT_REGION=us-east-1 \
-	  bash infra/scripts/seed-floci.sh
+	  bash ops/seed/seed-floci.sh
 	@kill %1 2>/dev/null || true
 	@echo "✓ Seed complete"
 

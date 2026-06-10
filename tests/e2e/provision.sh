@@ -63,10 +63,10 @@ if ! kubectl -n envoy-gateway-system get gateway activable-gateway &> /dev/null;
 ERROR: Envoy Gateway 'activable-gateway' not found in envoy-gateway-system namespace.
 
 The shared Gateway must be deployed before provisioning activable.
-See: deploy/gateway/README.md
+See: ops/gateway/README.md
 
 To install:
-  cd deploy/gateway/
+  cd ops/gateway/
   ./gen-local-cert.sh
   ./install-envoy-gateway.sh
 
@@ -123,8 +123,8 @@ echo ""
 
 # Step 5: Helm upgrade/install
 echo "Step 5: Helm upgrade/install activable chart..."
-echo "Command: helm upgrade --install activable deploy/helm/activable"
-echo "         -f deploy/helm/activable/values-local.yaml"
+echo "Command: helm upgrade --install activable ops/helm/activable"
+echo "         -f ops/helm/activable/values-local.yaml"
 echo "         --set database.password=activable_dev"
 echo "         --set route.enabled=true"
 echo "         --set image.tag=$IMAGE_TAG"
@@ -134,8 +134,8 @@ echo ""
 # The chart requires database.password (pulled from the secret)
 # route.enabled=true ensures the HTTPRoute is rendered
 # imagePullPolicy: Never (set in values.yaml)
-if ! helm upgrade --install activable deploy/helm/activable \
-    -f deploy/helm/activable/values-local.yaml \
+if ! helm upgrade --install activable ops/helm/activable \
+    -f ops/helm/activable/values-local.yaml \
     --set "database.password=activable_dev" \
     --set "route.enabled=true" \
     --set "image.tag=$IMAGE_TAG" \

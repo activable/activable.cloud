@@ -512,7 +512,7 @@ mod tests {
 
     #[test]
     fn parse_real_seed_org_shared_data_bucket_policy() {
-        // Real bucket policy from deploy/scripts/seed-adversarial.sh (org-shared-data bucket)
+        // Real bucket policy from ops/seed/seed-adversarial.sh (org-shared-data bucket)
         // Principal: "*", Effect: Allow, Condition: StringEquals aws:PrincipalOrgID = "o-myorg"
         let policy_json = r#"{
   "Version": "2012-10-17",

@@ -35,7 +35,7 @@ This installs pre-commit hooks and validates your environment. If any tool is mi
 Build the Activable GraphQL server Docker image for your local Kubernetes:
 
 ```bash
-docker build -t activable-server:dev -f deploy/docker/Dockerfile .
+docker build -t activable-server:dev -f ops/docker/Dockerfile .
 ```
 
 This creates a local image tagged `activable-server:dev` that Kubernetes will use without pulling from a registry.
@@ -45,8 +45,8 @@ This creates a local image tagged `activable-server:dev` that Kubernetes will us
 Deploy the entire stack (Postgres+AGE, LocalStack v4.7, Activable GraphQL server) using Helm:
 
 ```bash
-helm upgrade --install activable deploy/helm/activable \
-  -f deploy/helm/activable/values-local.yaml \
+helm upgrade --install activable ops/helm/activable \
+  -f ops/helm/activable/values-local.yaml \
   --wait --timeout 300s
 ```
 
@@ -92,7 +92,7 @@ Run the seed script to populate LocalStack with test IAM resources and relations
 
 ```bash
 export AWS_ENDPOINT_URL="http://localhost:30866"
-bash deploy/scripts/seed-adversarial.sh
+bash ops/seed/seed-adversarial.sh
 ```
 
 **Note:** The endpoint URL depends on how LocalStack is exposed. In Kubernetes:
@@ -435,7 +435,7 @@ This indicates the multi-account routing is not working. Verify:
 2. Re-run the seed script with explicit endpoint URL:
    ```bash
    export AWS_ENDPOINT_URL="http://activable-localstack:4566"  # Use K8s internal DNS
-   bash deploy/scripts/seed-adversarial.sh
+   bash ops/seed/seed-adversarial.sh
    ```
 
 3. Check LocalStack's startup logs for multi-account initialization:

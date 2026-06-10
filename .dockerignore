@@ -2,7 +2,7 @@
 target/
 target-linux/
 **/target/
-# Allow the pre-built cross-compiled binary required by deploy/docker/Dockerfile
+# Allow the pre-built cross-compiled binary required by ops/docker/Dockerfile
 !target/aarch64-unknown-linux-gnu/release-fast/activable-graphql
 
 # Git
@@ -25,17 +25,11 @@ docs/
 # CI / dev tooling
 .github/
 .claude/
-infra/
+ops/
 scripts/
 
-# Tests / spike
+# Tests
 tests/
-spike/
 
 # Bindings (generated)
 bindings/
-
-# Go (legacy)
-go/
-go.mod
-go.sum

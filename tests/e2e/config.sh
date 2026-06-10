@@ -52,9 +52,9 @@ ACCOUNT_SECRETS="444444444444"
 # ============================================================================
 # Seed Job Configuration
 # ============================================================================
-# Path to the seed Job manifest (ConfigMap + Job).
-# MUST be renamed from floci-seed-job.yaml to seed-adversarial-job.yaml.
-SEED_JOB_MANIFEST="${SEED_JOB_MANIFEST:-deploy/k8s/seed-adversarial-job.yaml}"
+# Path to the seed Job manifest (Job only — the ConfigMap is generated
+# dynamically by seed.sh from ops/seed/seed-adversarial.sh, the single source).
+SEED_JOB_MANIFEST="${SEED_JOB_MANIFEST:-ops/k8s/seed-adversarial-job.yaml}"
 
 # ============================================================================
 # PostgreSQL Pod and Database Configuration

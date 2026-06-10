@@ -290,7 +290,7 @@ cargo test --lib activable-risk
 
 ### Step 6: Add a Seed Entity (Optional but Recommended)
 
-Update the seed script (`deploy/scripts/seed-adversarial.sh`) to create a test entity that triggers the new rule.
+Update the seed script (`ops/seed/seed-adversarial.sh`) to create a test entity that triggers the new rule.
 
 For example, if the rule detects a risk in S3 bucket notifications:
 
@@ -487,7 +487,7 @@ If you want to implement any of these, follow the steps above and open a pull re
 | `crates/activable-risk/config/escalation-paths/bundled/*.yaml` | Rule definitions | Yes — add new rules here |
 | `crates/activable-risk/src/rule_loader.rs` | Rule loading logic | No — rule format is defined here |
 | `crates/activable-risk/src/rule_engine.rs` | Rule matching engine | No — don't modify matching logic without discussion |
-| `deploy/scripts/seed-adversarial.sh` | Test scenario seed | Yes — add test entities for your rule |
+| `ops/seed/seed-adversarial.sh` | Test scenario seed | Yes — add test entities for your rule |
 | `crates/activable-graphql/tests/e2e_adversarial.rs` | E2E test assertions | Yes — add assertions for your rule |
 | `docs/operations/runbook-detection-failures.md` | On-call runbook | Yes — document your rule's failure modes |
 
