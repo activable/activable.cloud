@@ -193,7 +193,7 @@ UniFFI provides a type-safe, in-process boundary between Go and Rust. The follow
 
 **Graph queries:**
 - `find_node(graph: String, label: String, id: String) → Node` — fetch a single node by ID and label
-- `walk_edges(graph: String, start: String, edge_types: Vec<String>, direction: Direction, depth_limit: u8) → Stream<Node>` — enumerate neighbors via specific edge types
+- `walk_edges(graph: String, start: String, edge_types: Vec<String>, direction: Direction, result_limit: u8) → Stream<Node>` — enumerate up to `result_limit` one-hop neighbors via specific edge types
 - `path_finder(graph: String, start: String, end: String, edge_types: Vec<String>, max_hops: u8) → Vec<Path>` — find all paths between two nodes
 - `shortest_path_length(graph: String, start: String, end: String, max_hops: u8) → u32` — compute the shortest path distance
 - `subgraph_extractor(graph: String, root: String, depth: u8) → Subgraph` — extract a connected subgraph rooted at a node
@@ -311,7 +311,7 @@ Latency measurements from the integration benchmark on synthetic 100k-node AWS I
 | Primitive | Purpose | Signature | Latency (p95) | Exposure |
 |-----------|---------|-----------|---------------|----------|
 | `find_node` | Fetch a single node by ARN | `find_node(label: &str, id: &NodeId) → Node` | 532 ms | FFI, CLI |
-| `walk_edges` | Enumerate neighbors (depth-limited, streaming) | `walk_edges(start, edge_types, direction, depth) → Stream<Node>` | 94 ms / page | FFI, CLI |
+| `walk_edges` | Enumerate one-hop neighbors (result-limited, streaming) | `walk_edges(start, edge_types, direction, result_limit) → Stream<Node>` | 94 ms / page | FFI, CLI |
 | `path_finder` | Find all simple paths between two nodes | `path_finder(start, end, edge_types, max_hops) → Vec<Path>` | ~1–10 ms per path | FFI, GraphQL |
 | `shortest_path_length` | Compute shortest-path distance | `shortest_path_length(start, end, max_hops) → u32` | 0.4 ms | FFI, CLI |
 | `subgraph_extractor` | Extract a connected subgraph rooted at a node | `subgraph_extractor(root, depth) → Subgraph` | 5–50 ms | FFI, GraphQL |

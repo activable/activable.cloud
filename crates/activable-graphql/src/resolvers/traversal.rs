@@ -8,6 +8,9 @@ use async_graphql::Context;
 use futures::StreamExt;
 
 const MAX_EDGE_TYPES: usize = 10;
+// Equal values, distinct meanings — do not unify: MAX_DEPTH bounds multi-hop
+// traversal in blastRadius; MAX_WALK_RESULTS caps the one-hop result count
+// in walkEdges.
 const MAX_DEPTH: i32 = 10;
 const MAX_WALK_RESULTS: i32 = 10;
 

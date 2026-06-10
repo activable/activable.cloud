@@ -139,10 +139,11 @@ async fn walk_edges_two_types_filters_and_does_not_error() {
     };
 
     let graph = "test_walk_multi_graph";
-    if !setup_star_graph(&pool, graph).await {
-        println!("Skipping: setup failed");
-        return;
-    }
+    assert!(
+        setup_star_graph(&pool, graph).await,
+        "star graph setup failed — AGE_TEST_URL is set but the graph could not be \
+         prepared (check the AGE extension and create_graph permissions)"
+    );
     let client = GraphClient::new(pool.clone(), graph);
 
     // Regression: this errored with an AGE syntax error when the builder
@@ -171,10 +172,11 @@ async fn walk_edges_single_type_still_filters() {
     };
 
     let graph = "test_walk_single_graph";
-    if !setup_star_graph(&pool, graph).await {
-        println!("Skipping: setup failed");
-        return;
-    }
+    assert!(
+        setup_star_graph(&pool, graph).await,
+        "star graph setup failed — AGE_TEST_URL is set but the graph could not be \
+         prepared (check the AGE extension and create_graph permissions)"
+    );
     let client = GraphClient::new(pool.clone(), graph);
 
     let ids = collect_walk(&client, "star:alice", &["MemberOf"])
@@ -197,10 +199,11 @@ async fn blast_radius_single_type_actually_filters() {
     };
 
     let graph = "test_blast_typed_graph";
-    if !setup_star_graph(&pool, graph).await {
-        println!("Skipping: setup failed");
-        return;
-    }
+    assert!(
+        setup_star_graph(&pool, graph).await,
+        "star graph setup failed — AGE_TEST_URL is set but the graph could not be \
+         prepared (check the AGE extension and create_graph permissions)"
+    );
     let client = GraphClient::new(pool.clone(), graph);
 
     // Regression: the builder previously generated [CanAssume*1..2] (no colon),

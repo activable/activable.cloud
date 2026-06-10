@@ -10,7 +10,7 @@ Before implementing, decide between:
    - The operation is reusable across multiple CLI subcommands or API endpoints.
    - The operation has a clear semantic meaning ("find paths", "walk edges", "count reachable nodes").
    - You'll expose it via CLI, REST API, or GraphQL.
-   - **Examples:** `path_finder` (find all paths between two nodes), `walk_edges` (enumerate neighbors at depth N), `subgraph_extraction` (collect a connected subgraph).
+   - **Examples:** `path_finder` (find all paths between two nodes), `walk_edges` (enumerate up to N one-hop neighbors), `subgraph_extraction` (collect a connected subgraph).
 
 2. **Use `.cypher()` escape hatch** if:
    - The operation is one-off or highly specialized (e.g., "list all principals without access keys").
@@ -185,9 +185,9 @@ impl GraphClient {
       start: &NodeId,
       edge_types: &[&str],
       direction: Direction,
-      depth_limit: u8,
+      result_limit: u8,
   ) -> Result<impl futures::Stream<Item = Result<Node, GraphError>>, GraphError> {
-      let query = self.builder.walk_edges(start, edge_types, direction, depth_limit)?;
+      let query = self.builder.walk_edges(start, edge_types, direction, result_limit)?;
       let conn = self.pool.get_connection().await?;
       let rows = conn.query(&query, &[]).await?;
 
