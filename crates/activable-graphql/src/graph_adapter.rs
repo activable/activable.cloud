@@ -168,6 +168,50 @@ impl GraphQueryService for InMemoryGraphService {
             .insert(principal_id.to_string(), assessment_json.to_string());
         Ok(())
     }
+
+    async fn list_account_principals(&self, account_id: &str) -> Result<Vec<String>, SignalError> {
+        let store = self
+            .principals
+            .read()
+            .map_err(|e| Box::new(GraphQueryError(format!("lock failed: {}", e))) as SignalError)?;
+        let prefix = format!("arn:aws:iam::{}:", account_id);
+        let ids: Vec<String> = store
+            .principal_ids
+            .iter()
+            .filter(|id| id.starts_with(&prefix))
+            .cloned()
+            .collect();
+        Ok(ids)
+    }
+
+    async fn query_oidc_providers(
+        &self,
+        _account_id: &str,
+    ) -> Result<Vec<activable_risk::signals::OidcProviderRow>, SignalError> {
+        Ok(Vec::new())
+    }
+
+    async fn query_kms_key(
+        &self,
+        _key_arn: &str,
+        _key_uuid: &str,
+    ) -> Result<Option<activable_risk::signals::KmsKeyRow>, SignalError> {
+        Ok(None)
+    }
+
+    async fn query_bucket_policy(
+        &self,
+        _bucket_name: &str,
+    ) -> Result<Option<activable_risk::signals::ResourcePolicyRow>, SignalError> {
+        Ok(None)
+    }
+
+    async fn query_key_resource_policy(
+        &self,
+        _key_id: &str,
+    ) -> Result<Option<activable_risk::signals::ResourcePolicyRow>, SignalError> {
+        Ok(None)
+    }
 }
 
 #[cfg(test)]

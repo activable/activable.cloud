@@ -207,6 +207,42 @@ mod tests {
         ) -> Result<(), SignalError> {
             Ok(())
         }
+
+        async fn list_account_principals(
+            &self,
+            _account_id: &str,
+        ) -> Result<Vec<String>, SignalError> {
+            Ok(Vec::new())
+        }
+
+        async fn query_oidc_providers(
+            &self,
+            _account_id: &str,
+        ) -> Result<Vec<crate::signals::OidcProviderRow>, SignalError> {
+            Ok(Vec::new())
+        }
+
+        async fn query_kms_key(
+            &self,
+            _key_arn: &str,
+            _key_uuid: &str,
+        ) -> Result<Option<crate::signals::KmsKeyRow>, SignalError> {
+            Ok(None)
+        }
+
+        async fn query_bucket_policy(
+            &self,
+            _bucket_name: &str,
+        ) -> Result<Option<crate::signals::ResourcePolicyRow>, SignalError> {
+            Ok(None)
+        }
+
+        async fn query_key_resource_policy(
+            &self,
+            _key_id: &str,
+        ) -> Result<Option<crate::signals::ResourcePolicyRow>, SignalError> {
+            Ok(None)
+        }
     }
 
     #[tokio::test]

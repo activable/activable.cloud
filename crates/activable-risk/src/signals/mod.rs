@@ -56,8 +56,36 @@ impl std::fmt::Display for GraphQueryError {
 
 impl Error for GraphQueryError {}
 
-/// Abstraction over graph query operations needed by signals.
-/// Real implementation wraps GraphClient; mock for unit tests.
+/// A row returned from an OIDC provider query.
+/// Fields: provider_id, provider_name, aud (audience claim), sub (subject claim).
+#[derive(Debug, Clone)]
+pub struct OidcProviderRow {
+    pub provider_id: String,
+    pub provider_name: String,
+    pub aud: String,
+    pub sub: String,
+}
+
+/// A row returned from a KMS key query.
+/// Fields: key_arn, policy_document (JSON string or None), grantable_principal_ids.
+#[derive(Debug, Clone)]
+pub struct KmsKeyRow {
+    pub key_arn: String,
+    pub policy_document: Option<String>,
+    pub grantable_principal_ids: Vec<String>,
+}
+
+/// A row returned from a resource policy query (bucket or KMS key).
+/// Fields: resource_arn, policy_document (JSON string or None), consuming_principal_ids.
+#[derive(Debug, Clone)]
+pub struct ResourcePolicyRow {
+    pub resource_arn: String,
+    pub policy_document: Option<String>,
+    pub consuming_principal_ids: Vec<String>,
+}
+
+/// Abstraction over graph query operations needed by signals and domain services.
+/// Real implementation wraps GraphClient; in-memory implementation for tests.
 #[async_trait]
 pub trait GraphQueryService: Send + Sync {
     /// Count reachable nodes from principal within max_hops via outgoing edges
@@ -94,6 +122,52 @@ pub trait GraphQueryService: Send + Sync {
         principal_id: &str,
         assessment_json: &str,
     ) -> Result<(), SignalError>;
+
+    // -------------------------------------------------------------------------
+    // Extended query methods used by domain risk services.
+    // These cover multi-column graph queries beyond signal computation.
+    // -------------------------------------------------------------------------
+
+    /// List principals belonging to an account.
+    ///
+    /// First attempts via explicit HasPrincipal edges from the Account node.
+    /// Falls back to ARN-prefix matching when no HasPrincipal edges exist.
+    /// Returns an empty Vec (not an error) when neither strategy finds results.
+    async fn list_account_principals(&self, account_id: &str) -> Result<Vec<String>, SignalError>;
+
+    /// Query OIDC providers attached to an account.
+    ///
+    /// Returns an empty Vec when no OidcProvider schema exists or no providers
+    /// are configured. Empty is not an error; callers treat it as "not enabled."
+    async fn query_oidc_providers(
+        &self,
+        account_id: &str,
+    ) -> Result<Vec<OidcProviderRow>, SignalError>;
+
+    /// Look up a KMS key by both its full ARN and its bare UUID.
+    ///
+    /// Returns None when not found.
+    async fn query_kms_key(
+        &self,
+        key_arn: &str,
+        key_uuid: &str,
+    ) -> Result<Option<KmsKeyRow>, SignalError>;
+
+    /// Query resource policy for an S3 bucket by name.
+    ///
+    /// Returns None when the bucket is not present in the graph.
+    async fn query_bucket_policy(
+        &self,
+        bucket_name: &str,
+    ) -> Result<Option<ResourcePolicyRow>, SignalError>;
+
+    /// Query resource policy for a KMS key (by ARN or UUID).
+    ///
+    /// Returns None when the key is not present in the graph.
+    async fn query_key_resource_policy(
+        &self,
+        key_id: &str,
+    ) -> Result<Option<ResourcePolicyRow>, SignalError>;
 }
 
 /// Normalization: log-scale capped by maximum
@@ -143,7 +217,7 @@ pub mod test_fixtures {
     use super::*;
     use std::collections::HashMap;
 
-    /// Mock graph service for unit tests
+    /// In-memory graph service for unit tests.
     pub struct MockGraphQueryService {
         pub reachable_counts: HashMap<String, u64>,
         pub shortest_paths: HashMap<String, Option<u32>>,
@@ -151,6 +225,11 @@ pub mod test_fixtures {
         pub principal_ids: Vec<String>,
         pub effective_permissions: HashMap<String, Vec<(String, String)>>,
         pub risk_assessments: std::sync::Mutex<HashMap<String, String>>,
+        pub account_principals: HashMap<String, Vec<String>>,
+        pub oidc_providers: HashMap<String, Vec<OidcProviderRow>>,
+        pub kms_keys: HashMap<String, KmsKeyRow>,
+        pub bucket_policies: HashMap<String, ResourcePolicyRow>,
+        pub key_resource_policies: HashMap<String, ResourcePolicyRow>,
     }
 
     impl MockGraphQueryService {
@@ -162,6 +241,11 @@ pub mod test_fixtures {
                 principal_ids: Vec::new(),
                 effective_permissions: HashMap::new(),
                 risk_assessments: std::sync::Mutex::new(HashMap::new()),
+                account_principals: HashMap::new(),
+                oidc_providers: HashMap::new(),
+                kms_keys: HashMap::new(),
+                bucket_policies: HashMap::new(),
+                key_resource_policies: HashMap::new(),
             }
         }
 
@@ -191,6 +275,39 @@ pub mod test_fixtures {
             perms: Vec<(String, String)>,
         ) -> Self {
             self.effective_permissions.insert(principal_id, perms);
+            self
+        }
+
+        pub fn with_account_principals(
+            mut self,
+            account_id: String,
+            principals: Vec<String>,
+        ) -> Self {
+            self.account_principals.insert(account_id, principals);
+            self
+        }
+
+        pub fn with_oidc_providers(
+            mut self,
+            account_id: String,
+            providers: Vec<OidcProviderRow>,
+        ) -> Self {
+            self.oidc_providers.insert(account_id, providers);
+            self
+        }
+
+        pub fn with_kms_key(mut self, key_arn: String, row: KmsKeyRow) -> Self {
+            self.kms_keys.insert(key_arn, row);
+            self
+        }
+
+        pub fn with_bucket_policy(mut self, bucket_name: String, row: ResourcePolicyRow) -> Self {
+            self.bucket_policies.insert(bucket_name, row);
+            self
+        }
+
+        pub fn with_key_resource_policy(mut self, key_id: String, row: ResourcePolicyRow) -> Self {
+            self.key_resource_policies.insert(key_id, row);
             self
         }
     }
@@ -266,6 +383,58 @@ pub mod test_fixtures {
             })?;
             assessments.insert(principal_id.to_string(), assessment_json.to_string());
             Ok(())
+        }
+
+        async fn list_account_principals(
+            &self,
+            account_id: &str,
+        ) -> Result<Vec<String>, SignalError> {
+            // Return explicitly registered account principals if present
+            if let Some(principals) = self.account_principals.get(account_id) {
+                return Ok(principals.clone());
+            }
+            // ARN-prefix fallback: scan global principal_ids
+            let prefix = format!("arn:aws:iam::{}:", account_id);
+            let found: Vec<String> = self
+                .principal_ids
+                .iter()
+                .filter(|id| id.starts_with(&prefix))
+                .cloned()
+                .collect();
+            Ok(found)
+        }
+
+        async fn query_oidc_providers(
+            &self,
+            account_id: &str,
+        ) -> Result<Vec<OidcProviderRow>, SignalError> {
+            Ok(self
+                .oidc_providers
+                .get(account_id)
+                .cloned()
+                .unwrap_or_default())
+        }
+
+        async fn query_kms_key(
+            &self,
+            key_arn: &str,
+            _key_uuid: &str,
+        ) -> Result<Option<KmsKeyRow>, SignalError> {
+            Ok(self.kms_keys.get(key_arn).cloned())
+        }
+
+        async fn query_bucket_policy(
+            &self,
+            bucket_name: &str,
+        ) -> Result<Option<ResourcePolicyRow>, SignalError> {
+            Ok(self.bucket_policies.get(bucket_name).cloned())
+        }
+
+        async fn query_key_resource_policy(
+            &self,
+            key_id: &str,
+        ) -> Result<Option<ResourcePolicyRow>, SignalError> {
+            Ok(self.key_resource_policies.get(key_id).cloned())
         }
     }
 }

@@ -314,6 +314,299 @@ impl GraphQueryService for GraphClientAdapter {
 
         Ok(())
     }
+
+    /// List principals belonging to an account.
+    ///
+    /// First tries HasPrincipal edges from the Account node. Falls back to
+    /// scanning principals by ARN prefix when no edges are found.
+    async fn list_account_principals(&self, account_id: &str) -> Result<Vec<String>, SignalError> {
+        let escaped_account = activable_graph::query_builder::escape_cypher(account_id);
+
+        // Primary path: HasPrincipal edges from Account node.
+        let cypher_primary = format!(
+            "MATCH (a:Account {{id: '{}'}})-[:HasPrincipal]->(p:Principal) RETURN p.id",
+            escaped_account
+        );
+
+        let primary_results = self.client.cypher(&cypher_primary).await.map_err(|e| {
+            Box::new(GraphQueryError(format!(
+                "list_account_principals (primary) failed for account '{}': {}",
+                account_id, e
+            ))) as SignalError
+        })?;
+
+        let ids_primary: Vec<String> = primary_results
+            .iter()
+            .filter_map(|v| v.as_str().map(|s| s.to_string()))
+            .collect();
+
+        if !ids_primary.is_empty() {
+            tracing::trace!(
+                account_id = account_id,
+                count = ids_primary.len(),
+                "list_account_principals via HasPrincipal edges"
+            );
+            return Ok(ids_primary);
+        }
+
+        // Fallback: ARN-prefix scan.
+        let arn_prefix = format!("arn:aws:iam::{}:", account_id);
+        let escaped_prefix = activable_graph::query_builder::escape_cypher(&arn_prefix);
+        let cypher_fallback = format!(
+            "MATCH (p:Principal) WHERE p.id STARTS WITH '{}' RETURN p.id",
+            escaped_prefix
+        );
+
+        let fallback_results = self.client.cypher(&cypher_fallback).await.map_err(|e| {
+            Box::new(GraphQueryError(format!(
+                "list_account_principals (fallback) failed for account '{}': {}",
+                account_id, e
+            ))) as SignalError
+        })?;
+
+        let ids_fallback: Vec<String> = fallback_results
+            .iter()
+            .filter_map(|v| v.as_str().map(|s| s.to_string()))
+            .collect();
+
+        tracing::trace!(
+            account_id = account_id,
+            count = ids_fallback.len(),
+            "list_account_principals via ARN-prefix fallback"
+        );
+
+        Ok(ids_fallback)
+    }
+
+    /// Query OIDC providers attached to an account node.
+    async fn query_oidc_providers(
+        &self,
+        account_id: &str,
+    ) -> Result<Vec<activable_risk::signals::OidcProviderRow>, SignalError> {
+        let escaped_account = activable_graph::query_builder::escape_cypher(account_id);
+
+        let cypher = format!(
+            r#"MATCH (a:Account {{id: '{account}'}})
+               OPTIONAL MATCH (a)-[:HasOidcProvider]->(o:OidcProvider)
+               RETURN o.id, o.name, o.aud, o.sub"#,
+            account = escaped_account
+        );
+
+        let results = self
+            .client
+            .cypher_multi_column(&cypher, 4)
+            .await
+            .map_err(|e| {
+                Box::new(GraphQueryError(format!(
+                    "query_oidc_providers failed for account '{}': {}",
+                    account_id, e
+                ))) as SignalError
+            })?;
+
+        let rows: Vec<activable_risk::signals::OidcProviderRow> = results
+            .iter()
+            .filter_map(|row| {
+                if row.len() < 4 {
+                    return None;
+                }
+                // Skip rows where the OidcProvider node is null (no providers)
+                if row[0].is_null() {
+                    return None;
+                }
+                Some(activable_risk::signals::OidcProviderRow {
+                    provider_id: row[0].as_str().unwrap_or("").to_string(),
+                    provider_name: row[1].as_str().unwrap_or("").to_string(),
+                    aud: row[2].as_str().unwrap_or("").to_string(),
+                    sub: row[3].as_str().unwrap_or("").to_string(),
+                })
+            })
+            .collect();
+
+        tracing::trace!(
+            account_id = account_id,
+            count = rows.len(),
+            "query_oidc_providers retrieved"
+        );
+
+        Ok(rows)
+    }
+
+    /// Look up a KMS key by both its full ARN and its bare UUID.
+    async fn query_kms_key(
+        &self,
+        key_arn: &str,
+        key_uuid: &str,
+    ) -> Result<Option<activable_risk::signals::KmsKeyRow>, SignalError> {
+        let escaped_arn = activable_graph::query_builder::escape_cypher(key_arn);
+        let escaped_uuid = activable_graph::query_builder::escape_cypher(key_uuid);
+
+        let cypher = format!(
+            r#"MATCH (k:KmsKey)
+               WHERE k.id = '{arn}' OR k.key_id = '{uuid}'
+               OPTIONAL MATCH (k)-[:HasKeyPolicy]->(p:Policy)
+               OPTIONAL MATCH (k)-[:ActsOn]->(grantee:Principal)
+               RETURN k.id, p.document, collect(DISTINCT grantee.id)"#,
+            arn = escaped_arn,
+            uuid = escaped_uuid
+        );
+
+        let results = self
+            .client
+            .cypher_multi_column(&cypher, 3)
+            .await
+            .map_err(|e| {
+                Box::new(GraphQueryError(format!(
+                    "query_kms_key failed for key_arn='{}': {}",
+                    key_arn, e
+                ))) as SignalError
+            })?;
+
+        if results.is_empty() {
+            return Ok(None);
+        }
+
+        let row = &results[0];
+        if row.len() < 3 || row[0].is_null() {
+            return Ok(None);
+        }
+
+        let resolved_arn = row[0].as_str().unwrap_or(key_arn).to_string();
+        let policy_document = row[1].as_str().map(|s| s.to_string());
+        let grantable_ids: Vec<String> = row[2]
+            .as_array()
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        tracing::trace!(key_arn = key_arn, "query_kms_key retrieved");
+
+        Ok(Some(activable_risk::signals::KmsKeyRow {
+            key_arn: resolved_arn,
+            policy_document,
+            grantable_principal_ids: grantable_ids,
+        }))
+    }
+
+    /// Query resource policy for an S3 bucket by name.
+    async fn query_bucket_policy(
+        &self,
+        bucket_name: &str,
+    ) -> Result<Option<activable_risk::signals::ResourcePolicyRow>, SignalError> {
+        let escaped_name = activable_graph::query_builder::escape_cypher(bucket_name);
+
+        let cypher = format!(
+            r#"MATCH (b:Bucket)
+               WHERE b.name = '{name}'
+               OPTIONAL MATCH (b)-[:HasBucketPolicy]->(p:Policy)
+               OPTIONAL MATCH (b)-[:AllowsAccessFrom]->(consumer:Principal)
+               RETURN b.id, p.document, collect(DISTINCT consumer.id)"#,
+            name = escaped_name
+        );
+
+        let results = self
+            .client
+            .cypher_multi_column(&cypher, 3)
+            .await
+            .map_err(|e| {
+                Box::new(GraphQueryError(format!(
+                    "query_bucket_policy failed for bucket '{}': {}",
+                    bucket_name, e
+                ))) as SignalError
+            })?;
+
+        if results.is_empty() {
+            return Ok(None);
+        }
+
+        let row = &results[0];
+        if row.len() < 3 || row[0].is_null() {
+            return Ok(None);
+        }
+
+        let resource_arn = row[0]
+            .as_str()
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| format!("arn:aws:s3:::{}", bucket_name));
+        let policy_document = row[1].as_str().map(|s| s.to_string());
+        let consuming_ids: Vec<String> = row[2]
+            .as_array()
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        tracing::trace!(bucket_name = bucket_name, "query_bucket_policy retrieved");
+
+        Ok(Some(activable_risk::signals::ResourcePolicyRow {
+            resource_arn,
+            policy_document,
+            consuming_principal_ids: consuming_ids,
+        }))
+    }
+
+    /// Query resource policy for a KMS key (by ARN or UUID).
+    async fn query_key_resource_policy(
+        &self,
+        key_id: &str,
+    ) -> Result<Option<activable_risk::signals::ResourcePolicyRow>, SignalError> {
+        let escaped_key = activable_graph::query_builder::escape_cypher(key_id);
+
+        let cypher = format!(
+            r#"MATCH (k:KmsKey)
+               WHERE k.id = '{key_id}' OR k.key_id = '{key_id}'
+               OPTIONAL MATCH (k)-[:HasKeyPolicy]->(p:Policy)
+               OPTIONAL MATCH (k)-[:AllowsAccessFrom]->(user:Principal)
+               RETURN k.id, p.document, collect(DISTINCT user.id)"#,
+            key_id = escaped_key
+        );
+
+        let results = self
+            .client
+            .cypher_multi_column(&cypher, 3)
+            .await
+            .map_err(|e| {
+                Box::new(GraphQueryError(format!(
+                    "query_key_resource_policy failed for key '{}': {}",
+                    key_id, e
+                ))) as SignalError
+            })?;
+
+        if results.is_empty() {
+            return Ok(None);
+        }
+
+        let row = &results[0];
+        if row.len() < 3 || row[0].is_null() {
+            return Ok(None);
+        }
+
+        let resource_arn = row[0]
+            .as_str()
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| format!("arn:aws:kms:us-east-1:000000000000:key/{}", key_id));
+        let policy_document = row[1].as_str().map(|s| s.to_string());
+        let consuming_ids: Vec<String> = row[2]
+            .as_array()
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        tracing::trace!(key_id = key_id, "query_key_resource_policy retrieved");
+
+        Ok(Some(activable_risk::signals::ResourcePolicyRow {
+            resource_arn,
+            policy_document,
+            consuming_principal_ids: consuming_ids,
+        }))
+    }
 }
 
 #[cfg(test)]

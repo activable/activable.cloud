@@ -8,6 +8,7 @@ pub mod rule_engine;
 pub mod rule_loader;
 pub mod scorer;
 pub mod service_catalog;
+pub mod services;
 pub mod signals;
 pub mod stale_checker;
 pub mod types;
@@ -29,6 +30,19 @@ pub use scorer::score_principal;
 pub use service_catalog::{
     assess_expansion_impact, builtin_catalog, compute_expansion_score, create_snapshot,
     diff_catalogs, ActionCatalogSnapshot, CatalogDiff, ExpansionImpact, ExpansionSeverity,
+};
+pub use services::{
+    assess_account_risk, assess_federation_risk, assess_key_management_risk,
+    assess_resource_policy_risk, categorize_rule, compute_grant_severity, compute_key_risk_score,
+    compute_resource_policy_score, evaluate_oidc_weakness, evaluate_trust_boundary,
+    extract_account_from_key_arn,
+    extract_account_id_from_principal_arn as extract_account_id_from_arn,
+    extract_resource_account_id_from_arn, normalize_key_id, parse_key_policy,
+    parse_resource_policy, AccountCategorySignals, AccountRiskResult, CategorySignal,
+    CreateGrantRisk, CrossAccountAccess, EvaluatedOidcProvider, FederationRiskResult,
+    KeyManagementRiskResult, KeyPolicy, KeyPolicyStatement, KeyRiskError, KeyRiskSeverity,
+    PrincipalRiskSummary, ResourcePolicy, ResourcePolicyError, ResourcePolicyRiskResult,
+    ResourcePolicySeverity, ResourcePolicyStatement, RiskSeverity,
 };
 pub use signals::{
     BlastRadiusSignal, CrossAccountHopsSignal, DangerousActionCountSignal, GraphQueryService,

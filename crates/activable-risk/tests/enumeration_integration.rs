@@ -115,6 +115,50 @@ impl activable_risk::signals::GraphQueryService for TestGraphQueryService {
     ) -> Result<(), activable_risk::signals::SignalError> {
         Ok(())
     }
+
+    async fn list_account_principals(
+        &self,
+        _account_id: &str,
+    ) -> Result<Vec<String>, activable_risk::signals::SignalError> {
+        Ok(Vec::new())
+    }
+
+    async fn query_oidc_providers(
+        &self,
+        _account_id: &str,
+    ) -> Result<Vec<activable_risk::signals::OidcProviderRow>, activable_risk::signals::SignalError>
+    {
+        Ok(Vec::new())
+    }
+
+    async fn query_kms_key(
+        &self,
+        _key_arn: &str,
+        _key_uuid: &str,
+    ) -> Result<Option<activable_risk::signals::KmsKeyRow>, activable_risk::signals::SignalError>
+    {
+        Ok(None)
+    }
+
+    async fn query_bucket_policy(
+        &self,
+        _bucket_name: &str,
+    ) -> Result<
+        Option<activable_risk::signals::ResourcePolicyRow>,
+        activable_risk::signals::SignalError,
+    > {
+        Ok(None)
+    }
+
+    async fn query_key_resource_policy(
+        &self,
+        _key_id: &str,
+    ) -> Result<
+        Option<activable_risk::signals::ResourcePolicyRow>,
+        activable_risk::signals::SignalError,
+    > {
+        Ok(None)
+    }
 }
 
 fn test_rule(id: &str, permissions: &[&str], tier: u8) -> EscalationRule {
