@@ -57,7 +57,7 @@ CURRENT_CONTEXT=$(kubectl config current-context)
 echo "Current kubectl context: $CURRENT_CONTEXT"
 
 case "$CURRENT_CONTEXT" in
-    docker-desktop|minikube|kind-*|localhost*|127.0.0.1*|local*|dev-*)
+    docker-desktop|minikube|kind-*|colima*|localhost*|127.0.0.1*|local*|dev-*)
         echo "✓ Context appears to be local (allowed)"
         ;;
     *)
