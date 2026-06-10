@@ -49,11 +49,16 @@ repos:
         types: [rust]
         pass_filenames: false
 
-  # Shell scripts
-  - repo: https://github.com/koalaman/shellcheck-precommit
-    rev: v0.11.0
+  # Shell scripts — system shellcheck (brew install shellcheck), matching the
+  # cargo hooks' language:system pattern. The upstream docker_image-based hook
+  # cannot see the repo on hosts whose container VM does not mount the repo
+  # path (e.g. colima without a /Volumes mount).
+  - repo: local
     hooks:
       - id: shellcheck
+        name: shellcheck
+        entry: shellcheck --severity=warning
+        language: system
         files: \.(sh|bash)$
 
   # Plan-taxonomy guard — prevents internal plan taxonomy from leaking into
@@ -66,6 +71,9 @@ repos:
         entry: scripts/check-no-plan-taxonomy.sh
         language: script
         pass_filenames: false
+        # The script inspects `git diff --cached`, which is only meaningful at
+        # commit time — at pre-push the staged set is empty by definition.
+        stages: [pre-commit]
 
   # DCO sign-off validation on commit message
   - repo: https://github.com/jorisroovers/gitlint
