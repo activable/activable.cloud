@@ -23,8 +23,11 @@ PATTERN='(slice-[a-z][^a-z]|Slice [A-Z][^A-Z]|phase-?[0-9]+|Phase [0-9]+|red-tea
 EXCLUDE_REGEX='^(\.claude/rules/|release-manifest\.json$|scripts/check-no-plan-taxonomy\.sh$)'
 
 # Get list of staged files (null-delimited for safety with special chars),
-# then strip excluded paths before grepping.
-STAGED=$(git diff --cached --name-only -z 2>/dev/null | tr '\0' '\n' | grep -vE "$EXCLUDE_REGEX" | tr '\n' '\0')
+# then strip excluded paths before grepping. The grep is guarded: under
+# `set -o pipefail`, grep's exit 1 on an empty staged set (or when every file
+# is excluded) would otherwise kill the script with a silent, message-less
+# failure instead of the intended clean pass.
+STAGED=$(git diff --cached --name-only -z 2>/dev/null | tr '\0' '\n' | { grep -vE "$EXCLUDE_REGEX" || true; } | tr '\n' '\0')
 
 if [ -z "$STAGED" ]; then
     exit 0
