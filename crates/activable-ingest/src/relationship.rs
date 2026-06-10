@@ -212,7 +212,7 @@ mod tests {
             .map(|r| r.name.as_str())
             .collect();
 
-        // Verify we have the three expected rules.
+        // Verify we have the expected rules.
         assert!(
             names.contains(&"lambda-execution-role"),
             "should have lambda-execution-role rule"
@@ -224,6 +224,10 @@ mod tests {
         assert!(
             names.contains(&"instance-security-group"),
             "should have instance-security-group rule"
+        );
+        assert!(
+            names.contains(&"permission-acts-on-secret"),
+            "should have permission-acts-on-secret rule"
         );
     }
 
@@ -241,6 +245,21 @@ mod tests {
         assert_eq!(rule.edge_type, "InVpc");
         assert!(!rule.from_property.is_empty());
         assert!(!rule.to_property.is_empty());
+    }
+
+    #[test]
+    fn test_permission_acts_on_secret_rule_loaded() {
+        let config = load_relationship_config().expect("failed to load config");
+        let rule = config
+            .relationships
+            .iter()
+            .find(|r| r.name == "permission-acts-on-secret")
+            .expect("permission-acts-on-secret rule should exist");
+        assert_eq!(rule.from_label, "Permission");
+        assert_eq!(rule.to_label, "Secret");
+        assert_eq!(rule.edge_type, "ActsOn");
+        assert_eq!(rule.from_property, "resource");
+        assert_eq!(rule.to_property, "id");
     }
 
     #[test]

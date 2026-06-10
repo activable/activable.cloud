@@ -28,7 +28,7 @@ spec:
         - name: LOCALSTACK_HOST
           value: {{ include "activable.fullname" . }}-localstack
         - name: SERVICES
-          value: "iam,sts,s3,ec2,lambda,kms,organizations,cloudformation"
+          value: "iam,sts,s3,ec2,lambda,kms,organizations,cloudformation,secretsmanager"
         - name: ALLOW_NONSTANDARD_REGIONS
           value: "1"
         - name: DEBUG

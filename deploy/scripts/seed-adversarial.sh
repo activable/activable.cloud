@@ -11,6 +11,7 @@
 #   2. GitHub Actions OIDC Configuration Drift
 #   3. S3 Bucket Policy Principal Boundary Confusion
 #   4. KMS CreateGrant Lateral Movement
+#   5. Secrets Manager Access Surface + Lambda Resource Policy
 #
 # Usage:
 #   export AWS_ENDPOINT_URL="http://activable-localstack:4566"
@@ -779,6 +780,219 @@ echo "✓ Scenario 4 complete: application-role (dev) → KMS key policy allows 
 echo ""
 
 ################################################################################
+# SCENARIO 5: Secrets Manager Access Surface + Lambda Resource Policy
+# Accounts: secrets (444444444444), external (999999999999 referenced only)
+#
+# Seeds the data needed to prove Secret/Function access edges end-to-end:
+#   - secret with the AWS-managed key (no KmsKeyId -> aws/secretsmanager)
+#   - secret encrypted with the Scenario-4 customer CMK
+#   - secret resource policy granting a SERVICE principal
+#   - secret resource policy granting a CROSS-ACCOUNT principal (999...:root)
+#   - secret resource policy with a restrictive aws:PrincipalOrgID condition
+#   - IAM role granted secretsmanager:GetSecretValue on the SPECIFIC secret ARN
+#   - IAM role granted secretsmanager:GetSecretValue on "*" (wildcard)
+#   - Lambda function with a resource policy (service + cross-account grants)
+################################################################################
+
+echo "--- Scenario 5: Secrets Manager Access Surface + Lambda Resource Policy ---"
+
+EXTERNAL_ACCOUNT="999999999999"
+
+# Helper: create secret if missing, always emit its ARN (idempotent)
+ensure_secret() {
+    local secret_name="$1"
+    shift
+    aws_in_account "$SECRETS_ACCOUNT" secretsmanager create-secret \
+        --name "$secret_name" "$@" >/dev/null 2>&1 || true
+    aws_in_account "$SECRETS_ACCOUNT" secretsmanager describe-secret \
+        --secret-id "$secret_name" --query 'ARN' --output text
+}
+
+# 5a. Secret with the AWS-managed key (no --kms-key-id)
+echo "Creating secret app-database-password (AWS-managed key)..."
+SECRET_AWS_MANAGED_ARN=$(ensure_secret "app-database-password" \
+    --secret-string '{"username":"app","password":"seed-test-value"}')
+echo "  ARN: $SECRET_AWS_MANAGED_ARN"
+
+# 5b. Secret encrypted with the Scenario-4 customer CMK
+echo "Creating secret org-master-api-key (customer CMK)..."
+SECRET_CMK_ARN=$(ensure_secret "org-master-api-key" \
+    --secret-string 'seed-test-api-key' \
+    --kms-key-id "$KMS_KEY_ID")
+echo "  ARN: $SECRET_CMK_ARN"
+
+# Resource policy: CROSS-ACCOUNT principal (external account root)
+aws_in_account "$SECRETS_ACCOUNT" secretsmanager put-resource-policy \
+    --secret-id "org-master-api-key" \
+    --resource-policy '{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AllowExternalAccountRead",
+      "Effect": "Allow",
+      "Principal": {
+        "AWS": "arn:aws:iam::'"$EXTERNAL_ACCOUNT"':root"
+      },
+      "Action": "secretsmanager:GetSecretValue",
+      "Resource": "*"
+    }
+  ]
+}' >/dev/null
+
+# 5c. Secret with a SERVICE-principal resource policy
+echo "Creating secret ci-deploy-token (service-principal policy)..."
+SECRET_SERVICE_ARN=$(ensure_secret "ci-deploy-token" \
+    --secret-string 'seed-test-token')
+echo "  ARN: $SECRET_SERVICE_ARN"
+
+aws_in_account "$SECRETS_ACCOUNT" secretsmanager put-resource-policy \
+    --secret-id "ci-deploy-token" \
+    --resource-policy '{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AllowLambdaServiceRead",
+      "Effect": "Allow",
+      "Principal": {
+        "Service": "lambda.amazonaws.com"
+      },
+      "Action": "secretsmanager:GetSecretValue",
+      "Resource": "*"
+    }
+  ]
+}' >/dev/null
+
+# 5d. Secret with a restrictive Condition (aws:PrincipalOrgID)
+echo "Creating secret org-restricted-secret (org-ID condition policy)..."
+SECRET_CONDITION_ARN=$(ensure_secret "org-restricted-secret" \
+    --secret-string 'seed-test-restricted')
+echo "  ARN: $SECRET_CONDITION_ARN"
+
+aws_in_account "$SECRETS_ACCOUNT" secretsmanager put-resource-policy \
+    --secret-id "org-restricted-secret" \
+    --resource-policy '{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AllowOrgWideRead",
+      "Effect": "Allow",
+      "Principal": "*",
+      "Action": "secretsmanager:GetSecretValue",
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "aws:PrincipalOrgID": "o-myorg"
+        }
+      }
+    }
+  ]
+}' >/dev/null
+
+# 5e. IAM role with GetSecretValue on the SPECIFIC secret ARN
+echo "Creating secrets-reader-role (specific-ARN grant) in secrets account..."
+delete_role_safe "$SECRETS_ACCOUNT" "secrets-reader-role" 2>/dev/null || true
+aws_in_account "$SECRETS_ACCOUNT" iam create-role \
+    --role-name "secrets-reader-role" \
+    --assume-role-policy-document '{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "AWS": "arn:aws:iam::'"$SECRETS_ACCOUNT"':root"
+      },
+      "Action": "sts:AssumeRole"
+    }
+  ]
+}' 2>/dev/null || true
+
+aws_in_account "$SECRETS_ACCOUNT" iam put-role-policy \
+    --role-name "secrets-reader-role" \
+    --policy-name "read-org-master-api-key" \
+    --policy-document '{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ReadSpecificSecret",
+      "Effect": "Allow",
+      "Action": [
+        "secretsmanager:GetSecretValue",
+        "secretsmanager:DescribeSecret"
+      ],
+      "Resource": "'"$SECRET_CMK_ARN"'"
+    }
+  ]
+}'
+
+# 5f. IAM role with GetSecretValue on "*" (wildcard — must NOT explode the graph)
+echo "Creating secrets-admin-role (wildcard grant) in secrets account..."
+delete_role_safe "$SECRETS_ACCOUNT" "secrets-admin-role" 2>/dev/null || true
+aws_in_account "$SECRETS_ACCOUNT" iam create-role \
+    --role-name "secrets-admin-role" \
+    --assume-role-policy-document '{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "AWS": "arn:aws:iam::'"$SECRETS_ACCOUNT"':root"
+      },
+      "Action": "sts:AssumeRole"
+    }
+  ]
+}' 2>/dev/null || true
+
+aws_in_account "$SECRETS_ACCOUNT" iam put-role-policy \
+    --role-name "secrets-admin-role" \
+    --policy-name "manage-all-secrets" \
+    --policy-document '{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ManageAllSecrets",
+      "Effect": "Allow",
+      "Action": "secretsmanager:GetSecretValue",
+      "Resource": "*"
+    }
+  ]
+}'
+
+# 5g. Lambda function with a resource policy (service + cross-account grants)
+echo "Creating Lambda function data-processor with resource policy..."
+
+# Minimal valid deployment package (handler.py), embedded so the seed Job
+# (amazon/aws-cli image, no zip binary) can materialize it via base64.
+LAMBDA_ZIP_B64='UEsDBAoAAAAAAFZCylzKMl9vPAAAADwAAAAKAAAAaGFuZGxlci5weWRlZiBoYW5kbGVyKGV2ZW50LCBjb250ZXh0KToKICAgIHJldHVybiB7InN0YXR1c0NvZGUiOiAyMDB9ClBLAQIeAwoAAAAAAFZCylzKMl9vPAAAADwAAAAKAAAAAAAAAAEAAACkgQAAAABoYW5kbGVyLnB5UEsFBgAAAAABAAEAOAAAAGQAAAAAAA=='
+echo "$LAMBDA_ZIP_B64" | base64 -d > /tmp/seed-lambda-function.zip
+
+aws_in_account "$SECRETS_ACCOUNT" lambda delete-function \
+    --function-name "data-processor" 2>/dev/null || true
+
+aws_in_account "$SECRETS_ACCOUNT" lambda create-function \
+    --function-name "data-processor" \
+    --runtime python3.11 \
+    --handler handler.handler \
+    --role "arn:aws:iam::$SECRETS_ACCOUNT:role/secrets-reader-role" \
+    --zip-file fileb:///tmp/seed-lambda-function.zip >/dev/null
+
+# Resource policy: SERVICE principal invoke grant
+aws_in_account "$SECRETS_ACCOUNT" lambda add-permission \
+    --function-name "data-processor" \
+    --statement-id "AllowS3Invoke" \
+    --action "lambda:InvokeFunction" \
+    --principal "s3.amazonaws.com" >/dev/null
+
+# Resource policy: CROSS-ACCOUNT invoke grant
+aws_in_account "$SECRETS_ACCOUNT" lambda add-permission \
+    --function-name "data-processor" \
+    --statement-id "AllowExternalAccountInvoke" \
+    --action "lambda:InvokeFunction" \
+    --principal "$EXTERNAL_ACCOUNT" >/dev/null
+
+echo "✓ Scenario 5 complete: 4 secrets (managed-key/CMK/service-policy/condition) + 2 IAM grant roles + Lambda resource policy"
+echo ""
+
+################################################################################
 # Summary Report
 ################################################################################
 
@@ -801,6 +1015,10 @@ count_oidc=$(aws_in_account "$STAGING_ACCOUNT" iam list-open-id-connect-provider
 count_buckets=$(aws_in_account "$SECRETS_ACCOUNT" s3 ls | wc -l)
 
 count_keys=$(aws_in_account "$SECRETS_ACCOUNT" kms list-keys --query 'Keys[].KeyId' --output text | wc -w)
+
+count_secrets=$(aws_in_account "$SECRETS_ACCOUNT" secretsmanager list-secrets --query 'SecretList[].Name' --output text | wc -w)
+
+count_functions=$(aws_in_account "$SECRETS_ACCOUNT" lambda list-functions --query 'Functions[].FunctionName' --output text 2>/dev/null | wc -w || echo 0)
 
 echo "Summary of Adversarial Scenarios:"
 echo ""
@@ -828,11 +1046,20 @@ echo "  Inline Policies: $count_policies_prod"
 echo ""
 echo "Secrets Account ($SECRETS_ACCOUNT):"
 echo "  Roles: $count_roles_secrets"
+echo "    - secrets-reader-role (Scenario 5, GetSecretValue on specific secret ARN)"
+echo "    - secrets-admin-role (Scenario 5, GetSecretValue on *)"
 echo "  S3 Buckets: $count_buckets"
 echo "    - org-shared-data (Scenario 3, Principal:* with org-ID condition)"
 echo "  KMS Keys: $count_keys"
 echo "    - (Scenario 4, key policy allows dev account root to CreateGrant)"
+echo "  Secrets: $count_secrets"
+echo "    - app-database-password (Scenario 5, AWS-managed key)"
+echo "    - org-master-api-key (Scenario 5, customer CMK + cross-account policy)"
+echo "    - ci-deploy-token (Scenario 5, service-principal policy)"
+echo "    - org-restricted-secret (Scenario 5, org-ID condition policy)"
+echo "  Lambda Functions: $count_functions"
+echo "    - data-processor (Scenario 5, resource policy: service + cross-account)"
 echo ""
 echo "All scenarios are idempotent and can be re-run safely."
 echo ""
-echo "Note: All 5 scenarios seeded (1, 2 OIDC, 3, 4)."
+echo "Note: All 5 scenarios seeded (1, 2 OIDC, 3, 4, 5 Secrets/Lambda)."

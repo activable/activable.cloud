@@ -19,3 +19,10 @@ relationships:
     edge_type: "HasSecurityGroup"
     from_property: "security_group_id"
     to_property: "id"
+
+  - name: "permission-acts-on-secret"
+    from_label: "Permission"
+    to_label: "Secret"
+    edge_type: "ActsOn"
+    from_property: "resource"
+    to_property: "id"
