@@ -162,6 +162,12 @@ No Vela-Kuzu evaluation needed — margins are so large (thousands×) that a fal
 
 ## 6. Reproduction Commands
 
+> **Note (2026-06-10):** the commands below are the historical record from the original
+> run. The benchmark harness was removed from the working tree — restore it first with
+> `git log --diff-filter=D -- 'spike/graph-backend/*'` to find the deletion commit, then
+> `git checkout <deletion-commit>^ -- spike/graph-backend/`. Path references to
+> `infra/compose/` correspond to today's `ops/compose/`.
+
 ```bash
 # From repo root
 # Prerequisite: Docker running, apache/age:release_PG16_1.6.0 image available locally

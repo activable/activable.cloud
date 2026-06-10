@@ -122,7 +122,7 @@ Implementation: `load_pg_age.rs` from the graph-backend benchmark harness (remov
 
 #### Carry-over for production loader
 
-These items were identified in the phase-2 benchmark but deferred to production implementation. All are resolved in the `activable-graph` crate (phase-2 and subsequent implementations).
+These items were identified in the graph-backend benchmark but deferred to production implementation. All are resolved in the `activable-graph` crate (initial implementation and subsequent hardening).
 
 | # | Item | Status |
 |---|---|---|
@@ -306,7 +306,7 @@ The Rust `GraphClient` exposes five query primitives. All queries are memory-eff
 
 ### Primitives and Performance Characteristics
 
-Latency measurements from phase-8 integration benchmark on synthetic 100k-node AWS IAM graph (single-thread, p95):
+Latency measurements from the integration benchmark on synthetic 100k-node AWS IAM graph (single-thread, p95):
 
 | Primitive | Purpose | Signature | Latency (p95) | Exposure |
 |-----------|---------|-----------|---------------|----------|
@@ -327,7 +327,7 @@ Latency measurements from phase-8 integration benchmark on synthetic 100k-node A
 **API exposure:**
 - **FFI boundary:** All primitives exported via `activable-ffi` and accessible from Go.
 - **CLI:** Subcommands under `activable query` (e.g., `activable query path`, `activable query walk`).
-- **GraphQL:** Planned for phase-7 API server (not v1 substrate).
+- **GraphQL:** Served by the GraphQL API server.
 
 ## Security Boundary
 
