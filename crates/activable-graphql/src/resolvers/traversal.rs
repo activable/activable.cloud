@@ -8,15 +8,19 @@ use async_graphql::Context;
 use futures::StreamExt;
 
 const MAX_EDGE_TYPES: usize = 10;
+// Equal values, distinct meanings — do not unify: MAX_DEPTH bounds multi-hop
+// traversal in blastRadius; MAX_WALK_RESULTS caps the one-hop result count
+// in walkEdges.
 const MAX_DEPTH: i32 = 10;
+const MAX_WALK_RESULTS: i32 = 10;
 
-/// Walk edges from a starting node.
+/// Walk edges one hop from a starting node, returning up to `limit` neighbors.
 pub async fn walk_edges(
     ctx: &Context<'_>,
     start: String,
     edge_types: Vec<String>,
     direction: String,
-    depth: i32,
+    limit: i32,
 ) -> async_graphql::Result<Vec<GqlNodeRef>> {
     if edge_types.len() > MAX_EDGE_TYPES {
         return Err(async_graphql::Error::new(format!(
@@ -24,10 +28,10 @@ pub async fn walk_edges(
             MAX_EDGE_TYPES
         )));
     }
-    if !(0..=MAX_DEPTH).contains(&depth) {
+    if !(0..=MAX_WALK_RESULTS).contains(&limit) {
         return Err(async_graphql::Error::new(format!(
-            "Depth must be 0-{}",
-            MAX_DEPTH
+            "Limit must be 0-{}",
+            MAX_WALK_RESULTS
         )));
     }
 
@@ -49,7 +53,7 @@ pub async fn walk_edges(
             &NodeId::from(start.as_str()),
             &edge_type_refs,
             dir,
-            depth as u8,
+            limit as u8,
         )
         .await
         .map_err(|e| {

@@ -368,7 +368,7 @@ This opens the Apollo GraphQL Playground. Example queries:
 }
 ```
 
-**Walk edges from a principal (2 hops):**
+**Walk edges from a principal (one hop, up to 10 neighbors):**
 
 ```graphql
 {
@@ -376,7 +376,7 @@ This opens the Apollo GraphQL Playground. Example queries:
     start: "arn:aws:iam::111111111111:role/developer-role"
     edgeTypes: ["CanAssume", "HasPermission"]
     direction: "OUTGOING"
-    depth: 2
+    limit: 10
   ) {
     id
     label

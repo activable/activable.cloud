@@ -64,7 +64,7 @@ HOP1_RESPONSE=$(gql '
       start: "'"$READER_ROLE_ARN"'",
       edgeTypes: ["HasEffectivePermission"],
       direction: "OUTGOING",
-      depth: 10
+      limit: 10
     ) {
       id
       label
@@ -92,7 +92,7 @@ for perm_id in $PERMISSION_IDS; do
           start: "'"$perm_id"'",
           edgeTypes: ["ActsOn"],
           direction: "OUTGOING",
-          depth: 10
+          limit: 10
         ) {
           id
           label
@@ -129,7 +129,7 @@ ENC_RESPONSE=$(gql '
       start: "'"$SECRET_ID"'",
       edgeTypes: ["EncryptedBy"],
       direction: "OUTGOING",
-      depth: 1
+      limit: 10
     ) {
       id
       label
@@ -152,7 +152,7 @@ ACCESS_RESPONSE=$(gql '
       start: "'"$SECRET_ID"'",
       edgeTypes: ["AllowsAccessFrom"],
       direction: "OUTGOING",
-      depth: 1
+      limit: 10
     ) {
       id
       label
@@ -189,7 +189,7 @@ LAMBDA_ACCESS_RESPONSE=$(gql '
       start: "'"$LAMBDA_FUNCTION_ARN"'",
       edgeTypes: ["AllowsAccessFrom"],
       direction: "OUTGOING",
-      depth: 1
+      limit: 10
     ) {
       id
       label

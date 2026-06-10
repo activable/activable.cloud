@@ -22,16 +22,16 @@ impl QueryRoot {
         resolvers::node::find_node(ctx, label, id).await
     }
 
-    /// Walk edges from a starting node.
+    /// Walk edges one hop from a starting node, returning up to `limit` neighbors.
     async fn walk_edges(
         &self,
         ctx: &Context<'_>,
         start: String,
         edge_types: Vec<String>,
         direction: String,
-        depth: i32,
+        limit: i32,
     ) -> async_graphql::Result<Vec<GqlNodeRef>> {
-        resolvers::traversal::walk_edges(ctx, start, edge_types, direction, depth).await
+        resolvers::traversal::walk_edges(ctx, start, edge_types, direction, limit).await
     }
 
     /// Find paths between two nodes.
