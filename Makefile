@@ -191,7 +191,7 @@ dev-query:
 	@echo "--- walkEdges (from alice) ---"
 	@curl -s -X POST http://localhost:30080/graphql \
 		-H "Content-Type: application/json" \
-		-d '{"query":"{ walkEdges(startId: \"arn:aws:iam::000000000000:user/alice\", edgeTypes: [\"HasPermission\",\"MemberOf\"], direction: \"OUTGOING\", depth: 2) { id label } }"}' | \
+		-d '{"query":"{ walkEdges(start: \"arn:aws:iam::000000000000:user/alice\", edgeTypes: [\"HasPermission\",\"MemberOf\"], direction: \"OUTGOING\", limit: 10) { id label } }"}' | \
 	if command -v jq > /dev/null 2>&1; then jq .; else cat; fi
 
 dev-status:

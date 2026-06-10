@@ -79,17 +79,26 @@ impl CypherBuilder {
         start: &NodeId,
         edge_types: &[&str],
         direction: Direction,
-        depth_limit: u8,
+        result_limit: u8,
     ) -> Result<String, GraphError> {
         let escaped_start = escape_cypher(start.as_str());
-        let rel_pattern = if edge_types.is_empty() {
-            "[r]".to_string()
-        } else {
-            let labels: Vec<String> = edge_types
-                .iter()
-                .map(|et| validate_label(et).unwrap_or(et).to_string())
-                .collect();
-            format!("[r:{}]", labels.join("|"))
+        for edge_type in edge_types {
+            validate_label(edge_type)?;
+        }
+
+        // AGE 1.6 has no edge-label alternation — both `[r:A|B]` and `[r:A|:B]`
+        // are syntax errors — so multiple types filter via WHERE label(r) IN [...].
+        let (rel_pattern, where_clause) = match edge_types {
+            [] => ("[r]".to_string(), String::new()),
+            [single] => (format!("[r:{}]", single), String::new()),
+            many => {
+                let label_list: Vec<String> =
+                    many.iter().map(|et| format!("'{}'", et)).collect();
+                (
+                    "[r]".to_string(),
+                    format!(" WHERE label(r) IN [{}]", label_list.join(", ")),
+                )
+            }
         };
 
         let (arrow_left, arrow_right) = match direction {
@@ -99,8 +108,8 @@ impl CypherBuilder {
         };
 
         let cypher = format!(
-            "MATCH (s {{id: '{}'}}){}{}{}(t) RETURN t.id, label(t) LIMIT {}",
-            escaped_start, arrow_left, rel_pattern, arrow_right, depth_limit
+            "MATCH (s {{id: '{}'}}){}{}{}(t){} RETURN t.id, label(t) LIMIT {}",
+            escaped_start, arrow_left, rel_pattern, arrow_right, where_clause, result_limit
         );
 
         Ok(format!(
@@ -119,14 +128,23 @@ impl CypherBuilder {
         let escaped_start = escape_cypher(start.as_str());
         let escaped_end = escape_cypher(end.as_str());
 
-        let rel_pattern = if edge_pattern.is_empty() {
-            format!("[*1..{}]", max_hops)
-        } else {
-            let labels: Vec<String> = edge_pattern
-                .iter()
-                .map(|et| validate_label(et).unwrap_or(et).to_string())
-                .collect();
-            format!("[{}*1..{}]", labels.join("|"), max_hops)
+        // A bare identifier in a VLE pattern (`[Type*1..n]`) is a VARIABLE BINDING,
+        // not a type filter — it silently matches every edge type. The colon is
+        // required: `[:Type*1..n]`. AGE 1.6 cannot express multi-type VLE (no
+        // alternation, no ALL() list predicate), so 2+ types is an explicit error.
+        let rel_pattern = match edge_pattern {
+            [] => format!("[*1..{}]", max_hops),
+            [single] => {
+                validate_label(single)?;
+                format!("[:{}*1..{}]", single, max_hops)
+            }
+            _ => {
+                return Err(GraphError::UnsafeParameter(
+                    "variable-length traversal accepts at most one edge type \
+                     (AGE has no multi-type path filter); query per type instead"
+                        .to_string(),
+                ))
+            }
         };
 
         let cypher = format!(
@@ -168,14 +186,21 @@ impl CypherBuilder {
     ) -> Result<String, GraphError> {
         let escaped_node = escape_cypher(node.as_str());
 
-        let rel_pattern = if edge_types.is_empty() {
-            format!("[*1..{}]", max_hops)
-        } else {
-            let labels: Vec<String> = edge_types
-                .iter()
-                .map(|et| validate_label(et).unwrap_or(et).to_string())
-                .collect();
-            format!("[{}*1..{}]", labels.join("|"), max_hops)
+        // Same constraints as path_finder: colon-typed VLE only, one type max
+        // (a bare identifier is a variable binding that matches every edge type).
+        let rel_pattern = match edge_types {
+            [] => format!("[*1..{}]", max_hops),
+            [single] => {
+                validate_label(single)?;
+                format!("[:{}*1..{}]", single, max_hops)
+            }
+            _ => {
+                return Err(GraphError::UnsafeParameter(
+                    "variable-length traversal accepts at most one edge type \
+                     (AGE has no multi-type path filter); query per type instead"
+                        .to_string(),
+                ))
+            }
         };
 
         let cypher = format!(
@@ -571,6 +596,41 @@ mod tests {
             .walk_edges(&id, &["HasPermission"], Direction::Outgoing, 1)
             .unwrap();
         assert!(sql.contains("[r:HasPermission]"));
+        assert!(!sql.contains("WHERE"));
+    }
+
+    #[test]
+    fn builder_walk_edges_multiple_edge_types_uses_where_filter() {
+        // AGE rejects [r:A|B] alternation; multi-type must go through WHERE label(r) IN.
+        let builder = CypherBuilder::new("test_graph");
+        let id = NodeId::from("principal_1");
+        let sql = builder
+            .walk_edges(
+                &id,
+                &["HasEffectivePermission", "ActsOn"],
+                Direction::Outgoing,
+                10,
+            )
+            .unwrap();
+        assert!(!sql.contains('|'), "no alternation may be generated: {sql}");
+        assert!(sql.contains("[r]"));
+        assert!(sql.contains("WHERE label(r) IN ['HasEffectivePermission', 'ActsOn']"));
+        assert!(sql.contains("LIMIT 10"));
+    }
+
+    #[test]
+    fn builder_walk_edges_invalid_edge_type_rejected() {
+        // Edge types are caller-supplied; validation failures must propagate,
+        // never fall back to embedding the raw string in the query.
+        let builder = CypherBuilder::new("test_graph");
+        let id = NodeId::from("principal_1");
+        let result = builder.walk_edges(
+            &id,
+            &["Good", "bad] (x) RETURN x //"],
+            Direction::Outgoing,
+            1,
+        );
+        assert!(result.is_err());
     }
 
     #[test]
@@ -610,7 +670,27 @@ mod tests {
         let sql = builder
             .path_finder(&start, &end, &["HasPermission"], 5)
             .unwrap();
-        assert!(sql.contains("HasPermission*1..5"));
+        // The colon is load-bearing: a bare identifier in a VLE pattern is a
+        // variable binding that matches every edge type, not a type filter.
+        assert!(sql.contains("[:HasPermission*1..5]"));
+    }
+
+    #[test]
+    fn builder_path_finder_multi_type_rejected() {
+        let builder = CypherBuilder::new("test_graph");
+        let start = NodeId::from("a");
+        let end = NodeId::from("b");
+        let result = builder.path_finder(&start, &end, &["CanAssume", "HasPermission"], 5);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn builder_path_finder_invalid_type_rejected() {
+        let builder = CypherBuilder::new("test_graph");
+        let start = NodeId::from("a");
+        let end = NodeId::from("b");
+        let result = builder.path_finder(&start, &end, &["bad type"], 5);
+        assert!(result.is_err());
     }
 
     #[test]
@@ -628,6 +708,30 @@ mod tests {
         let node = NodeId::from("principal_1");
         let sql = builder.blast_radius(&node, &[], 3).unwrap();
         assert!(sql.contains("[*1..3]"));
+    }
+
+    #[test]
+    fn builder_blast_radius_single_type_colon() {
+        let builder = CypherBuilder::new("test_graph");
+        let node = NodeId::from("principal_1");
+        let sql = builder.blast_radius(&node, &["CanAssume"], 3).unwrap();
+        assert!(sql.contains("[:CanAssume*1..3]"));
+    }
+
+    #[test]
+    fn builder_blast_radius_multi_type_rejected() {
+        let builder = CypherBuilder::new("test_graph");
+        let node = NodeId::from("principal_1");
+        let result = builder.blast_radius(&node, &["CanAssume", "HasPermission"], 3);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn builder_blast_radius_invalid_type_rejected() {
+        let builder = CypherBuilder::new("test_graph");
+        let node = NodeId::from("principal_1");
+        let result = builder.blast_radius(&node, &["x]->() MATCH (y"], 3);
+        assert!(result.is_err());
     }
 
     #[test]

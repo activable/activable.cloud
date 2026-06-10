@@ -130,15 +130,14 @@ impl GraphClient {
         Ok(Some(NodeRef::new(id_val, label)))
     }
 
-    /// Walk edges from a starting node.
-    ///
-    /// Returns a stream of node references.
+    /// Walk edges one hop from a starting node, returning a stream of up to
+    /// `result_limit` neighbor references.
     pub async fn walk_edges(
         &self,
         start: &NodeId,
         edge_types: &[&str],
         direction: Direction,
-        depth_limit: u8,
+        result_limit: u8,
     ) -> Result<impl Stream<Item = Result<NodeRef, GraphError>>, GraphError> {
         let conn = self
             .pool
@@ -151,7 +150,7 @@ impl GraphClient {
             .map_err(|e| GraphError::Query(e.to_string()))?;
 
         let builder = CypherBuilder::new(&self.graph_name);
-        let sql = builder.walk_edges(start, edge_types, direction, depth_limit)?;
+        let sql = builder.walk_edges(start, edge_types, direction, result_limit)?;
 
         let rows = conn
             .query(&sql, &[])
