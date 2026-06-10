@@ -94,12 +94,7 @@ async fn collect_walk(
     edge_types: &[&str],
 ) -> Result<Vec<String>, activable_graph::error::GraphError> {
     let stream = client
-        .walk_edges(
-            &NodeId::from(start),
-            edge_types,
-            Direction::Outgoing,
-            10,
-        )
+        .walk_edges(&NodeId::from(start), edge_types, Direction::Outgoing, 10)
         .await?;
     let mut ids = Vec::new();
     let mut stream = Box::pin(stream);
