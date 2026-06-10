@@ -1,3 +1,9 @@
+> **Provenance (added 2026-06-10):** rescued from the graph-backend benchmark spike
+> during repository reorganization. The benchmark code (bench harness, Cypher query
+> set, Cargo project) lives in git history under `spike/graph-backend/` — see the
+> commit that introduced this file for the removal point. Verdict and numbers below
+> are unchanged from the original 2026-05-21 run.
+
 # Graph Backend Spike — PG+AGE Benchmark Results
 
 **Date:** 2026-05-21

@@ -1,5 +1,5 @@
 # Local Kubernetes development values — ALL services run in K8s
-# Use with: helm install activable deploy/helm/activable -f deploy/helm/activable/values-local.yaml
+# Use with: helm install activable ops/helm/activable -f ops/helm/activable/values-local.yaml
 #
 # Deploys: Postgres+AGE (StatefulSet) + LocalStack v4.7+ (Deployment) + Activable GraphQL API
 # Zero Docker Compose. Everything on Docker Desktop Kubernetes.

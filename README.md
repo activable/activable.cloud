@@ -64,7 +64,7 @@ make setup          # install pre-commit hooks
 make build          # build all crates
 
 # Start the graph database
-docker compose -f infra/compose/docker-compose.yml up -d db
+docker compose -f ops/compose/docker-compose.yml up -d db
 
 # Run tests
 make test           # 500+ tests
@@ -74,7 +74,7 @@ make test           # 500+ tests
 
 ```bash
 kind create cluster --name activable
-helm install activable ./infra/helm/activable
+helm install activable ./ops/helm/activable
 kubectl port-forward svc/activable-api 8080:8080
 ```
 

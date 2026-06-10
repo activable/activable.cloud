@@ -81,7 +81,7 @@ API server, ingestion), Postgres + Apache AGE storage, UniFFI boundary.
 | 6-hop variable-length traversal (concurrent, 4×25) | < 2,500,000 µs | **697 µs** | 3,587× |
 | Shortest-path (single-thread) | < 3,000,000 µs | **367 µs** | 8,174× |
 
-Full methodology, query mix, hardware fingerprint, and reproduction commands: [`spike/graph-backend/results.md`](../spike/graph-backend/results.md).
+Full methodology, query mix, hardware fingerprint, and reproduction commands: [`docs/references/graph-backend-benchmark-pg-age-verdict.md`](./references/graph-backend-benchmark-pg-age-verdict.md).
 
 ### Why the margins are this large (and what they don't promise)
 
@@ -118,7 +118,7 @@ The Cypher `UNWIND $batch AS row MATCH ... CREATE` approach is **unusable at 100
 - Expression indexes on `agtype_access_operator(properties, '"id"'::agtype)` for vertex-ID lookup by JOIN.
 - Vertex inserts still use Cypher `UNWIND` (acceptable because each row is independent; no MATCH lookup needed).
 
-Implementation: [`spike/graph-backend/src/load_pg_age.rs`](../spike/graph-backend/src/load_pg_age.rs). Code review of the SQL fast-path loader: APPROVED_WITH_CAVEATS — 0 priority-0 (security/correctness), 8 priority-1 (production-readiness) items recorded below. (Full report in `plans/reports/` — local artifact, not in repository.)
+Implementation: `load_pg_age.rs` from the graph-backend benchmark harness (removed from the working tree; recoverable from git history). Code review of the SQL fast-path loader: APPROVED_WITH_CAVEATS — 0 priority-0 (security/correctness), 8 priority-1 (production-readiness) items recorded below. (Full report in `plans/reports/` — local artifact, not in repository.)
 
 #### Carry-over for production loader
 

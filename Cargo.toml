@@ -9,9 +9,6 @@ members = [
     "crates/activable-risk",
     "crates/activable-scheduler",
 ]
-exclude = [
-    "spike/graph-backend",
-]
 
 [workspace.package]
 version = "0.1.0"

@@ -193,11 +193,11 @@ Expected output (if OIDC drift detection is enabled):
 - Root cause: The seed script may have an `if false` guard on Scenario 2 if LocalStack v4.7 OIDC support is incomplete.
 - Check: Look at the seed script:
   ```bash
-  grep -n "if true\|if false" deploy/scripts/seed-adversarial.sh | grep -A 5 "Scenario 2"
+  grep -n "if true\|if false" ops/seed/seed-adversarial.sh | grep -A 5 "Scenario 2"
   ```
   If you see `if false`, OIDC is disabled. Update the condition to `if true` to enable it:
   ```bash
-  sed -i 's/^if false; then  # Scenario 2/if true; then  # Scenario 2/' deploy/scripts/seed-adversarial.sh
+  sed -i 's/^if false; then  # Scenario 2/if true; then  # Scenario 2/' ops/seed/seed-adversarial.sh
   ```
   Then re-run the seed script and re-trigger ingestion.
 
@@ -480,7 +480,7 @@ If you suspect the seed script didn't run correctly, re-seed:
 
 ```bash
 export AWS_ENDPOINT_URL="http://localhost:30866"  # or http://activable-localstack:4566 if port-forwarding
-bash deploy/scripts/seed-adversarial.sh
+bash ops/seed/seed-adversarial.sh
 ```
 
 Then re-trigger ingestion.
