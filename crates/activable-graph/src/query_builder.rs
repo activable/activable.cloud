@@ -92,8 +92,7 @@ impl CypherBuilder {
             [] => ("[r]".to_string(), String::new()),
             [single] => (format!("[r:{}]", single), String::new()),
             many => {
-                let label_list: Vec<String> =
-                    many.iter().map(|et| format!("'{}'", et)).collect();
+                let label_list: Vec<String> = many.iter().map(|et| format!("'{}'", et)).collect();
                 (
                     "[r]".to_string(),
                     format!(" WHERE label(r) IN [{}]", label_list.join(", ")),
