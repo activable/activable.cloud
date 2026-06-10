@@ -42,7 +42,7 @@ pub enum SessionConstraintResult {
 /// # Example
 ///
 /// ```no_run
-/// # use activable_ingest_iam::{parse_policy, session_policy};
+/// # use activable_iam_engine::{parse_policy, session_policy};
 /// let session_json = r#"{"Version":"2012-10-17","Statement":[
 ///   {"Effect":"Allow","Action":"s3:GetObject","Resource":"*"}
 /// ]}"#;
@@ -134,7 +134,7 @@ pub fn session_allows(
 /// # Example
 ///
 /// ```no_run
-/// # use activable_ingest_iam::{EffectivePermission, parse_policy, session_policy};
+/// # use activable_iam_engine::{EffectivePermission, parse_policy, session_policy};
 /// let base = vec![
 ///     EffectivePermission { action: "s3:GetObject".to_string(), resource: "*".to_string() },
 ///     EffectivePermission { action: "iam:CreateUser".to_string(), resource: "*".to_string() },

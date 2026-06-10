@@ -12,7 +12,7 @@
 /// # Examples
 ///
 /// ```
-/// # use activable_ingest_iam::resource_matches;
+/// # use activable_iam_engine::resource_matches;
 /// assert!(resource_matches("arn:aws:s3:::my-bucket", "arn:aws:s3:::my-bucket"));
 /// assert!(resource_matches("arn:aws:s3:::my-bucket/*", "arn:aws:s3:::my-bucket/path/to/object.txt"));
 /// assert!(resource_matches("*", "arn:aws:iam::123456789012:user/alice"));

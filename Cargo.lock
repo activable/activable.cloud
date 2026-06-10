@@ -25,8 +25,8 @@ name = "activable-graphql"
 version = "0.1.0"
 dependencies = [
  "activable-graph",
+ "activable-iam-engine",
  "activable-ingest",
- "activable-ingest-iam",
  "activable-risk",
  "activable-scheduler",
  "activable-schema",
@@ -50,6 +50,19 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "uuid",
+]
+
+[[package]]
+name = "activable-iam-engine"
+version = "0.1.0"
+dependencies = [
+ "activable-schema",
+ "ipnet",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "thiserror 2.0.18",
+ "tracing",
 ]
 
 [[package]]
@@ -85,23 +98,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "activable-ingest-iam"
-version = "0.1.0"
-dependencies = [
- "activable-schema",
- "ipnet",
- "serde",
- "serde_json",
- "serde_yaml",
- "thiserror 2.0.18",
- "tracing",
-]
-
-[[package]]
 name = "activable-risk"
 version = "0.1.0"
 dependencies = [
- "activable-ingest-iam",
+ "activable-iam-engine",
  "activable-schema",
  "async-trait",
  "include_dir",

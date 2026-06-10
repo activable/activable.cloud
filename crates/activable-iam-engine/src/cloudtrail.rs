@@ -69,7 +69,7 @@ pub enum EscalationPattern {
 /// # Example
 ///
 /// ```
-/// use activable_ingest_iam::parse_cloudtrail_event;
+/// use activable_iam_engine::parse_cloudtrail_event;
 /// let json = r#"{"eventID":"1","eventTime":"2026-05-23T14:30:45Z","eventName":"AssumeRole","eventSource":"sts.amazonaws.com","userIdentity":{"arn":"arn:aws:iam::123456789012:user/alice"},"sourceIPAddress":"10.0.0.1"}"#;
 /// let event = parse_cloudtrail_event(json).expect("valid event");
 /// assert_eq!(event.principal_arn, "arn:aws:iam::123456789012:user/alice");
@@ -183,7 +183,7 @@ pub fn parse_cloudtrail_event(json: &str) -> Result<CloudTrailEvent, String> {
 /// # Example
 ///
 /// ```
-/// use activable_ingest_iam::parse_cloudtrail_batch;
+/// use activable_iam_engine::parse_cloudtrail_batch;
 /// let json = r#"[{"eventID":"1","eventTime":"2026-05-23T14:30:45Z","eventName":"AssumeRole","eventSource":"sts.amazonaws.com","userIdentity":{"arn":"arn:aws:iam::123456789012:user/alice"},"sourceIPAddress":"10.0.0.1"}]"#;
 /// let result = parse_cloudtrail_batch(json);
 /// assert_eq!(result.total_count, 1);
@@ -260,7 +260,7 @@ pub fn parse_cloudtrail_batch(json: &str) -> CloudTrailBatchResult {
 /// # Example
 ///
 /// ```
-/// use activable_ingest_iam::{CloudTrailEvent, detect_escalation_attempts, EscalationPattern};
+/// use activable_iam_engine::{CloudTrailEvent, detect_escalation_attempts, EscalationPattern};
 /// let events = vec![
 ///     CloudTrailEvent {
 ///         event_id: "1".to_string(),
@@ -445,7 +445,7 @@ pub fn detect_escalation_attempts(events: &[CloudTrailEvent]) -> Vec<EscalationA
 /// # Example
 ///
 /// ```
-/// use activable_ingest_iam::{EscalationAttempt, EscalationPattern, compute_escalation_score};
+/// use activable_iam_engine::{EscalationAttempt, EscalationPattern, compute_escalation_score};
 /// let attempts = vec![
 ///     EscalationAttempt {
 ///         principal_arn: "arn:aws:iam::123456789012:user/alice".to_string(),
